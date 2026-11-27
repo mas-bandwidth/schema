@@ -22,6 +22,7 @@ package cpptable
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,9 +31,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // cppFramingStrictRows are the form-1 rows the emitted strict walk refuses
@@ -60,6 +62,17 @@ var cppFramingStrictRows = []string{
 	"frame_unknown_array_count_over_cap",
 	"frame_unknown_keyed_count_over_cap",
 	"frame_unknown_float_non_finite",
+	// the walk's own order, depth and union-chain bounds (strictwalk.go
+	// kTableStrictMaxDepth); rows from #4843 that the control could not see
+	// while its copy missed ann/announce4096/AnnounceTable.h
+	"skipped_ids_out_of_order",
+	"depth_tables_129",
+	"depth_tables_5000",
+	"depth_arrays_129",
+	"depth_keyed_129",
+	"depth_union_tables_65",
+	"union_chain_unknown_deep",
+	"union_chain_unknown_past_bound",
 }
 
 type cppFramingRow struct {
@@ -217,6 +230,7 @@ func cppConformanceMake(t *testing.T, root string, args ...string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/cpp", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -317,7 +331,18 @@ func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	// answer. Every other header is copied verbatim, because the driver's
 	// includes reach packet and wire headers beside the table ones.
 	const anchor = "inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report )"
-	headers, err := filepath.Glob(filepath.Join(root, "build", "tables-generated", "*", "*.h"))
+	// every header at any depth: a unit generated a level down
+	// (ann/announce4096/AnnounceTable.h) is included by the driver as well
+	var headers []string
+	err = filepath.WalkDir(filepath.Join(root, "build", "tables-generated"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".h") {
+			headers = append(headers, path)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

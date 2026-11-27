@@ -10,12 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/irtest"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/irtest"
 )
 
 const root = "../../.."
@@ -66,7 +65,7 @@ func TestLuauTableDescriptorsLoad(t *testing.T) {
 			t.Logf("luau refuses unit %s: %v", key, err)
 			refusal := err.Error()
 			t.Run(key, func(t *testing.T) {
-				slowtest.SkipRow(t, "UNPORTED: the luau backend refuses unit "+key+" ("+refusal+"); its table descriptors are unchecked until the backend generates it")
+				t.Error("a row that did not run: the luau backend refuses unit " + key + " (" + refusal + "); its table descriptors are unchecked until the backend generates it")
 			})
 			continue
 		}

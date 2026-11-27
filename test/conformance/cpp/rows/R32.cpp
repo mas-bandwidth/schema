@@ -3,7 +3,8 @@
 // SPEC §5.2: per lineage entry a RETIRED mark (schema lock --retire T@<hash>)
 // gives COMPILE the floor and layout_unsupported. §11.4: below the floor ->
 // layout_unsupported (upgrade the client); outside lineage altogether ->
-// layout_newer (ship the reader). Once: one hash in one index; idempotently:
+// layout_unknown (ship the reader; the name was layout_newer, retired by
+// docs/plans/strict-only.md decision 11: every leg answers layout_unknown). Once: one hash in one index; idempotently:
 // the refusal is deterministic, named, and never a counter or partial decode.
 //
 // THIS TEST USES the three VOLD/VMID/VNEW schema fixtures that ship together
@@ -83,30 +84,31 @@ int main()
         // GREEN: refuses layout_unsupported (the floor check bites at index 0)
         // Only checks the core assertions: refused + correct reason. The
         // spec says a refusal decodes NOTHING, so zero counters is what matters.
+        // strict-only-read: kind_mismatch and clamped are retired (a kind mismatch or an
+        // out-of-range value now refuses the whole load), so the refusal verdict above
+        // with no damage is their equivalent; the live counters stay zero.
         bool ok = ( n < 0
                  && report.refused
                  && report.reason == vnew_floor::layout_unsupported
                  && report.unknown == 0
-                 && report.kind_mismatch == 0
                  && report.widened == 0
-                 && report.clamped == 0
-                 && !report.malformed );
+                 && !report.damaged );
 
         if ( !ok ) {
-            printf( "GREEN: load of lineage[0] against floor=1 => n=%d refused=%d reason=%d unknown=%d km=%d wid=%d clamp=%d malformed=%d\n",
+            printf( "GREEN: load of lineage[0] against floor=1 => n=%d refused=%d reason=%d unknown=%d wid=%d damaged=%d\n",
                     (int) n, (int) report.refused, (int) report.reason,
-                    report.unknown, report.kind_mismatch, report.widened,
-                    report.clamped, (int) report.malformed );
+                    report.unknown, report.widened, (int) report.damaged );
             die( "cell assertion FAILED: retired version not refused by name" );
         }
         printf( "GREEN: ok — retired version (lineage[0]) refused layout_unsupported at floor=1\n" );
     }
 
-    // ---- NEGATIVE CONTROL: layout_newer vs layout_unsupported ----
+    // ---- NEGATIVE CONTROL: layout_unknown vs layout_unsupported ----
     //
     // Corrupt one byte of the header's hash so it no longer matches lineage[0].
     // The loader will find NO matching lineage entry (lineage_at = -1) and
-    // return layout_newer, NOT layout_unsupported. This proves the cell
+    // return layout_unknown (once layout_newer, retired by strict-only.md
+    // decision 11), NOT layout_unsupported. This proves the cell
     // assertion hit the FLOOR check specifically, not some generic failure.
     {
         vold_floor::Floored rec;
@@ -134,17 +136,17 @@ int main()
                                                    NULL, &report );
 
         // If the hash no longer matches any lineage entry, the reader says
-        // layout_newer — it never gets to the floor check at all.
+        // layout_unknown — it never gets to the floor check at all.
         bool ok = ( n < 0
                  && report.refused
-                 && report.reason == vnew_floor::layout_newer );
+                 && report.reason == vnew_floor::layout_unknown );
 
         if ( !ok ) {
             printf( "CONTROL: corrupted-hash load => n=%d refused=%d reason=%d\n",
                     (int) n, (int) report.refused, (int) report.reason );
-            die( "negative control FAILED: corrupted hash did not yield layout_newer" );
+            die( "negative control FAILED: corrupted hash did not yield layout_unknown" );
         }
-        printf( "CONTROL: ok — corrupted hash yields layout_newer, confirming cell hits floor-specific path\n" );
+        printf( "CONTROL: ok — corrupted hash yields layout_unknown, confirming cell hits floor-specific path\n" );
     }
 
     // ---- IDEMPOTENCY CHECK ----
@@ -184,10 +186,11 @@ int main()
                  && r1.reason == vnew_floor::layout_unsupported
                  && r2.reason == vnew_floor::layout_unsupported
                  && r1.unknown == r2.unknown
-                 && r1.kind_mismatch == r2.kind_mismatch
+                 // strict-only-read: the retired kind_mismatch and clamped counters are
+                 // replaced by the typed refusal reason, compared here.
+                 && r1.refuse_reason == r2.refuse_reason
                  && r1.widened == r2.widened
-                 && r1.clamped == r2.clamped
-                 && r1.malformed == r2.malformed );
+                 && r1.damaged == r2.damaged );
 
         if ( !ok ) {
             printf( "IDEMPOTENT: n1=%d n2=%d r1.refused=%d r2.refused=%d r1.reason=%d r2.reason=%d\n",

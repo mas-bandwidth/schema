@@ -1,12 +1,10 @@
 package rubytable
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and a file refused
@@ -18,11 +16,10 @@ import (
 // accepted, so a refused file left an earlier load's captures (its used and
 // id_used counts, its loaded root) in the store.
 //
-// The committed corpus cases are the framing rows
-// testdata/wire/tables/framing/frame_form_three_at_variable_root.bin (a
-// fixed-form header at the variable root graphdemo ListNode) and
-// node_count_disagrees.bin (body damage), beside node_clean.bin, their
-// accepted twin on the same root.
+// The shared cases are the conformance `retain-refusal` rows
+// (testdata/conformance/tables/MANIFEST.txt): one store through a retaining
+// read, a save, a refused read (form byte 3, two bytes, no bytes, the message
+// form, damage mid-body) and a second save, answered by every leg.
 
 // TestRubyRetainResetsBeforeOpen is the fast half: the
 // emitted load_retain empties the store before the integrity check and the
@@ -63,62 +60,15 @@ func TestRubyRetainResetsBeforeOpen(t *testing.T) {
 	}
 }
 
-// TestRubyRetainRefusalEmptiesTheStore is the run-time proof, on
-// both pinned interpreters: a store an earlier load left a capture in is
-// handed back empty by every refused retaining load, and an accepted load of
-// the clean twin is the control.
+// TestRubyRetainRefusalEmptiesTheStore is the run-time proof of the one
+// refusal the shared corpus cannot carry, on both pinned interpreters: a
+// failed integrity check (no conformance unit declares `integrity`). The
+// frame, short, empty, form-two and body refusals are the conformance
+// `retain-refusal` rows every leg answers (testdata/conformance/tables/
+// MANIFEST.txt, test/conformance/ruby/surfaces/retain-refusal.rb).
 func TestRubyRetainRefusalEmptiesTheStore(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters")
-	root := filepath.Join("..", "..", "..")
-	graph, err := Generate(loadUnitDir(t, filepath.Join(root, "tables", "pointers")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	inputs := map[string][]byte{}
-	for _, name := range []string{"frame_form_three_at_variable_root", "node_count_disagrees", "node_clean"} {
-		data, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "framing", name+".bin"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		inputs[name+".bin"] = data
-	}
-	inputs["main.rb"] = []byte(`# frozen_string_literal: true
-
-require_relative 'graphdemo'
-
-def seeded
-  keep = Graphdemo::TableRetain.new
-  keep.used = 7
-  keep.id_used = 1
-  keep.loaded_root = 'an earlier load'
-  keep
-end
-
-cases = %w[frame_form_three_at_variable_root node_count_disagrees].map { |n| [n, File.binread("#{n}.bin")] }
-cases += [['form_two', "\x02\x00".b + ("\x00".b * 8)], ['empty', ''.b], ['short', "\x01\x00".b]]
-cases.each do |name, wire|
-  keep = seeded
-  begin
-    Graphdemo::ListNode.load_retain(wire, keep)
-    raise "#{name}: the retaining load accepted"
-  rescue Graphdemo::Refused
-    nil
-  end
-  got = [keep.used, keep.id_used, keep.loaded_root]
-  raise "#{name}: the store is #{got.inspect}" unless got == [0, 0, nil]
-end
-keep = seeded
-value = Graphdemo::ListNode.load_retain(File.binread('node_clean.bin'), keep)
-raise 'the clean twin left the store wrong' unless keep.used.zero? && keep.id_used.zero? && keep.loaded_root.equal?(value)
-puts 'retain-refusal'
-`)
-	dir := t.TempDir()
-	writeTree(t, dir, graph)
-	if out := strings.TrimSpace(runBothRubyPins(t, dir, "main.rb", inputs)); out != "retain-refusal" {
-		t.Fatalf("a refused retaining load left the store as it was: %s", out)
-	}
-
 	crc, err := Generate(loadUnit(t, "package probe\ntable Root | integrity = \"crc32c\" { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)

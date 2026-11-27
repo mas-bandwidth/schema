@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedRuntimeModule is the FIXED FORM's shared runtime, emitted ONCE PER UNIT
@@ -658,6 +658,20 @@ const fixedRuntimeBody = `  @moduledoc """
   def fits(value, bits, signed) do
     what = if signed, do: "int", else: "uint"
     raise ArgumentError, "#{inspect(value)} does not fit the field's #{what}#{bits} storage"
+  end
+
+  @doc """
+  ` + "`" + `ordinal` + "`" + `, or ArgumentError when it names a deprecated variant.
+
+  A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15 WRITE): a
+  reader lands it as a default, so a writer that wrote it would hand the
+  endpoint a different value with no refusal to say so. Every build refuses.
+  """
+  def live_variant(ordinal, retired) do
+    if ordinal in retired,
+      do: raise(ArgumentError, "#{ordinal} is a deprecated variant and is never written")
+
+    ordinal
   end
 
   @doc """

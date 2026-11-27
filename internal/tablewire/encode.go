@@ -15,8 +15,8 @@ import (
 	"hash/crc32"
 	"math"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Encode is the root instance's wire bytes and nothing else

@@ -10,6 +10,7 @@
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -146,6 +147,7 @@ import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dar
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/writebounds/WriteboundsWire.dart' as writebounds;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' as cooktorture_fixed;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
@@ -1009,7 +1011,7 @@ void _f2w_shapes_FixedBounds(shapes_fixed.FixedBounds f, shapes.FixedBounds w) {
     r.b = f.recs[i].b;
     return r;
   });
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   w.pick.small = f.pick.small;
   w.pick.ratio = f.pick.ratio;
   w.pick.on = f.pick.on;
@@ -1081,9 +1083,9 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.boundedArr = List<int>.generate(f.boundedArrCount, (i) => f.boundedArr[i]);
   w.obsoleteMode = f.obsoleteMode;
   w.v1Marker = f.v1Marker;
-  w.nestedChain.armTag = f.nestedChain.type;
+  w.nestedChain.armTag = f.nestedChain.type as int;
   if (f.nestedChain.type == 1) {
-    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type;
+    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type as int;
     if (f.nestedChain.wrap.inner.type == 1) {
       w.nestedChain.wrap.inner.leaf.code = f.nestedChain.wrap.inner.leaf.code;
       w.nestedChain.wrap.inner.leaf.bonus = f.nestedChain.wrap.inner.leaf.bonus;
@@ -1163,7 +1165,7 @@ void _f2w_valuedefaults_FixedDefaults(tblvaluedefaults_fixed.FixedDefaults f, tb
   for (var i = 0; i < 3; i++) {
     _f2w_valuedefaults_Item(f.keyed[i], w.keyed[i]);
   }
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     _f2w_valuedefaults_Item(f.pick.item, w.pick.item);
   } else if (f.pick.type == 2) {
@@ -1219,7 +1221,7 @@ void _f2w_cooktorture_TortureFixedWref(cooktorture_fixed.TortureFixedWref f, coo
   w.rawBytes = latin1.decode(f.rawBytes.sublist(0, f.rawBytesLength));
   w.chanEnum = (f.chanEnum as dynamic);
   w.bitsVal = f.bitsVal;
-  w.uVal.armTag = f.uVal.type;
+  w.uVal.armTag = f.uVal.type as int;
   w.uVal.uI8 = f.uVal.uI8;
   w.uVal.uU8 = f.uVal.uU8;
   w.uVal.uI16 = f.uVal.uI16;
@@ -1258,7 +1260,7 @@ void _f2w_varevo1_EvoMsg(tblvarevo1_fixed.EvoMsg f, tblvarevo1.EvoMsg w) {
   w.seq = f.seq;
   w.tier = f.tier;
   w.label = _f2wUtf8(f.label, f.labelLength);
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.status.count = f.payload.status.count;
   }
@@ -1287,7 +1289,7 @@ void _w2f_varevo3_EvoMsg(tblvarevo3.EvoMsg w, tblvarevo3_fixed.EvoMsg f) {
 void _f2w_varevo3_EvoMsg(tblvarevo3_fixed.EvoMsg f, tblvarevo3.EvoMsg w) {
   w.caption = _f2wUtf8(f.caption, f.captionLength);
   w.midFlag = f.midFlag;
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.telemetry.count = f.payload.telemetry.count;
     w.payload.telemetry.subTag = _f2wUtf8(f.payload.telemetry.subTag, f.payload.telemetry.subTagLength);
@@ -1314,7 +1316,7 @@ void _w2f_packetunions_Shape(tblpacketunions.Shape w, packetunions_packet.Shape 
 }
 
 void _f2w_packetunions_Shape(packetunions_packet.Shape f, tblpacketunions.Shape w) {
-  w.armTag = f.type;
+  w.armTag = f.type as int;
   if (f.type == 1) {
     w.ring.radius = f.ring.radius;
   } else if (f.type == 2) {
@@ -1804,7 +1806,7 @@ void _w2f_examples_MinArmFix(tabledemo.MinArmFix w, tabledemo_fixed.MinArmFix f)
   }
 }
 void _f2w_examples_MinArmFix(tabledemo_fixed.MinArmFix f, tabledemo.MinArmFix w) {
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     w.pick.few = List<int>.generate(f.pick.fewCount, (i) => f.pick.few[i]);
   } else if (f.pick.type == 2) {
@@ -2568,6 +2570,8 @@ void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      return _wireResaveOne(wire, writebounds.TableWireReport.new, (rep) => (rep.refused, rep.refusal), writebounds.tortureVarWrefWireLoad, writebounds.tortureVarWrefWireSave);
     case 'featurewitnesses Root':
       return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.rootWireLoad, feature.rootWireSave);
     case 'featurewitnesses ArrayRoot':
@@ -3047,6 +3051,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableTextReport();
+      final v = writebounds.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefWireSave(v);
     case 'featurewitnesses Root':
       final rep = feature.TableTextReport();
       final v = feature.rootFromJson(text, rep);
@@ -3556,6 +3565,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      final v = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefToJson(v);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       final v = feature.rootWireLoad(wire, rep);
@@ -5146,9 +5160,11 @@ int surfaceWire(String outDir) {
 }
 
 int surfaceJsonRead(String outDir) {
+  final suppliedDir = Platform.environment['SCHEMA_CONFORMANCE_JSON_INPUT_DIR'];
+  final jsonDir = suppliedDir == null || suppliedDir.isEmpty ? 'testdata/conformance/tables/json' : suppliedDir;
   for (final f in kind('instance')) {
     if (noTextRow(f)) continue;
-    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    final textPath = '$jsonDir/${f[1]}.json';
     if (!File(textPath).existsSync()) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -5187,6 +5203,17 @@ int surfaceJsonWrite(String outDir) {
             outText = 'refused\n';
           } else {
             outText = graphdemo.sceneToJson(v);
+          }
+          break;
+        case 'tblsurf Chain':
+          // a lawful wire whose text puts an empty `[]` past the depth cap:
+          // the write refuses it (docs/SPEC-TABLES.md §16.14 W2)
+          final r = surfw.TableWireReport();
+          final v = surfw.chainWireLoad(wire, r);
+          if (r.refused) {
+            outText = 'refused\n';
+          } else {
+            outText = surfw.chainToJson(v);
           }
           break;
         case 'tabledemo ProfileConfig':
@@ -5493,6 +5520,63 @@ int surfaceRetain(String outDir, bool saves) {
   return 0;
 }
 
+
+// ---- retain-refusal (test/conformance/README.md): ONE retention store through
+// the retaining read of the first wire, the retaining save, the retaining read
+// of the refused wire into the same store, and the retaining save of the first
+// value again. The verdicts and what the second save did go in <case>, the
+// first save in <case>.before, the second in <case>.wire.
+int _answerRetainRefusal(String outDir, String name, List<int> before, bool secondRefused, List<int>? after) {
+  File('$outDir/$name.before').writeAsBytesSync(before);
+  var answer = 'read\n${secondRefused ? 'refused' : 'read'}\n';
+  if (after == null) {
+    answer += 'save-refused\n';
+  } else {
+    File('$outDir/$name.wire').writeAsBytesSync(after);
+    answer += 'saved\n';
+  }
+  File('$outDir/$name').writeAsStringSync(answer);
+  return 0;
+}
+
+int surfaceRetainRefusal(String outDir) {
+  for (final f in lines) {
+    if (f[0] != 'retain-refusal') continue;
+    final first = File(f[4]).readAsBytesSync();
+    final second = File(f[5]).readAsBytesSync();
+    if (f[2] == 'tblrt1' && f[3] == 'Node') {
+      final store = tblrt1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblrt1.TableWireReport();
+      final root = tblrt1.nodeWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      final refused = tblrt1.TableWireReport();
+      tblrt1.nodeWireLoadRetain(second, store, refused);
+      final after = tblrt1.nodeWireMeasureRetain(root, store) < 0 ? null : tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else if (f[2] == 'tblvarevo1' && f[3] == 'EvoDoc') {
+      final store = tblvarevo1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblvarevo1.TableWireReport();
+      final root = tblvarevo1.evoDocWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      final refused = tblvarevo1.TableWireReport();
+      tblvarevo1.evoDocWireLoadRetain(second, store, refused);
+      final after = tblvarevo1.evoDocWireMeasureRetain(root, store) < 0 ? null : tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else {
+      stderr.writeln('driver: retain-refusal ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+  }
+  return 0;
+}
 int _retainVarEvo1(List<String> f, String outDir, bool saves) {
   final wire = File(f[4]).readAsBytesSync();
   final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
@@ -6324,11 +6408,11 @@ const String surfaces =
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\nmessage-prior\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
+    'wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
-    'write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n'
+    'write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n'
     'unit shapes\n';
 
 void main(List<String> args) {
@@ -6352,14 +6436,74 @@ void main(List<String> args) {
 // wire bytes, and back the loaded flag, the six counters, the verdict, the
 // region measure and the saved bytes.
 
+// BEGIN ChunkQueue (test/conformance/dart/chunk-queue-check slices this block out
+// and unit-tests it; keep it free of anything but dart:collection and dart:typed_data)
+// A byte queue for the wire-fuzz driver's stdin (main.dart _ByteSource).
+//
+// Chunks are kept as they arrive and a read walks them from a head offset, so
+// every byte is copied once, into the buffer the reader gets back. The old
+// reader appended every chunk to one growing List<int> and removed each frame
+// from its front, which shifts everything still queued on every read: with 256
+// large mutants queued that is quadratic. `copied` counts the bytes moved by
+// the queue, so a test can hold the cost to a multiple of the input with no
+// clock.
+
+class ChunkQueue {
+  final Queue<Uint8List> _chunks = Queue<Uint8List>();
+  int _head = 0; // read offset into _chunks.first
+  int _length = 0;
+
+  /// Bytes copied or moved by this queue so far.
+  int copied = 0;
+
+  int get length => _length;
+
+  void add(List<int> chunk) {
+    if (chunk.isEmpty) return;
+    final Uint8List c;
+    if (chunk is Uint8List) {
+      c = chunk; // kept by reference: stdin hands over a fresh chunk each time
+    } else {
+      c = Uint8List.fromList(chunk);
+      copied += c.length;
+    }
+    _chunks.addLast(c);
+    _length += c.length;
+  }
+
+  /// Removes and returns up to [n] bytes (fewer only when the queue holds fewer).
+  Uint8List take(int n) {
+    final want = _length < n ? _length : n;
+    final out = Uint8List(want);
+    var at = 0;
+    while (at < want) {
+      final c = _chunks.first;
+      final avail = c.length - _head;
+      final k = want - at < avail ? want - at : avail;
+      out.setRange(at, at + k, c, _head);
+      copied += k;
+      at += k;
+      if (k == avail) {
+        _chunks.removeFirst();
+        _head = 0;
+      } else {
+        _head += k;
+      }
+    }
+    _length -= want;
+    return out;
+  }
+}
+// END ChunkQueue
+
 class _ByteSource {
-  final List<int> _buf = <int>[];
+  final ChunkQueue _q = ChunkQueue();
   final List<Completer<void>> _waiters = <Completer<void>>[];
   bool _done = false;
 
   _ByteSource() {
     stdin.listen((List<int> chunk) {
-      _buf.addAll(chunk);
+      _q.add(chunk);
       _flush();
     }, onDone: () {
       _done = true;
@@ -6373,16 +6517,35 @@ class _ByteSource {
     }
   }
 
-  Future<Uint8List> read(int n) async {
-    while (_buf.length < n && !_done) {
+  Future<void> _fill(int n) async {
+    while (_q.length < n && !_done) {
       final c = Completer<void>();
       _waiters.add(c);
       await c.future;
     }
-    final take = _buf.length < n ? _buf.length : n;
-    final out = Uint8List.fromList(_buf.sublist(0, take));
-    _buf.removeRange(0, take);
-    return out;
+  }
+
+  // EXACTLY n bytes. The stream ending first is a truncated frame, never a
+  // short one: a body cut at EOF must not reach the codec as if it were whole
+  // (test/conformance/harness/wireeof.go).
+  Future<Uint8List> read(int n) async {
+    await _fill(n);
+    if (_q.length < n) {
+      throw StateError('the stream ended inside a frame: $n bytes wanted, ${_q.length} left');
+    }
+    return _q.take(n);
+  }
+
+  // The next mutant's index, or null when the harness closed the stream
+  // between frames. One to three index bytes at EOF are a truncated frame and
+  // throw: only a stream that ends on a frame boundary is a clean close.
+  Future<int?> readIndex() async {
+    await _fill(4);
+    if (_q.length == 0) {
+      return null;
+    }
+    final b = await read(4);
+    return ByteData.sublistView(b).getUint32(0, Endian.little);
   }
 }
 
@@ -6824,6 +6987,52 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave),
           retain: _retainCodec(cooktorture.TableRetain.new, cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoadRetain, cooktorture.tortureCookWireSaveRetain));
+    case 'shapes Bounds':
+      return _FuzzRoot(
+          _plainCodec(shapes.TableWireReport.new, shapes.boundsWireMeasure, shapes.boundsWireLoad, shapes.boundsWireSave),
+          retain: _retainCodec(shapes.TableRetain.new, shapes.TableWireReport.new, shapes.boundsWireMeasure, shapes.boundsWireLoadRetain, shapes.boundsWireSaveRetain));
+    case 'shapes FixedBounds':
+      return _FuzzRoot(
+          _fixedFuzzCodec(shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, shapes_fixed.fixedBoundsFixedLoad, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave));
+    case 'tblsurf Chain':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.chainWireMeasure, surfw.chainWireLoad, surfw.chainWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.chainWireMeasure, surfw.chainWireLoadRetain, surfw.chainWireSaveRetain));
+    case 'tblsurf Holder':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.holderWireMeasure, surfw.holderWireLoad, surfw.holderWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.holderWireMeasure, surfw.holderWireLoadRetain, surfw.holderWireSaveRetain));
+    case 'tblsurf Counted':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.countedWireMeasure, surfw.countedWireLoad, surfw.countedWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.countedWireMeasure, surfw.countedWireLoadRetain, surfw.countedWireSaveRetain));
+    case 'tblsurf Narrow':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, surff.narrowFixedLoad, surff.narrowFixedMeasure, surff.narrowFixedSave));
+    case 'tblsurf Wide':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Wide.new, surff.wideFixedNewPlan, surff.TableFixedReport.new, surff.wideFixedLoad, surff.wideFixedMeasure, surff.wideFixedSave));
+    case 'tblsurf Arrays':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, surff.arraysFixedLoad, surff.arraysFixedMeasure, surff.arraysFixedSave));
+    // THE ROOTS LANDED SINCE (tblvaluedefaults, packetunions): variable-class
+    // file roots the retaining arm reads, as every leg must (TestDartRetainingRosterAllRoots).
+    case 'tblvaluedefaults VarDefaults':
+      return _FuzzRoot(
+          _plainCodec(tblvaluedefaults.TableWireReport.new, tblvaluedefaults.varDefaultsWireMeasure, tblvaluedefaults.varDefaultsWireLoad, tblvaluedefaults.varDefaultsWireSave),
+          retain: _retainCodec(tblvaluedefaults.TableRetain.new, tblvaluedefaults.TableWireReport.new, tblvaluedefaults.varDefaultsWireMeasure, tblvaluedefaults.varDefaultsWireLoadRetain, tblvaluedefaults.varDefaultsWireSaveRetain));
+    case 'packetunions ShapeDoc':
+      return _FuzzRoot(
+          _plainCodec(tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave),
+          retain: _retainCodec(tblpacketunions.TableRetain.new, tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoadRetain, tblpacketunions.shapeDocWireSaveRetain));
+    // ...and their fixed-class siblings, which the plain arm reads through the
+    // fixed codec as tblsurf Narrow does (the plain arm left their seeds absent).
+    case 'tblvaluedefaults FixedDefaults':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblvaluedefaults_fixed.FixedDefaults.new, valuedefaults_fixed.fixedDefaultsFixedNewPlan, tblvaluedefaults_fixed.TableFixedReport.new, valuedefaults_fixed.fixedDefaultsFixedLoad, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave));
+    case 'packetunions ShapeMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, packetunions_fixed.shapeMsgFixedLoad, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave));
     case 'cooktorturewide TortureWideCook':
       return _FuzzRoot(
           _plainCodec(cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave),
@@ -6860,11 +7069,10 @@ Future<void> wireFuzz() async {
   stdout.add(available);
   await stdout.flush();
   while (true) {
-    final idxBytes = await src.read(4);
-    if (idxBytes.length < 4) {
-      break; // the harness closed the stream
+    final index = await src.readIndex();
+    if (index == null) {
+      break; // the harness closed the stream between frames
     }
-    final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
     final message = messages[index];
@@ -6907,6 +7115,8 @@ int run(List<String> args) {
       return surfaceRetain(out, false);
     case 'retain-save':
       return surfaceRetain(out, true);
+    case 'retain-refusal':
+      return surfaceRetainRefusal(out);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':
@@ -6941,6 +7151,7 @@ int run(List<String> args) {
     case 'write-refusal-fixed':
     case 'write-refusal-message':
     case 'write-refusal-json':
+    case 'write-refusal-shape':
       return surfaceWriteRefusal(out, surface);
     case 'write-refusal-cook':
       return surfaceWriteRefusalCook(out);
@@ -7403,8 +7614,37 @@ void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, Strin
   }
 }
 
-int surfaceWriteRefusal(String outDir, String surface) {
-  for (final f in kind(surface)) {
+void _mutateWriteBounds(writebounds.TortureVarWref value, String path, String kind, String text) {
+  final n = int.parse(text);
+  switch ('$path $kind') {
+    case 'opt_arr count':
+      final original = value.optArr;
+      final fill = original.isEmpty ? 0 : original.first;
+      value.hasOptArr = true;
+      value.optArr = List<int>.generate(n, (i) => i < original.length ? original[i] : fill);
+      break;
+    case 'arm_bits.a_bits int':
+      value.armBits.aBits = n;
+      break;
+    case 'arm_range.a_range int':
+      value.armRange.aRange = n;
+      break;
+    case 'arm_str.a_str length':
+      value.armStr.aStr = 'a' * n;
+      break;
+    case 'chan_lim[1] int':
+      value.chanLim[1] = n;
+      break;
+    default:
+      throw StateError('unsupported writebounds edit: $path $kind');
+  }
+}
+
+// `rows` is the surface whose rows are answered: write-refusal-shape's lawful
+// twins are written as write-refusal writes them.
+int surfaceWriteRefusal(String outDir, String rows) {
+  final surface = rows == 'write-refusal-shape' ? 'write-refusal' : rows;
+  for (final f in kind(rows)) {
     final name = f[1];
     var unit = f[2];
     final root = f[3];
@@ -7412,6 +7652,14 @@ int surfaceWriteRefusal(String outDir, String surface) {
     final path = f[5];
     final vkind = f[6];
     final text = f[7];
+    // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+    // DW-TABLE-SHAPE) is one Dart's sound types cannot hold: every field,
+    // element, arm payload and root is its declared non-nullable type. The
+    // analyzer refuses it before any writer runs.
+    if (vkind == 'shape') {
+      File('$outDir/$name').writeAsStringSync('unrepresentable\n');
+      continue;
+    }
     if (surface == 'write-refusal-message') {
       List<String>? conn;
       for (final c in kind('connection')) {
@@ -7535,6 +7783,18 @@ int surfaceWriteRefusal(String outDir, String surface) {
           stderr.writeln('$surface $name: unsupported $unit.$root');
           return 1;
       }
+    } else if (surface == 'write-refusal' && '$unit $root' == 'writebounds TortureVarWref') {
+      final rep = writebounds.TableWireReport();
+      final value = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      _mutateWriteBounds(value, path, vkind, text);
+      answer = _catchWrite(() {
+        final saved = writebounds.tortureVarWrefWireSave(value);
+        if (f.length > 8 && f[8] == 'save-wire') {
+          File('$outDir/$name.wire').writeAsBytesSync(saved);
+        }
+        return 0;
+      });
     } else if ('$unit $root' == 'tabledemo RootConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
       if (fx == null) return 1;
@@ -7572,6 +7832,50 @@ int surfaceWriteRefusal(String outDir, String surface) {
           final n = tables_fixed.loadoutConfigFixedMeasure(1);
           final out = Uint8List(n);
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo Moods') {
+      // §2.15 WRITE: a deprecated variant is never written, as an element
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'row[0] ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.Moods();
+        _f2w_examples_Moods(fx, w);
+        if (w.row.isEmpty) return 1;
+        w.row[0] = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodsWireSave(w);
+          return 0;
+        });
+      } else {
+        if (fx.rowCount == 0) return 1;
+        fx.row[0] = int.parse(text);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodsFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodsFixedSave(<tabledemo_fixed.Moods>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo MoodField') {
+      // §2.15 WRITE: a deprecated variant is never written, as a scalar
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'mood ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.MoodField();
+        _f2w_examples_MoodField(fx, w);
+        w.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodFieldWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodFieldFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodFieldFixedSave(<tabledemo_fixed.MoodField>[fx], 1, out) == n ? 0 : -1;
         });
       }
     } else if ('$unit $root' == 'tabledemo CountedMin') {
@@ -8238,6 +8542,12 @@ int surfaceReadInto(String outDir) {
     final form = f[4];
     final lawful = File(f[5]).readAsBytesSync();
     switch (form) {
+      case 'retain-fixed':
+        // A COMPILE-TIME REFUSAL: narrowWireLoadRetain on a fixed-class root is a
+        // `const String` naming the refusal (internal/codegen/darttable/retainwire.go,
+        // the FixedDeclared arm of emitRetainMembers), so no call can be written.
+        File('$outDir/$name').writeAsStringSync('unrepresentable\n');
+        continue;
       case 'fixed-nocap':
         // NO CALL TO HOLD: <root>FixedLoad always takes a capacity
         File('$outDir/$name').writeAsStringSync('unrepresentable\n');
@@ -8278,6 +8588,21 @@ int surfaceReadInto(String outDir) {
           answer.write(surfw.narrowToJson(w));
         }
         answer.write(_readIntoLine(() => read(lawful)));
+      case 'fixed tblfixedevo EvoRoot':
+        // a lawful v1 record read through the lineage into the values the v3
+        // record filled (docs/SPEC-TABLES.md §3.4)
+        final values = List<tblfixedevo_fixed.EvoRoot>.generate(count, (_) => tblfixedevo_fixed.EvoRoot());
+        final report = tblfixedevo_fixed.TableFixedReport();
+        final plan = fixedevo_fixed.evoRootFixedNewPlan();
+        bool read(Uint8List b) => fixedevo_fixed.evoRootFixedLoad(values, count, b, b.length, plan, report) >= 0 && report.refused == 0;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        for (final v in values) {
+          final w = tblfixedevo.EvoRoot();
+          _f2w_fixedevo_EvoRoot(v, w);
+          answer.write(tblfixedevo.evoRootToJson(w));
+        }
+        answer.write(_readIntoLine(() => read(lawful)));
       case 'message backenddemo StorePurchase':
         final vocab = backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0)));
         final announced = backenddemo_fixed.TableReport();
@@ -8296,6 +8621,85 @@ int surfaceReadInto(String outDir) {
           answer.write(backenddemo.storePurchaseToJson(w));
         }
         answer.write(_readIntoLine(() => read(lawful)));
+      case 'region tblsurf Counted':
+        // the plain read of a variable root (countedWireLoad), into ONE
+        // pre-filled report; each lawful load must leave it equal to a fresh
+        // report's (SPEC-TABLES section 6.5). The private _countRefused is not
+        // reachable here.
+        String regionDiff(surfw.TableWireReport r, surfw.TableWireReport fresh) {
+          final d = StringBuffer();
+          if (r.unknown != fresh.unknown) d.write(' unknown=${r.unknown} want ${fresh.unknown}');
+          if (r.widened != fresh.widened) d.write(' widened=${r.widened} want ${fresh.widened}');
+          if (r.integrityMismatch != fresh.integrityMismatch) d.write(' integrityMismatch=${r.integrityMismatch}');
+          if (r.refused != fresh.refused) d.write(' refused=${r.refused} want ${fresh.refused}');
+          if (r.refusal != fresh.refusal) d.write(' refusal=${r.refusal} want ${fresh.refusal}');
+          if (r.missingFields != fresh.missingFields) d.write(' missingFields=${r.missingFields} want ${fresh.missingFields}');
+          if (r.retained != fresh.retained) d.write(' retained=${r.retained} want ${fresh.retained}');
+          if (r.retainLost != fresh.retainLost) d.write(' retainLost=${r.retainLost} want ${fresh.retainLost}');
+          if (r.nonFiniteFloat != fresh.nonFiniteFloat) d.write(' nonFiniteFloat=${r.nonFiniteFloat} want ${fresh.nonFiniteFloat}');
+          return d.isEmpty ? 'zeroed' : 'kept$d';
+        }
+        bool regionRead(Uint8List b, surfw.TableWireReport r) {
+          surfw.countedWireLoad(b, r);
+          return !r.refused;
+        }
+        final fresh = surfw.TableWireReport();
+        regionRead(lawful, fresh);
+        final report = surfw.TableWireReport()
+          ..unknown = 7
+          ..widened = 7
+          ..integrityMismatch = true
+          ..refused = true
+          ..refusal = 'stale'
+          ..missingFields = 'stale'
+          ..retained = 7
+          ..retainLost = 7
+          ..nonFiniteFloat = 'stale';
+        answer.write(_readIntoLine(() => regionRead(lawful, report)));
+        answer.write('${regionDiff(report, fresh)}\n');
+        answer.write(_readIntoLine(() => regionRead(damaged, report)));
+        answer.write(_readIntoLine(() => regionRead(lawful, report)));
+        answer.write('${regionDiff(report, fresh)}\n');
+      case 'retain tblrt1 Node':
+        // the retaining load (nodeWireLoadRetain, SPEC-TABLES section 6.6) into
+        // ONE report pre-filled in every public field; each lawful load must
+        // leave it equal to what the same load leaves in a FRESH report
+        // (section 6.5). The private _countRefused is not reachable here.
+        String retainDiff(tblrt1.TableWireReport r, tblrt1.TableWireReport fresh) {
+          final d = StringBuffer();
+          if (r.unknown != fresh.unknown) d.write(' unknown=${r.unknown} want ${fresh.unknown}');
+          if (r.widened != fresh.widened) d.write(' widened=${r.widened} want ${fresh.widened}');
+          if (r.integrityMismatch != fresh.integrityMismatch) d.write(' integrityMismatch=${r.integrityMismatch}');
+          if (r.refused != fresh.refused) d.write(' refused=${r.refused} want ${fresh.refused}');
+          if (r.refusal != fresh.refusal) d.write(' refusal=${r.refusal} want ${fresh.refusal}');
+          if (r.missingFields != fresh.missingFields) d.write(' missingFields=${r.missingFields} want ${fresh.missingFields}');
+          if (r.retained != fresh.retained) d.write(' retained=${r.retained} want ${fresh.retained}');
+          if (r.retainLost != fresh.retainLost) d.write(' retainLost=${r.retainLost} want ${fresh.retainLost}');
+          if (r.nonFiniteFloat != fresh.nonFiniteFloat) d.write(' nonFiniteFloat=${r.nonFiniteFloat} want ${fresh.nonFiniteFloat}');
+          return d.isEmpty ? 'zeroed' : 'kept$d';
+        }
+        bool retainRead(Uint8List b, tblrt1.TableWireReport r) {
+          final store = tblrt1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+          tblrt1.nodeWireLoadRetain(b, store, r);
+          return !r.refused;
+        }
+        final fresh = tblrt1.TableWireReport();
+        retainRead(lawful, fresh);
+        final report = tblrt1.TableWireReport()
+          ..unknown = 7
+          ..widened = 7
+          ..integrityMismatch = true
+          ..refused = true
+          ..refusal = 'stale'
+          ..missingFields = 'stale'
+          ..retained = 7
+          ..retainLost = 7
+          ..nonFiniteFloat = 'stale';
+        answer.write(_readIntoLine(() => retainRead(lawful, report)));
+        answer.write('${retainDiff(report, fresh)}\n');
+        answer.write(_readIntoLine(() => retainRead(damaged, report)));
+        answer.write(_readIntoLine(() => retainRead(lawful, report)));
+        answer.write('${retainDiff(report, fresh)}\n');
       default:
         stderr.writeln('read-into $name: no reader for $form $unit.$root');
         return 1;

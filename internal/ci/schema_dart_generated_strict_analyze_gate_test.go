@@ -179,7 +179,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
 		}
 	}
-	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): on a pull request the
+	// THE PR GATE IS ci-fast-nightly.yml (the owner, 2026-11-15): on a pull request the
 	// fast half runs there as lang-lint (dart), selected by path; no push and
 	// no pull request starts this workflow.
 	for _, ev := range []ciEvent{
@@ -194,7 +194,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			}
 		}
 	}
-	fast, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	fast, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"make schema-dart-generated-strict-analyze-gate-negative-control DART=dart",
 	} {
 		if !strings.Contains(string(fast), want) {
-			t.Errorf("ci-fast.yml lang-lint does not carry %q: a Dart pull request would run no strict analyze", want)
+			t.Errorf("ci-fast-nightly.yml lang-lint does not carry %q: a Dart pull request would run no strict analyze", want)
 		}
 	}
 	for _, ev := range []ciEvent{

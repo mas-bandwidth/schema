@@ -3,7 +3,7 @@ package gotable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A blob named by two slots (docs/SPEC-TABLES.md §2.5, §16.7): written

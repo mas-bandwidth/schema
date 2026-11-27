@@ -12,17 +12,18 @@ import (
 	"maps"
 	"math"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // resetCases is one refusal the body walk can raise and the answer the batch
@@ -47,10 +48,17 @@ func TestGooseLoadMessagesRefusalResetsBatch(t *testing.T) {
 	}
 }
 
-// TestGooseLoadMessagesRefusalResetsBatchNegativeControl restores the
-// reasoned-refusal exit's early return in a copy of the generated reader: the
-// bodies the walk reached before the refusal keep their loaded values, and
-// the check above goes red naming the case.
+// loadMessagesReset is the one place a refused batch is put back at its
+// declared defaults: the LoadMessages wrapper, after the walk has decided the
+// refusal (docs/SPEC-TABLES.md §6.5, "a read that fills a caller's list resets
+// it after the refusal is decided"; R4). The walk's own exits only return 0.
+var loadMessagesReset = regexp.MustCompile(`(let n = _\w+LoadMessagesWalk\(values, voc, data, report\);\n)[ ]+if n == 0 \{\n[ ]+var j: i64 = 0;\n[ ]+while j < values\.len \{ values\[j\] = [\w:]+ \{ \.\. \}; j \+= 1; \}\n[ ]+\}\n`)
+
+// TestGooseLoadMessagesRefusalResetsBatchNegativeControl removes the
+// wrapper's reset in a copy of the generated reader: the bodies the walk
+// reached before the refusal keep their loaded values and those it never
+// reached keep what the caller held, so the check above goes red naming
+// every case, the reasoned refusals and the damaged framing alike.
 func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 	t.Parallel()
 	u := resetUnit(t)
@@ -59,30 +67,30 @@ func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 		t.Fatalf("the control needs a clean baseline:\n%s", strings.Join(errs, "\n"))
 	}
 	changed := resetUnitFiles(t, u, nil)
-	anchor := "            if r.reason != 0 {\n                report.reason = r.reason;\n                reasoned = true;\n                break;\n            }\n"
-	early := "            if r.reason != 0 {\n                report.reason = r.reason;\n                return 0;\n            }\n"
 	replaced := 0
 	for name, data := range changed {
-		if strings.Count(string(data), anchor) == 0 {
+		n := len(loadMessagesReset.FindAllIndex(data, -1))
+		if n == 0 {
 			continue
 		}
-		changed[name] = []byte(strings.ReplaceAll(string(data), anchor, early))
-		replaced += strings.Count(string(data), anchor)
+		changed[name] = loadMessagesReset.ReplaceAll(data, []byte("$1"))
+		replaced += n
 	}
-	if replaced < len(resetCases)-1 {
-		t.Fatalf("the reasoned-refusal reset anchor occurs %d times, want at least %d", replaced, len(resetCases)-1)
+	// GunnerConfig and TeamConfig are the two roots the probe loads.
+	if replaced < 2 {
+		t.Fatalf("the LoadMessages reset anchor occurs %d times, want at least 2 (GunnerConfig and TeamConfig)", replaced)
 	}
 	got := resetProbe(t, u, changed)
 	errs := checkResetBodies(got)
-	for _, name := range []string{"non_finite_float", "out_of_range"} {
+	for _, c := range resetCases {
 		found := false
 		for _, err := range errs {
-			if strings.HasPrefix(err, name+":") {
+			if strings.HasPrefix(err, c.name+": bodies at their declared defaults") {
 				found = true
 			}
 		}
 		if !found {
-			t.Fatalf("removing the reasoned-refusal reset did not turn %s red:\n%s", name, strings.Join(errs, "\n"))
+			t.Fatalf("removing the LoadMessages reset did not turn %s red:\n%s", c.name, strings.Join(errs, "\n"))
 		}
 	}
 }

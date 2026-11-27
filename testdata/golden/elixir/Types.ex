@@ -325,6 +325,10 @@ defmodule Example.Types do
   """
   @spec write_vec3!(Example.Vec3.t()) :: binary()
   def write_vec3!(value) do
+    if not is_struct(value, Example.Vec3) do
+      raise ArgumentError, "value is not a Vec3"
+    end
+
     %{x: value_x, y: value_y, z: value_z} = value
     data = put_f64(<<>>, value_x)
     data = put_f64(data, value_y)
@@ -417,6 +421,10 @@ defmodule Example.Types do
   """
   @spec write_quat!(Example.Quat.t()) :: binary()
   def write_quat!(value) do
+    if not is_struct(value, Example.Quat) do
+      raise ArgumentError, "value is not a Quat"
+    end
+
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
     data = put_f64(<<>>, value_x)
     data = put_f64(data, value_y)
@@ -511,6 +519,10 @@ defmodule Example.Types do
   """
   @spec write_handle!(Example.Handle.t()) :: binary()
   def write_handle!(value) do
+    if not is_struct(value, Example.Handle) do
+      raise ArgumentError, "value is not a Handle"
+    end
+
     %{object_id: value_object_id, object_sequence: value_object_sequence} = value
 
     if not is_integer(value_object_id) do
@@ -638,6 +650,10 @@ defmodule Example.Types do
   """
   @spec write_quantized_position!(Example.QuantizedPosition.t()) :: binary()
   def write_quantized_position!(value) do
+    if not is_struct(value, Example.QuantizedPosition) do
+      raise ArgumentError, "value is not a QuantizedPosition"
+    end
+
     %{x: value_x, y: value_y, z: value_z} = value
 
     if not is_integer(value_x) do
@@ -793,6 +809,10 @@ defmodule Example.Types do
   """
   @spec write_quantized_velocity!(Example.QuantizedVelocity.t()) :: binary()
   def write_quantized_velocity!(value) do
+    if not is_struct(value, Example.QuantizedVelocity) do
+      raise ArgumentError, "value is not a QuantizedVelocity"
+    end
+
     %{x: value_x, y: value_y, z: value_z} = value
 
     if not is_integer(value_x) do
@@ -947,6 +967,10 @@ defmodule Example.Types do
   """
   @spec write_quantized_rotation!(Example.QuantizedRotation.t()) :: binary()
   def write_quantized_rotation!(value) do
+    if not is_struct(value, Example.QuantizedRotation) do
+      raise ArgumentError, "value is not a QuantizedRotation"
+    end
+
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
     if not is_integer(value_x) do
@@ -1122,11 +1146,24 @@ defmodule Example.Types do
   """
   @spec write_rigid_body!(Example.RigidBody.t()) :: binary()
   def write_rigid_body!(value) do
+    if not is_struct(value, Example.RigidBody) do
+      raise ArgumentError, "value is not a RigidBody"
+    end
+
     %{position: value_position, orientation: value_orientation, at_rest: value_at_rest} = value
+
+    if not is_struct(value_position, Example.Vec3) do
+      raise ArgumentError, "value.position is not a Vec3"
+    end
+
     %{x: value_position_x, y: value_position_y, z: value_position_z} = value_position
     data = put_f64(<<>>, value_position_x)
     data = put_f64(data, value_position_y)
     data = put_f64(data, value_position_z)
+
+    if not is_struct(value_orientation, Example.Quat) do
+      raise ArgumentError, "value.orientation is not a Quat"
+    end
 
     %{
       x: value_orientation_x,
@@ -1139,6 +1176,11 @@ defmodule Example.Types do
     data = put_f64(data, value_orientation_y)
     data = put_f64(data, value_orientation_z)
     data = put_f64(data, value_orientation_w)
+
+    if not is_boolean(value_at_rest) do
+      raise ArgumentError, "value.at_rest is not a boolean"
+    end
+
     v = if value_at_rest, do: 1, else: 0
     scratch = v
 
@@ -1148,6 +1190,10 @@ defmodule Example.Types do
           linear_velocity: value_linear_velocity,
           angular_velocity: value_angular_velocity
         } = value
+
+        if not is_struct(value_linear_velocity, Example.Vec3) do
+          raise ArgumentError, "value.linear_velocity is not a Vec3"
+        end
 
         %{
           x: value_linear_velocity_x,
@@ -1180,6 +1226,10 @@ defmodule Example.Types do
         sc4 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
+
+        if not is_struct(value_angular_velocity, Example.Vec3) do
+          raise ArgumentError, "value.angular_velocity is not a Vec3"
+        end
 
         %{
           x: value_angular_velocity_x,
@@ -1426,6 +1476,10 @@ defmodule Example.Types do
   """
   @spec write_input!(Example.Input.t()) :: binary()
   def write_input!(value) do
+    if not is_struct(value, Example.Input) do
+      raise ArgumentError, "value is not a Input"
+    end
+
     %{
       stick_x: value_stick_x,
       stick_y: value_stick_y,
@@ -1456,20 +1510,60 @@ defmodule Example.Types do
     v = f32_bits(value_pitch)
     sc3 = scratch
     scratch = v
+
+    if not is_boolean(value_fire) do
+      raise ArgumentError, "value.fire is not a boolean"
+    end
+
     v = if value_fire, do: 1, else: 0
     scratch = scratch ||| v <<< 32
+
+    if not is_boolean(value_alt_fire) do
+      raise ArgumentError, "value.alt_fire is not a boolean"
+    end
+
     v = if value_alt_fire, do: 1, else: 0
     scratch = scratch ||| v <<< 33
+
+    if not is_boolean(value_boost) do
+      raise ArgumentError, "value.boost is not a boolean"
+    end
+
     v = if value_boost, do: 1, else: 0
     scratch = scratch ||| v <<< 34
+
+    if not is_boolean(value_brake) do
+      raise ArgumentError, "value.brake is not a boolean"
+    end
+
     v = if value_brake, do: 1, else: 0
     scratch = scratch ||| v <<< 35
+
+    if not is_boolean(value_aim) do
+      raise ArgumentError, "value.aim is not a boolean"
+    end
+
     v = if value_aim, do: 1, else: 0
     scratch = scratch ||| v <<< 36
+
+    if not is_boolean(value_lock_on) do
+      raise ArgumentError, "value.lock_on is not a boolean"
+    end
+
     v = if value_lock_on, do: 1, else: 0
     scratch = scratch ||| v <<< 37
+
+    if not is_boolean(value_zoom) do
+      raise ArgumentError, "value.zoom is not a boolean"
+    end
+
     v = if value_zoom, do: 1, else: 0
     scratch = scratch ||| v <<< 38
+
+    if not is_boolean(value_ping) do
+      raise ArgumentError, "value.ping is not a boolean"
+    end
+
     v = if value_ping, do: 1, else: 0
     scratch = scratch ||| v <<< 39
 
@@ -1609,6 +1703,10 @@ defmodule Example.Types do
   """
   @spec write_input_packet!(Example.InputPacket.t()) :: binary()
   def write_input_packet!(value) do
+    if not is_struct(value, Example.InputPacket) do
+      raise ArgumentError, "value is not a InputPacket"
+    end
+
     %{
       synchronize_sequence: value_synchronize_sequence,
       current_frame: value_current_frame,
@@ -1667,6 +1765,11 @@ defmodule Example.Types do
     v = value_start_frame >>> 32 &&& 0xFFFFFFFF
     sc2 = scratch
     scratch = v
+
+    if not is_list(value_inputs) do
+      raise ArgumentError, "value.inputs is not a list"
+    end
+
     n = length(value_inputs)
 
     if n > 16 do
@@ -1816,6 +1919,10 @@ defmodule Example.Types do
   """
   @spec write_ship_create!(Example.ShipCreate.t()) :: binary()
   def write_ship_create!(value) do
+    if not is_struct(value, Example.ShipCreate) do
+      raise ArgumentError, "value is not a ShipCreate"
+    end
+
     %{
       ship_type: value_ship_type,
       position: value_position,
@@ -1830,6 +1937,11 @@ defmodule Example.Types do
 
     v = Example.ShipType.to_int(value_ship_type)
     scratch = v
+
+    if not is_struct(value_position, Example.QuantizedPosition) do
+      raise ArgumentError, "value.position is not a QuantizedPosition"
+    end
+
     %{x: value_position_x, y: value_position_y, z: value_position_z} = value_position
 
     if not is_integer(value_position_x) do
@@ -1878,6 +1990,10 @@ defmodule Example.Types do
 
     v = value_position_z + 8_388_608
     scratch = scratch ||| v <<< 29
+
+    if not is_struct(value_rotation, Example.QuantizedRotation) do
+      raise ArgumentError, "value.rotation is not a QuantizedRotation"
+    end
 
     %{
       x: value_rotation_x,
@@ -1948,6 +2064,10 @@ defmodule Example.Types do
     v = value_rotation_w + 1024
     scratch = scratch ||| v <<< 42
 
+    if not is_struct(value_linear_velocity, Example.QuantizedVelocity) do
+      raise ArgumentError, "value.linear_velocity is not a QuantizedVelocity"
+    end
+
     %{
       x: value_linear_velocity_x,
       y: value_linear_velocity_y,
@@ -2002,6 +2122,11 @@ defmodule Example.Types do
     sc3 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
+
+    if not is_boolean(value_has_flags) do
+      raise ArgumentError, "value.has_flags is not a boolean"
+    end
+
     v = if value_has_flags, do: 1, else: 0
     scratch = scratch ||| v <<< 27
 
@@ -2013,6 +2138,10 @@ defmodule Example.Types do
 
     {data, scratch, scratch_bits} =
       if value_has_flags do
+        if not is_integer(value.flags) do
+          raise ArgumentError, "value.flags is not an integer"
+        end
+
         if value.flags >>> 4 != 0 do
           raise ArgumentError, "value.flags holds a mask bit above the 4-bit wire"
         end
@@ -2264,6 +2393,10 @@ defmodule Example.Types do
   """
   @spec write_expression_probe!(Example.ExpressionProbe.t()) :: binary()
   def write_expression_probe!(value) do
+    if not is_struct(value, Example.ExpressionProbe) do
+      raise ArgumentError, "value is not a ExpressionProbe"
+    end
+
     %{hardpoint_index: value_hardpoint_index, spin_rate: value_spin_rate} = value
 
     if not is_integer(value_hardpoint_index) do
@@ -2406,6 +2539,10 @@ defmodule Example.Types do
   """
   @spec write_extreme_probe!(Example.ExtremeProbe.t()) :: binary()
   def write_extreme_probe!(value) do
+    if not is_struct(value, Example.ExtremeProbe) do
+      raise ArgumentError, "value is not a ExtremeProbe"
+    end
+
     %{
       floor_bound: value_floor_bound,
       doubled_floor: value_doubled_floor,
@@ -2659,6 +2796,10 @@ defmodule Example.Types do
   """
   @spec write_extreme_row!(Example.ExtremeRow.t()) :: binary()
   def write_extreme_row!(value) do
+    if not is_struct(value, Example.ExtremeRow) do
+      raise ArgumentError, "value is not a ExtremeRow"
+    end
+
     %{
       clamped_floor: value_clamped_floor,
       clamped_ceiling: value_clamped_ceiling,
@@ -2846,6 +2987,10 @@ defmodule Example.Types do
   defp wZinput_packetZinputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZinput_packetZinputs([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.Input) do
+      raise ArgumentError, "e is not a Input"
+    end
+
     %{
       stick_x: e_stick_x,
       stick_y: e_stick_y,
@@ -2893,27 +3038,67 @@ defmodule Example.Types do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_boolean(e_fire) do
+      raise ArgumentError, "e.fire is not a boolean"
+    end
+
     v = if e_fire, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_alt_fire) do
+      raise ArgumentError, "e.alt_fire is not a boolean"
+    end
+
     v = if e_alt_fire, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_boost) do
+      raise ArgumentError, "e.boost is not a boolean"
+    end
+
     v = if e_boost, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_brake) do
+      raise ArgumentError, "e.brake is not a boolean"
+    end
+
     v = if e_brake, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_aim) do
+      raise ArgumentError, "e.aim is not a boolean"
+    end
+
     v = if e_aim, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_lock_on) do
+      raise ArgumentError, "e.lock_on is not a boolean"
+    end
+
     v = if e_lock_on, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_zoom) do
+      raise ArgumentError, "e.zoom is not a boolean"
+    end
+
     v = if e_zoom, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_ping) do
+      raise ArgumentError, "e.ping is not a boolean"
+    end
+
     v = if e_ping, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1

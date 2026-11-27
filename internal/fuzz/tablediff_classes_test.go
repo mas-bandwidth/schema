@@ -106,7 +106,7 @@ func TestCiFullKeepsFuzzAndOnlyMakeOptsIn(t *testing.T) {
 	if dropped != "" && !own {
 		t.Errorf("ci-full's unit-rest go test drops ./internal/fuzz and no row runs it: %s", dropped)
 	}
-	files := []string{"../../.github/workflows/ci-full.yml", "../../.github/workflows/ci-fast.yml", "../../.github/workflows/certify.yml", "../../Makefile"}
+	files := []string{"../../.github/workflows/ci-full.yml", "../../.github/workflows/ci-fast-nightly.yml", "../../.github/workflows/certify.yml", "../../Makefile"}
 	mk, err := os.ReadDir("../../make")
 	if err != nil {
 		t.Fatal(err)

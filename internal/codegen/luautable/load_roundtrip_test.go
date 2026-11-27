@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
 )
 
 // roundtripMain is the test-side text writer (docs/SPEC-TABLES.md §16): it

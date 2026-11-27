@@ -9,12 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // collectionCounts is one unit's census of the collections constructs this
@@ -244,7 +243,7 @@ func TestLobsterCollections(t *testing.T) {
 			// load/save pair this card holds.
 			t.Logf("unit %s uses maps=%d blobs=%d unbounded-arrays=%d; generated, no load row in the manifest", key, c.maps, c.blobs, c.lists)
 			t.Run(key, func(t *testing.T) {
-				slowtest.SkipRow(t, "UNPORTED: the manifest names no load/save row for unit "+key+", which uses collections; its collections surface is unchecked until a row is declared")
+				t.Error("a row that did not run: the manifest names no load/save row for unit " + key + ", which uses collections; its collections surface is unchecked until a row is declared")
 			})
 			continue
 		}

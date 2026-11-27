@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // The C# conformance driver reads strict and writes back: a fixed root is
@@ -30,6 +31,7 @@ func csConformanceBuild(t *testing.T, root string) string {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/cs", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-cs", "build-cs-cook", "table-base64-cs")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()

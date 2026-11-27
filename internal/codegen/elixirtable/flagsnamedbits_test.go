@@ -16,14 +16,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
+// Perm's wire width W is 8 (`| max = 8`) and only bits 0..2 are named, so
+// bit 3 is UNNAMED BUT INSIDE THE WIDTH: the file read keeps it and the file
+// writer writes it, while the text writer, held to the named variants,
+// refuses it. Without the max, W is the variant count (3) and bit 3 is past
+// the width, which the file writer and reader refuse too (R17, SPEC-TABLES.md
+// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH), so no file would carry it.
 const flagsNamedBitsSchema = `package flagsbits
 
-flags Perm { Read, Write, Own }
+flags Perm | max = 8 { Read, Write, Own }
 
 table Root
 {

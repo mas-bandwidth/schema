@@ -32,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // skipScanPrune are the directories no scanner descends into: fixtures that
@@ -78,42 +78,6 @@ type skipSite struct {
 	reason  string
 	literal bool // the reason is known from the source
 	bare    bool // Skip() or SkipNow(): no reason at all
-	// nonLiteral: a slowtest.SkipRow whose reason does not begin with literal
-	// text, so the source cannot say which ledger line it needs
-	nonLiteral bool
-}
-
-// skipRowReason reads the reason of a slowtest.SkipRow call the way the scan
-// reads a Skip's: a string literal, a literal followed by `+` operands, or a
-// Sprintf of a literal format, with every operand the source cannot read as X.
-// ok is false when the reason does not BEGIN with literal text.
-func skipRowReason(e ast.Expr) (string, bool) {
-	switch v := e.(type) {
-	case *ast.BasicLit:
-		s, ok := stringLit(v)
-		return s, ok
-	case *ast.ParenExpr:
-		return skipRowReason(v.X)
-	case *ast.BinaryExpr:
-		if v.Op != token.ADD {
-			return "", false
-		}
-		l, ok := skipRowReason(v.X)
-		if !ok {
-			return "", false
-		}
-		if r, ok := skipRowReason(v.Y); ok {
-			return l + r, true
-		}
-		return l + "X", true
-	case *ast.CallExpr:
-		if sel, ok := v.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Sprintf" && len(v.Args) > 0 {
-			if s, ok := stringLit(v.Args[0]); ok && !strings.HasPrefix(strings.TrimSpace(s), "%") {
-				return verb.ReplaceAllString(s, "X"), true
-			}
-		}
-	}
-	return "", false
 }
 
 // earlyExit is a way out of a TestMain before m.Run that is not a loud
@@ -262,18 +226,6 @@ func scanSkipSites(root string) (*skipScan, error) {
 					}
 				}
 				id, ok := sel.X.(*ast.Ident)
-				if ok && id.Name == "slowtest" && sel.Sel.Name == "SkipRow" && len(v.Args) == 2 {
-					// a table row that does not run: a skip site like t.Skip
-					site := skipSite{file: rel, line: fset.Position(v.Pos()).Line}
-					if r, ok := skipRowReason(v.Args[1]); ok {
-						site.literal = true
-						site.reason = strings.Join(strings.Fields(r), " ")
-					} else {
-						site.nonLiteral = true
-					}
-					scan.sites = append(scan.sites, site)
-					return true
-				}
 				if !ok || !isTestingValue(id) {
 					return true
 				}

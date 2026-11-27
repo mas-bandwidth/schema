@@ -31,7 +31,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/skipledger"
+	"github.com/mas-bandwidth/schema/v3/internal/skipledger"
 )
 
 const skipLedgerPath = ".github/skip-ledger.txt"
@@ -65,8 +65,6 @@ func unledgered(scan *skipScan, l *skipledger.Ledger) []string {
 	var out []string
 	for _, s := range scan.sites {
 		switch {
-		case s.nonLiteral:
-			out = append(out, fmt.Sprintf("%s:%d: the SkipRow reason is not a string literal (or a literal followed by `+` operands, or a Sprintf of one): the ledger cannot read it before the lane runs", s.file, s.line))
 		case s.bare:
 			out = append(out, fmt.Sprintf("%s:%d: the skip gives no reason: say why in t.Skip, so the lane that reads it can tell an expected skip from a lost toolchain", s.file, s.line))
 		case s.literal && strings.TrimSpace(s.reason) == "":
@@ -142,9 +140,6 @@ func TestSub(t *testing.T)     { t.Run("x", func(t *testing.T) { t.Skipf("anothe
 func TestDynamic(t *testing.T) { var why string; t.Skip(why) }
 func TestReader(t *testing.T)  { var r reader; r.Skip(8) }
 func helper(tb testing.TB)     { tb.Skip("yet another excuse") }
-func TestRowKnown(t *testing.T)   { slowtest.SkipRow(t, "SCHEMA_SLOW: a row the ledger names") }
-func TestRowExcuse(t *testing.T)  { slowtest.SkipRow(t, "a row excuse: "+t.Name()) }
-func TestRowDynamic(t *testing.T) { var why string; slowtest.SkipRow(t, why) }
 `,
 		"p/testdata/q_test.go": `package q
 
@@ -161,8 +156,8 @@ func TestFixture(t *testing.T) { t.Skip("fixtures are data, not tests") }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(scan.sites) != 11 {
-		t.Errorf("the scan found %d skip calls, want 11 (the reader's Skip and the testdata file are not test skips): %+v", len(scan.sites), scan.sites)
+	if len(scan.sites) != 8 {
+		t.Errorf("the scan found %d skip calls, want 8 (the reader's Skip and the testdata file are not test skips): %+v", len(scan.sites), scan.sites)
 	}
 	got := strings.Join(unledgered(scan, l), "\n")
 	for _, want := range []string{
@@ -171,15 +166,13 @@ func TestFixture(t *testing.T) { t.Skip("fixtures are data, not tests") }
 		`p/p_test.go:13: the skip gives no reason`,
 		`p/p_test.go:14: the skip reason "another X excuse" matches no line`,
 		`p/p_test.go:17: the skip reason "yet another excuse" matches no line`,
-		`p/p_test.go:19: the skip reason "a row excuse: X" matches no line`,
-		`p/p_test.go:20: the SkipRow reason is not a string literal`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the gate did not refuse %q:\n%s", want, got)
 		}
 	}
-	if n := strings.Count(got, "\n") + 1; n != 7 {
-		t.Errorf("the gate refused %d skips, want 7:\n%s", n, got)
+	if n := strings.Count(got, "\n") + 1; n != 5 {
+		t.Errorf("the gate refused %d skips, want 5:\n%s", n, got)
 	}
 }
 
@@ -512,7 +505,7 @@ func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	l := readSkipLedger(t, root)
-	lanes := ledgerLanes(workflows(t, root)["ci-fast.yml"])
+	lanes := ledgerLanes(workflows(t, root)["ci-fast-nightly.yml"])
 	read := map[string]bool{}
 	for _, lane := range lanes {
 		if lane.reads {
@@ -523,11 +516,11 @@ func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
 	// that finds none of them is reading the wrong text
 	for _, job := range []string{"ci-policy", "go-test-touched", "verify-leg", "verify-elixir-conformance"} {
 		if !read[job] {
-			t.Errorf("ci-fast.yml's %s job does not read the skip ledger over its go test record", job)
+			t.Errorf("ci-fast-nightly.yml's %s job does not read the skip ledger over its go test record", job)
 		}
 	}
 	for _, fault := range ledgerLaneFaults(lanes, l) {
-		t.Error("ci-fast.yml: " + fault)
+		t.Error("ci-fast-nightly.yml: " + fault)
 	}
 }
 

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum byteIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum byteIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum byteLength
+{ Zfirst, Zsecond, Zthird }
+
+enum byteOrder
+{ Zfirst, Zsecond, Zthird }
+
+enum byteOrderMark
+{ Zfirst, Zsecond, Zthird }
+
+enum byte_limit
+{ Zfirst, Zsecond, Zthird }
+
+enum byte_off
+{ Zfirst, Zsecond, Zthird }
+
+enum byte_start
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesElem
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesId
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesRange
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesToBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesToString
+{ Zfirst, Zsecond, Zthird }
+
+enum bytesValue
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_blob_id
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_blob_type_id
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_edge
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_less
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_of
+{ Zfirst, Zsecond, Zthird }
+
+enum bytes_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum bz
+{ Zfirst, Zsecond, Zthird }
+
+enum c
+{ Zfirst, Zsecond, Zthird }
+
+enum c0
+{ Zfirst, Zsecond, Zthird }
+
+enum c1
+{ Zfirst, Zsecond, Zthird }
+
+enum c2
+{ Zfirst, Zsecond, Zthird }
+
+enum c3
+{ Zfirst, Zsecond, Zthird }
+
+enum c4
+{ Zfirst, Zsecond, Zthird }
+
+enum c5
+{ Zfirst, Zsecond, Zthird }
+
+enum c6
+{ Zfirst, Zsecond, Zthird }
+
+enum c7
+{ Zfirst, Zsecond, Zthird }
+
+enum c_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum ca
+{ Zfirst, Zsecond, Zthird }
+
+enum cache
+{ Zfirst, Zsecond, Zthird }
+
+enum cached
+{ Zfirst, Zsecond, Zthird }
+
+enum cachedElemSlots
+{ Zfirst, Zsecond, Zthird }
+
+enum cachedFields
+{ Zfirst, Zsecond, Zthird }
+
+enum cachedPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum caller
+{ Zfirst, Zsecond, Zthird }
+
+enum callers
+{ Zfirst, Zsecond, Zthird }
+
+enum canRead
+{ Zfirst, Zsecond, Zthird }
+
+enum candidate
+{ Zfirst, Zsecond, Zthird }
+
+enum candidateJson
+{ Zfirst, Zsecond, Zthird }
+
+enum candidateSpans
+{ Zfirst, Zsecond, Zthird }
+
+enum canon
+{ Zfirst, Zsecond, Zthird }
+
+enum canonUnk
+{ Zfirst, Zsecond, Zthird }
+
+enum canonical
+{ Zfirst, Zsecond, Zthird }
+
+enum canonicalisation
+{ Zfirst, Zsecond, Zthird }
+
+enum capHi
+{ Zfirst, Zsecond, Zthird }
+
+enum capLo
+{ Zfirst, Zsecond, Zthird }
+
+enum capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum capn
+{ Zfirst, Zsecond, Zthird }
+
+enum capture
+{ Zfirst, Zsecond, Zthird }
+
+enum capture_body
+{ Zfirst, Zsecond, Zthird }
+
+enum capture_value
+{ Zfirst, Zsecond, Zthird }
+
+enum carried
+{ Zfirst, Zsecond, Zthird }
+
+enum carrierObj
+{ Zfirst, Zsecond, Zthird }
+
+enum carrierRoot
+{ Zfirst, Zsecond, Zthird }
+
+enum carries
+{ Zfirst, Zsecond, Zthird }
+
+enum carry
+{ Zfirst, Zsecond, Zthird }
+
+enum carve
+{ Zfirst, Zsecond, Zthird }
+
+enum carveElement
+{ Zfirst, Zsecond, Zthird }
+
+enum carveField
+{ Zfirst, Zsecond, Zthird }
+
+enum carveList
+{ Zfirst, Zsecond, Zthird }
+
+enum carveMap
+{ Zfirst, Zsecond, Zthird }
+
+enum carveRecord
+{ Zfirst, Zsecond, Zthird }
+
+enum carveText
+{ Zfirst, Zsecond, Zthird }
+
+enum carve_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum cb
+{ Zfirst, Zsecond, Zthird }
+
+enum cc
+{ Zfirst, Zsecond, Zthird }
+
+enum cd
+{ Zfirst, Zsecond, Zthird }
+
+enum cdesc
+{ Zfirst, Zsecond, Zthird }
+
+enum ce
+{ Zfirst, Zsecond, Zthird }
+
+enum ceilToInt
+{ Zfirst, Zsecond, Zthird }
+
+enum ceiling
+{ Zfirst, Zsecond, Zthird }
+
+enum cell
+{ Zfirst, Zsecond, Zthird }
+
+enum census
+{ Zfirst, Zsecond, Zthird }
+
+enum censusPair
+{ Zfirst, Zsecond, Zthird }
+
+enum censusTable
+{ Zfirst, Zsecond, Zthird }
+
+enum censusUnknown
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    byteIdx Inner
+    byteIndex Inner
+    byteLength Inner
+    byteOrder Inner
+    byteOrderMark Inner
+    byte_limit Inner
+    byte_off Inner
+    byte_start Inner
+    bytesBlob Inner
+    bytesElem Inner
+}
+
+table NameTypes0
+{
+    one0  byteIdx
+    many0 [..4]byteIdx
+    one1  byteIndex
+    many1 [..4]byteIndex
+    one2  byteLength
+    many2 [..4]byteLength
+    one3  byteOrder
+    many3 [..4]byteOrder
+    one4  byteOrderMark
+    many4 [..4]byteOrderMark
+    one5  byte_limit
+    many5 [..4]byte_limit
+    one6  byte_off
+    many6 [..4]byte_off
+    one7  byte_start
+    many7 [..4]byte_start
+    one8  bytesBlob
+    many8 [..4]bytesBlob
+    one9  bytesElem
+    many9 [..4]bytesElem
+}
+
+table NameFields0
+{
+    byteIdx uint32
+    byteIndex uint32
+    byteLength uint32
+    byteOrder uint32
+    byteOrderMark uint32
+    byte_limit uint32
+    byte_off uint32
+    byte_start uint32
+    bytesBlob uint32
+    bytesElem uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    bytesId Inner
+    bytesRange Inner
+    bytesToBlob Inner
+    bytesToString Inner
+    bytesValue Inner
+    bytes_blob_id Inner
+    bytes_blob_type_id Inner
+    bytes_edge Inner
+    bytes_less Inner
+    bytes_of Inner
+}
+
+table NameTypes1
+{
+    one0  bytesId
+    many0 [..4]bytesId
+    one1  bytesRange
+    many1 [..4]bytesRange
+    one2  bytesToBlob
+    many2 [..4]bytesToBlob
+    one3  bytesToString
+    many3 [..4]bytesToString
+    one4  bytesValue
+    many4 [..4]bytesValue
+    one5  bytes_blob_id
+    many5 [..4]bytes_blob_id
+    one6  bytes_blob_type_id
+    many6 [..4]bytes_blob_type_id
+    one7  bytes_edge
+    many7 [..4]bytes_edge
+    one8  bytes_less
+    many8 [..4]bytes_less
+    one9  bytes_of
+    many9 [..4]bytes_of
+}
+
+table NameFields1
+{
+    bytesId uint32
+    bytesRange uint32
+    bytesToBlob uint32
+    bytesToString uint32
+    bytesValue uint32
+    bytes_blob_id uint32
+    bytes_blob_type_id uint32
+    bytes_edge uint32
+    bytes_less uint32
+    bytes_of uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    bytes_shape Inner
+    bz Inner
+    c Inner
+    c0 Inner
+    c1 Inner
+    c2 Inner
+    c3 Inner
+    c4 Inner
+    c5 Inner
+    c6 Inner
+}
+
+table NameTypes2
+{
+    one0  bytes_shape
+    many0 [..4]bytes_shape
+    one1  bz
+    many1 [..4]bz
+    one2  c
+    many2 [..4]c
+    one3  c0
+    many3 [..4]c0
+    one4  c1
+    many4 [..4]c1
+    one5  c2
+    many5 [..4]c2
+    one6  c3
+    many6 [..4]c3
+    one7  c4
+    many7 [..4]c4
+    one8  c5
+    many8 [..4]c5
+    one9  c6
+    many9 [..4]c6
+}
+
+table NameFields2
+{
+    bytes_shape uint32
+    bz uint32
+    c uint32
+    c0 uint32
+    c1 uint32
+    c2 uint32
+    c3 uint32
+    c4 uint32
+    c5 uint32
+    c6 uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    c7 Inner
+    c_leb Inner
+    ca Inner
+    cache Inner
+    cached Inner
+    cachedElemSlots Inner
+    cachedFields Inner
+    cachedPayload Inner
+    caller Inner
+    callers Inner
+}
+
+table NameTypes3
+{
+    one0  c7
+    many0 [..4]c7
+    one1  c_leb
+    many1 [..4]c_leb
+    one2  ca
+    many2 [..4]ca
+    one3  cache
+    many3 [..4]cache
+    one4  cached
+    many4 [..4]cached
+    one5  cachedElemSlots
+    many5 [..4]cachedElemSlots
+    one6  cachedFields
+    many6 [..4]cachedFields
+    one7  cachedPayload
+    many7 [..4]cachedPayload
+    one8  caller
+    many8 [..4]caller
+    one9  callers
+    many9 [..4]callers
+}
+
+table NameFields3
+{
+    c7 uint32
+    c_leb uint32
+    ca uint32
+    cache uint32
+    cached uint32
+    cachedElemSlots uint32
+    cachedFields uint32
+    cachedPayload uint32
+    caller uint32
+    callers uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    canRead Inner
+    candidate Inner
+    candidateJson Inner
+    candidateSpans Inner
+    canon Inner
+    canonUnk Inner
+    canonical Inner
+    canonicalisation Inner
+    capHi Inner
+    capLo Inner
+}
+
+table NameTypes4
+{
+    one0  canRead
+    many0 [..4]canRead
+    one1  candidate
+    many1 [..4]candidate
+    one2  candidateJson
+    many2 [..4]candidateJson
+    one3  candidateSpans
+    many3 [..4]candidateSpans
+    one4  canon
+    many4 [..4]canon
+    one5  canonUnk
+    many5 [..4]canonUnk
+    one6  canonical
+    many6 [..4]canonical
+    one7  canonicalisation
+    many7 [..4]canonicalisation
+    one8  capHi
+    many8 [..4]capHi
+    one9  capLo
+    many9 [..4]capLo
+}
+
+table NameFields4
+{
+    canRead uint32
+    candidate uint32
+    candidateJson uint32
+    candidateSpans uint32
+    canon uint32
+    canonUnk uint32
+    canonical uint32
+    canonicalisation uint32
+    capHi uint32
+    capLo uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    capacity Inner
+    capn Inner
+    capture Inner
+    capture_body Inner
+    capture_value Inner
+    carried Inner
+    carrierObj Inner
+    carrierRoot Inner
+    carries Inner
+    carry Inner
+}
+
+table NameTypes5
+{
+    one0  capacity
+    many0 [..4]capacity
+    one1  capn
+    many1 [..4]capn
+    one2  capture
+    many2 [..4]capture
+    one3  capture_body
+    many3 [..4]capture_body
+    one4  capture_value
+    many4 [..4]capture_value
+    one5  carried
+    many5 [..4]carried
+    one6  carrierObj
+    many6 [..4]carrierObj
+    one7  carrierRoot
+    many7 [..4]carrierRoot
+    one8  carries
+    many8 [..4]carries
+    one9  carry
+    many9 [..4]carry
+}
+
+table NameFields5
+{
+    capacity uint32
+    capn uint32
+    capture uint32
+    capture_body uint32
+    capture_value uint32
+    carried uint32
+    carrierObj uint32
+    carrierRoot uint32
+    carries uint32
+    carry uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    carve Inner
+    carveElement Inner
+    carveField Inner
+    carveList Inner
+    carveMap Inner
+    carveRecord Inner
+    carveText Inner
+    carve_extent Inner
+    cb Inner
+    cc Inner
+}
+
+table NameTypes6
+{
+    one0  carve
+    many0 [..4]carve
+    one1  carveElement
+    many1 [..4]carveElement
+    one2  carveField
+    many2 [..4]carveField
+    one3  carveList
+    many3 [..4]carveList
+    one4  carveMap
+    many4 [..4]carveMap
+    one5  carveRecord
+    many5 [..4]carveRecord
+    one6  carveText
+    many6 [..4]carveText
+    one7  carve_extent
+    many7 [..4]carve_extent
+    one8  cb
+    many8 [..4]cb
+    one9  cc
+    many9 [..4]cc
+}
+
+table NameFields6
+{
+    carve uint32
+    carveElement uint32
+    carveField uint32
+    carveList uint32
+    carveMap uint32
+    carveRecord uint32
+    carveText uint32
+    carve_extent uint32
+    cb uint32
+    cc uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    cd Inner
+    cdesc Inner
+    ce Inner
+    ceilToInt Inner
+    ceiling Inner
+    cell Inner
+    census Inner
+    censusPair Inner
+    censusTable Inner
+    censusUnknown Inner
+}
+
+table NameTypes7
+{
+    one0  cd
+    many0 [..4]cd
+    one1  cdesc
+    many1 [..4]cdesc
+    one2  ce
+    many2 [..4]ce
+    one3  ceilToInt
+    many3 [..4]ceilToInt
+    one4  ceiling
+    many4 [..4]ceiling
+    one5  cell
+    many5 [..4]cell
+    one6  census
+    many6 [..4]census
+    one7  censusPair
+    many7 [..4]censusPair
+    one8  censusTable
+    many8 [..4]censusTable
+    one9  censusUnknown
+    many9 [..4]censusUnknown
+}
+
+table NameFields7
+{
+    cd uint32
+    cdesc uint32
+    ce uint32
+    ceilToInt uint32
+    ceiling uint32
+    cell uint32
+    census uint32
+    censusPair uint32
+    censusTable uint32
+    censusUnknown uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

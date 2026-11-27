@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // The per-commit rows must cover the same namespace as the unsplit aggregate,
@@ -54,6 +55,7 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 		seenRows[key] = true
 	}
 	for _, part := range []string{"0", "1"} {
+		testinputs.Files(t, "tools/python-ci-partition.sh")
 		cmd := exec.Command("sh", "tools/python-ci-partition.sh", part)
 		cmd.Dir = root
 		cmd.Stdin = bytes.NewReader(plan)
@@ -93,6 +95,7 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, part := range []string{"0", "1"} {
+			testinputs.Files(t, "tools/python-ci-partition.sh")
 			cmd := exec.Command("sh", "tools/python-ci-partition.sh", part)
 			cmd.Dir = root
 			cmd.Stdin = bytes.NewReader(payload)

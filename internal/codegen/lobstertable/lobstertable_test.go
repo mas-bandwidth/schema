@@ -10,13 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/irtest"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v3/internal/irtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const root = "../../.."
@@ -69,7 +68,7 @@ func TestLobsterTableDescriptorsLoad(t *testing.T) {
 			t.Logf("lobster refuses unit %s: %v", key, err)
 			refusal := err.Error()
 			t.Run(key, func(t *testing.T) {
-				slowtest.SkipRow(t, "UNPORTED: the lobster backend refuses unit "+key+" ("+refusal+"); its table descriptors are unchecked until the backend generates it")
+				t.Error("a row that did not run: the lobster backend refuses unit " + key + " (" + refusal + "); its table descriptors are unchecked until the backend generates it")
 			})
 			continue
 		}

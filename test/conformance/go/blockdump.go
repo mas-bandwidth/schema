@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE BLOCK-DUMP SURFACE (docs/SPEC-TABLES.md §19.2).
 //
 // The `block` surface says only that an image OPENS, which a reader passes by

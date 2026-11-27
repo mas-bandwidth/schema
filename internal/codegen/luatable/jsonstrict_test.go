@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 type strictJSONRow struct {
@@ -151,7 +151,7 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 		if len(ir.TableWideFields(u)) > 0 {
 			t.Logf("unit %s carries the wide kinds; its JSON rows are not this card's (docs/SPEC-TABLES.md §15)", unit)
 			t.Run(unit, func(t *testing.T) {
-				slowtest.SkipRow(t, "UNPORTED: the strict JSON rows of a unit with the wide kinds are owed (docs/SPEC-TABLES.md §15)")
+				t.Error("a row that did not run: the strict JSON rows of a unit with the wide kinds are owed (docs/SPEC-TABLES.md §15)")
 			})
 			continue
 		}
@@ -159,7 +159,7 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 		if err != nil {
 			t.Logf("unit %s is not generated for lua: %v", unit, err)
 			t.Run(unit, func(t *testing.T) {
-				slowtest.SkipRow(t, "the Lua table backend does not generate this unit: "+err.Error())
+				t.Error("the Lua table backend does not generate this unit: " + err.Error())
 			})
 			continue
 		}

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // innerSchemaPath and innerCorpusDir are the committed inner-bound schema and
@@ -39,7 +39,8 @@ var innerFixedRoots = []string{
 // value back as one delivered body, n = 1 with no verdict, so a caller holding
 // to the verdict read the cut child as the sender's. The node half runs every
 // inner-message row of the committed hostile corpus: each past-the-bound row is
-// refused with the open-refused verdict and n = -1, and each at-the-bound row
+// refused with the open-refused verdict and a count of 0 (SPEC-TABLES.md §3.3:
+// "A refused batch returns a count of 0"), and each at-the-bound row
 // (the control) reads one body.
 func TestJsMessageInnerBoundRefused(t *testing.T) {
 	t.Parallel()
@@ -165,8 +166,7 @@ for (const line of readFileSync("rows.tsv", "utf8").split("\n").filter((l) => l)
   const n = pick(T + "LoadMessages")[T + "LoadMessages"]([value], voc, data, rep);
   const refused = rep.Verdict === a.TableMessageOpenRefused;
   ran++;
-  if (want === "refuse" && !(refused && n === -1)) { fail(name + ": delivered n=" + n + " " + JSON.stringify(rep)); }
-  if (want === "accept" && (refused || n !== 1 || rep.Damaged)) { fail(name + ": refused n=" + n + " " + JSON.stringify(rep)); }
+  if (want === "refuse" && !(refused && n === 0)) { fail(name + ": delivered n=" + n + " " + JSON.stringify(rep)); }  if (want === "accept" && (refused || n !== 1 || rep.Damaged)) { fail(name + ": refused n=" + n + " " + JSON.stringify(rep)); }
 }
 if (!failed) { console.log("OK " + ran); }
 `

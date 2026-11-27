@@ -37,7 +37,7 @@ package unity
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // rv is the receiver of the serialize calls being emitted: the stream, or the

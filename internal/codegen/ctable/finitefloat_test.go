@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // THE C LEG'S FINITE RULE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
@@ -279,38 +279,47 @@ int main( void )
 }
 `
 
-// finiteSabotage is one check blinded in the emitted source (each pair a
-// from and its replacement), and the rows the probe must then fail: those
-// rows, every one of them, and no other. The anchors are whole statements,
-// because the emitter's formatter breaks the compact runtime after each one.
+// finiteSabotage is one check blinded in the emitted source, and the rows the
+// probe must then fail: those rows, every one of them, and no other. A pair in
+// `pairs` is a literal from and its replacement, replaced wherever it occurs.
+// A pair in `once` is matched by its C tokens under any whitespace, because
+// cfmt lays the emitted C out (one statement per line, a space inside each
+// parenthesis), and must occur EXACTLY ONCE across the emitted files
+// (cPlantOnce); its from carries enough of the surrounding code to name the
+// one site the rows read.
 type finiteSabotage struct {
 	name  string
 	pairs [][2]string
+	once  [][2]string
 	rows  []string
 }
 
 var finiteSabotages = []finiteSabotage{
-	{"variable read", [][2]string{{"if ( !table_bits_finite32( decoded_bits ) ) { table_non_finite_float( r->report ); }", "if ( 0 ) { table_non_finite_float( r->report ); }"}},
+	{"variable read", [][2]string{{"if ( !table_bits_finite32( decoded_bits ) ) { table_non_finite_float( r->report ); }", "if ( 0 ) { table_non_finite_float( r->report ); }"}}, nil,
 		[]string{"file a", "file c", "file d", "graph v"}},
-	{"variable read f64", [][2]string{{"if ( !table_bits_finite64( decoded_bits ) ) { table_non_finite_float( r->report ); }", "if ( 0 ) { table_non_finite_float( r->report ); }"}},
+	{"variable read f64", [][2]string{{"if ( !table_bits_finite64( decoded_bits ) ) { table_non_finite_float( r->report ); }", "if ( 0 ) { table_non_finite_float( r->report ); }"}}, nil,
 		[]string{"file b", "graph w"}},
-	{"message read", [][2]string{{"else if(!table_bits_finite32((uint32_t)raw)){", "else if(0){"}},
+	{"message read", nil, [][2]string{{"else if(!table_bits_finite32((uint32_t)raw)){", "else if(0){"}},
 		[]string{"message a"}},
-	{"message read f64", [][2]string{{"finite=table_bits_finite64(raw);", "finite=1;"}},
+	// the f64 message read of a float64 field: four reads test a 64-bit raw,
+	// and the (double) widening names the one whose field is float64 (b)
+	{"message read f64", nil, [][2]string{{"finite=table_bits_finite64(raw); if ( finite ) decoded = (double) table_bits_to_double( raw );", "finite=1; if ( finite ) decoded = (double) table_bits_to_double( raw );"}},
 		[]string{"message b"}},
-	{"fixed read", [][2]string{{"if ( !schema_probe_cell_fixed_finite_body_( values + k ) )\n", "if ( 0 )\n"}},
+	{"fixed read", [][2]string{{"if ( !schema_probe_cell_fixed_finite_body_( values + k ) )\n", "if ( 0 )\n"}}, nil,
 		[]string{"fixed b", "fixed d"}},
-	{"retained read", [][2]string{{"if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){", "if(0){"}},
+	{"retained read", nil, [][2]string{{"if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){", "if(0){"}},
 		[]string{"retained"}},
-	{"file writer", [][2]string{{") ) { return 0; } /* a NaN or an infinity is refused (§3.3) */", ") ) { (void) 0; } /* a NaN or an infinity is refused (§3.3) */"}},
+	{"file writer", [][2]string{{") ) { return 0; } /* a NaN or an infinity is refused (§3.3) */", ") ) { (void) 0; } /* a NaN or an infinity is refused (§3.3) */"}}, nil,
 		[]string{"save a", "save c", "save w"}},
-	{"message writer", [][2]string{
+	{"message writer", nil, [][2]string{
 		{"if(!table_double_finite(value->b)) return 0;", "if(0) return 0;"},
 		{"if(!table_float_finite(value->d)) return 0;", "if(0) return 0;"}},
 		[]string{"message save"}},
-	{"fixed writer", [][2]string{{"if ( !schema_probe_cell_fixed_finite_body_( values + k ) ) { return -1; }", "if ( 0 ) { return -1; }"}},
+	{"fixed writer", [][2]string{{"if ( !schema_probe_cell_fixed_finite_body_( values + k ) ) { return -1; }", "if ( 0 ) { return -1; }"}}, nil,
 		[]string{"fixed save"}},
-	{"cook writer", [][2]string{{"if(!table_bits_finite64(bits)) { return 0; }", ""}},
+	// the cook of Cell (the row's root), float64 b: Node's cook of w carries
+	// the same check, so the memcpy of value->b names the one site
+	{"cook writer", nil, [][2]string{{"memcpy( &bits, &value->b, 8 ); if(!table_bits_finite64(bits)) { return 0; }", "memcpy( &bits, &value->b, 8 );"}},
 		[]string{"cook"}},
 }
 
@@ -347,6 +356,11 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 			}
 			if !patched {
 				t.Fatalf("the %s sabotage patches nothing: no emitted file carries %q", sabotage.name, pair[0])
+			}
+		}
+		for _, pair := range sabotage.once {
+			if err := cPlantOnce(files, pair[0], pair[1]); err != nil {
+				t.Fatalf("the %s sabotage patches nothing: %v", sabotage.name, err)
 			}
 		}
 	}

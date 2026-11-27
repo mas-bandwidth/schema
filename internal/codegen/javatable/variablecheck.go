@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE VARIABLE FORM'S WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1):
@@ -29,6 +29,9 @@ func writeVariableCheckWrite(b *strings.Builder, st *ir.Struct, tables []*ir.Str
 	b.WriteString("    // without -ea the writer trusts its caller. It reaches every table the\n")
 	b.WriteString("    // value points to, each once, so a cycle ends it.\n")
 	b.WriteString("    static boolean checkWrite(Value v) {\n")
+	// A NULL ROOT IS A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE): refused here,
+	// under the same assert, before the walk would pass it by.
+	fmt.Fprintf(b, "        assert v != null : %q;\n", st.DeclaredName()+": a null value is written")
 	b.WriteString("        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();\n")
 	b.WriteString("        walk.point(v);\n")
 	b.WriteString("        for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {\n")
@@ -116,13 +119,20 @@ func writeVariableFieldCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		one := variableElement(f)
 		var inner strings.Builder
 		writeVariableValueCheck(&inner, one, "e", name, ind+"    ")
-		if inner.Len() == 0 {
-			return
-		}
 		count := expr + ".size()"
 		if f.Array == ir.ArrayFixed {
 			// a fixed array writes its first N slots and no others
 			count = fmt.Sprintf("java.lang.Math.min(%s.size(), %d)", expr, f.ArrayBound)
+		}
+		if f.KeyEnum == "" && !f.IsTextList() && (isScalarArray(f) || isStructArray(f)) {
+			// A NULL ELEMENT IS A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE): every
+			// slot the save writes holds a value, checked before any is unboxed
+			fmt.Fprintf(b, "%sfor (int i = 0, n = %s; i < n; i++) {\n", ind, count)
+			fmt.Fprintf(b, "%s    assert %s.get(i) != null : %q;\n", ind, expr, name)
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
+		if inner.Len() == 0 {
+			return
 		}
 		fmt.Fprintf(b, "%sfor (int i = 0, n = %s; i < n; i++) {\n", ind, count)
 		fmt.Fprintf(b, "%s    %s e = %s.get(i);\n", ind, variableValueType(one), expr)
@@ -220,6 +230,10 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		case *ir.Enum:
 			// ROW 5: an ordinal inside the variant set (0 is the unset value)
 			fmt.Fprintf(b, "%sassert %s >= 0 && %s <= %d : %q;\n", ind, expr, expr, len(ref.Variants), name)
+			// §2.15 WRITE: a deprecated variant is never written
+			if cond := enumNotDeprecated(ref, expr); cond != "" {
+				fmt.Fprintf(b, "%sassert %s : %q;\n", ind, cond, name+": a deprecated variant is never written")
+			}
 		case *ir.Flags:
 			// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
 			// HOLDS A MASK TO ITS WIDTH): a save never writes a bit its own read refuses
@@ -227,6 +241,9 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 				fmt.Fprintf(b, "%sassert (%s >>> %d) == 0L : %q;\n", ind, expr, ref.WireBits, name)
 			}
 		case *ir.Struct, *ir.Union:
+			// a null record or union where one is written is a value of the
+			// wrong kind (DW-TABLE-SHAPE)
+			fmt.Fprintf(b, "%sassert %s != null : %q;\n", ind, expr, name)
 			fmt.Fprintf(b, "%sassert %sVariable.checkWrite(%s, walk);\n", ind, f.Type.Name, expr)
 		}
 	}

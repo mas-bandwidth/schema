@@ -128,7 +128,7 @@ typedef struct tabledemo_table_report_t
        path. */
     uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
-       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_unknown carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
        operator's other answer, a layout this build served and has retired
        (§5.9 #7). Zero on every other path, refusal or read. */
@@ -1320,22 +1320,34 @@ enum
     SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
     SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
     /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
-       §6b). A hash this reader's LINEAGE does not hold is layout_newer — ship
-       the reader; a hash the lineage holds BELOW THE FLOOR is
-       layout_unsupported — upgrade the client. They are the operator's two
-       distinct answers and both carry the FILE'S hash (§5.9 #7).
+       §6b). A hash this reader's LINEAGE does not hold is layout_unknown
+       (SCHEMA_TABLE_LAYOUT_UNKNOWN below); a hash the lineage holds BELOW THE
+       FLOOR is layout_unsupported — upgrade the client. They are the
+       operator's two distinct answers and both carry the FILE'S hash (§5.9 #7).
 
        THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
        the rule the ten above already state: the C enum numbers a set the C++
        enum orders, so a leg agrees on the NAME an endpoint is refused by and never
-       on the integer. These two take 18 and 19 in the order §5.3 names them. */
+       on the integer.
+
+       LAYOUT_NEWER IS RESERVED, NEVER EMITTED (docs/FIXED-FORM-ALGORITHM.md §5.3
+       "STEP 5's ANSWER IS layout_unknown, IN EVERY LEG, AND layout_newer IS
+       RETIRED", SPEC-TABLES §21.3, decided 2026-11-03): nothing proves a hash
+       newer, so no read answers it. It keeps its value so no number moves. */
     SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
        string(N)'s used bytes that are not well-formed UTF-8 refuse the read
        by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
-    SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED = 20
+    SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED = 20,
+    /* §5.3 STEP 5: a header hash in NO lineage entry. A newer writer, an older
+       layout nobody locked, another table's file and a damaged hash byte are
+       indistinguishable here, so the one answer is "a layout hash this build's
+       lineage does not hold", and the report carries THE FILE'S hash and
+       nothing else. Appended after every existing reason value (21 is
+       NON_FINITE_FLOAT, 22 BUILD_VERSION_MISMATCH) so nothing is renumbered. */
+    SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN = 23
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -1476,7 +1488,7 @@ static SCHEMA_UNUSED tabledemo_table_fixed_entry_t tabledemo_table_fixed_entry_z
  * A fixed table reads BACKWARD and never forward. A file is matched on the
  * eight bytes of its header's hash against the lineage THE BUILD laid down, and
  * the layout it carries is held to a BYTE COMPARISON against the bytes the lock
- * recorded — never walked. A hash the lineage does not hold is layout_newer; a
+ * recorded — never walked. A hash the lineage does not hold is layout_unknown; a
  * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
  * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
 
@@ -3463,7 +3475,7 @@ typedef struct tabledemo_table_fixed_known_layout_t
 } tabledemo_table_fixed_known_layout_t;
 
 /* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
-   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+   entry holds is -1, which LOAD names layout_unknown (§5.3 step 5). */
 static SCHEMA_UNUSED int32_t tabledemo_table_fixed_select( const tabledemo_table_fixed_known_layout_t * known, int32_t count, uint64_t hash )
 {
     int32_t i;
@@ -3474,8 +3486,10 @@ static SCHEMA_UNUSED int32_t tabledemo_table_fixed_select( const tabledemo_table
     return -1;
 }
 
-/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
-   TOTAL: no counter moves and not one destination byte is written. */
+/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7):
+   layout_unknown (step 5, a hash in no lineage entry) and layout_unsupported
+   (step 6, below the floor). REFUSE IS TOTAL: no counter moves and not one
+   destination byte is written. */
 static SCHEMA_UNUSED int64_t tabledemo_table_fixed_refuse_hash( tabledemo_table_report_t * report, int reason, uint64_t hash )
 {
     report->refused = 1;
@@ -17904,7 +17918,10 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_wire_row_( tabledemo_table_write
         {
             case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
             case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
-            case TABLEDEMO_MOOD_OLD: tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull ); break;
+            case TABLEDEMO_MOOD_OLD:
+                schema_assert( value->row[i] != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                break;
             case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
             default:
                 return 0; /* no declared identity */
@@ -18383,7 +18400,10 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body( tabledemo_table_writer_
             {
                 case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
                 case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
-                case TABLEDEMO_MOOD_OLD: tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull ); break;
+                case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                    tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                    break;
                 case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
                 default:
                     return 0; /* no declared identity */
@@ -21773,6 +21793,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_moods_f
         for ( i = 0; i < ( value->row_count >= 0 && value->row_count <= 4 ? (int64_t) value->row_count : 0 ); ++i )
         {
             if ( (uint64_t) value->row[i] > 3u ) { ( *out_of_range )++; }
+            if ( value->row[i] == TABLEDEMO_MOOD_OLD ) { ( *out_of_range )++; } /* a deprecated variant is never written (SPEC-TABLES §2.15) */
         }
     }
 }
@@ -21784,6 +21805,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_mood_fi
     (void) out_of_range;
     (void) damaged;
     if ( (uint64_t) value->mood > 3u ) { ( *out_of_range )++; }
+    if ( value->mood == TABLEDEMO_MOOD_OLD ) { ( *out_of_range )++; } /* a deprecated variant is never written (SPEC-TABLES §2.15) */
 }
 
 /* MinArmFix's write check (docs/SPEC.md §5.1). */
@@ -22352,7 +22374,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_weapon_config_fixed_known_count = 2
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_weapon_config_fixed_floor = 0;
 
 /* lineage entry 0's WRITER ranges (§4.5): every clamp counts. */
@@ -22539,7 +22561,7 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_save( const tabledemo
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -22631,7 +22653,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_weapon_config_fixed_load_walk_( ta
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_weapon_config_fixed_known, tabledemo_weapon_config_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_weapon_config_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -24546,7 +24568,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_loadout_config_fixed_known_count = 
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_loadout_config_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -24726,7 +24748,7 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_save( const tabledem
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -24818,7 +24840,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_loadout_config_fixed_load_walk_( t
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_loadout_config_fixed_known, tabledemo_loadout_config_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_loadout_config_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -27263,7 +27285,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_profile_config_fixed_known_count = 
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_profile_config_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -27443,7 +27465,7 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_save( const tabledem
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -27535,7 +27557,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_profile_config_fixed_load_walk_( t
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_profile_config_fixed_known, tabledemo_profile_config_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_profile_config_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -30864,7 +30886,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_root_config_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_root_config_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -31044,7 +31066,7 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_save( const tabledemo_r
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -31136,7 +31158,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_root_config_fixed_load_walk_( tabl
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_root_config_fixed_known, tabledemo_root_config_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_root_config_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -31577,7 +31599,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -31753,7 +31775,7 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_fixed_save( const tabledemo_c
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -31844,7 +31866,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_counted_min_fixed_known, tabledemo_counted_min_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_counted_min_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -32193,7 +32215,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_float_bound_fixed_known_count = 1;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_float_bound_fixed_floor = 0;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
@@ -32243,7 +32265,7 @@ static SCHEMA_UNUSED int64_t tabledemo_float_bound_fixed_save( const tabledemo_f
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -32335,7 +32357,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_float_bound_fixed_load_walk_( tabl
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_float_bound_fixed_known, tabledemo_float_bound_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_float_bound_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -32850,7 +32872,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -33026,7 +33048,7 @@ static SCHEMA_UNUSED int64_t tabledemo_moods_fixed_save( const tabledemo_moods_t
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -33117,7 +33139,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_moods_fixed_load_walk_( tabledemo_
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_moods_fixed_known, tabledemo_moods_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_moods_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -33633,7 +33655,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_mood_field_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_mood_field_fixed_floor = 0;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
@@ -33809,7 +33831,7 @@ static SCHEMA_UNUSED int64_t tabledemo_mood_field_fixed_save( const tabledemo_mo
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -33900,7 +33922,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_mood_field_fixed_load_walk_( table
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_mood_field_fixed_known, tabledemo_mood_field_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_mood_field_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -34311,7 +34333,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_min_arm_fix_fixed_known_count = 1;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_min_arm_fix_fixed_floor = 0;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
@@ -34357,7 +34379,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_arm_fix_fixed_save( const tabledemo_m
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -34448,7 +34470,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_arm_fix_fixed_load_walk_( tabl
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_min_arm_fix_fixed_known, tabledemo_min_arm_fix_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_min_arm_fix_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -34789,7 +34811,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_min_plain_fix_fixed_known_count = 1
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
-   layout_newer (ship the reader). A retired entry stays forever (§5.2). */
+   layout_unknown (§5.3 step 5). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_min_plain_fix_fixed_floor = 0;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
@@ -34835,7 +34857,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_fixed_save( const tabledemo
    §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
-   layout_newer (ship the reader); below the floor is layout_unsupported
+   layout_unknown (§5.3 step 5); below the floor is layout_unsupported
    (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
@@ -34926,7 +34948,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_plain_fix_fixed_load_walk_( ta
     hash = tabledemo_table_fixed_get64( data + TABLEDEMO_K_TABLE_FIXED_HASH_AT );
     /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = tabledemo_table_fixed_select( tabledemo_min_plain_fix_fixed_known, tabledemo_min_plain_fix_fixed_known_count, hash );
-    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_NEWER, hash ); }
+    if ( pick < 0 ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNKNOWN, hash ); }
     if ( pick < tabledemo_min_plain_fix_fixed_floor ) { return tabledemo_table_fixed_refuse_hash( report, SCHEMA_TABLEDEMO_TABLE_LAYOUT_UNSUPPORTED, hash ); }
     /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE
        name — a lie about a known version — and §1.1's seven rules do not run at
@@ -39170,6 +39192,8 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_wire_row__retain( tabledemo_tabl
                 tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
                 break;
             case TABLEDEMO_MOOD_OLD:
+                schema_assert( value->row[i] != TABLEDEMO_MOOD_OLD );
+                /* a deprecated variant is never written (SPEC-TABLES §2.15) */
                 tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
                 break;
             case TABLEDEMO_MOOD_FIERCE:
@@ -39425,6 +39449,8 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body_retain( tabledemo_table_
                     tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
                     break;
                 case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD );
+                    /* a deprecated variant is never written (SPEC-TABLES §2.15) */
                     tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
                     break;
                 case TABLEDEMO_MOOD_FIERCE:
@@ -41287,8 +41313,8 @@ static SCHEMA_UNUSED int schema_tabledemo_counted_min_body_pack_( struct tablede
     (void) at;
     (void) value;
     (void) order;
-    if ( value->few_count < 2 || value->few_count > 5 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+    if ( value->few_count < 2 || value->few_count > 5 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->few_count && cook_i1 < 5; cook_i1++ )
@@ -41427,8 +41453,8 @@ static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_( struct tablede
     {
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
-            if ( value->pick.as.few.value_count < 2 || value->pick.as.few.value_count > 4 ) { return 0; }
             schema_assert( 2 <= value->pick.as.few.value_count && value->pick.as.few.value_count <= 4 );
+            if ( value->pick.as.few.value_count < 2 || value->pick.as.few.value_count > 4 ) { return 0; }
             {
                 int32_t cook_i1;
                 for ( cook_i1 = 0; cook_i1 < value->pick.as.few.value_count && cook_i1 < 4; cook_i1++ )
@@ -41474,8 +41500,8 @@ static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_body_pack_( struct table
     (void) at;
     (void) value;
     (void) order;
-    if ( value->few_count < 2 || value->few_count > 4 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 4 );
+    if ( value->few_count < 2 || value->few_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->few_count && cook_i1 < 4; cook_i1++ )

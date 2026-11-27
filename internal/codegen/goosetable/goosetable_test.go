@@ -12,12 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const root = "../../.."
@@ -68,7 +67,7 @@ func TestGooseTableDescriptorsLoad(t *testing.T) {
 			t.Logf("goose refuses unit %s: %v", key, err)
 			refusal := err.Error()
 			t.Run(key, func(t *testing.T) {
-				slowtest.SkipRow(t, "UNPORTED: the goose backend refuses unit "+key+" ("+refusal+"); its table descriptors are unchecked until the backend generates it")
+				t.Error("a row that did not run: the goose backend refuses unit " + key + " (" + refusal + "); its table descriptors are unchecked until the backend generates it")
 			})
 			continue
 		}

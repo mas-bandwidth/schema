@@ -22,14 +22,14 @@ package javatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 var (
@@ -441,7 +441,7 @@ union Action
     done
 }
 
-union Signal
+union Beacon
 {
     first
     last
@@ -451,7 +451,7 @@ fixed table Rec
 {
     lead   int32
     action Action
-    signal Signal
+    signal Beacon
     tail   int32
 }
 `
@@ -469,7 +469,7 @@ public final class ProbePayloadFreeArms {
         v.lead = 17;
         v.tail = 19;
         for (int action : new int[]{probe.ActionFixed.none, probe.ActionFixed.ping, probe.ActionFixed.value, probe.ActionFixed.done}) {
-            for (int signal : new int[]{probe.SignalFixed.first, probe.SignalFixed.last}) {
+            for (int signal : new int[]{probe.BeaconFixed.first, probe.BeaconFixed.last}) {
                 v.action.type = (byte) action;
                 v.action.value = 123456;
                 v.signal.type = (byte) signal;

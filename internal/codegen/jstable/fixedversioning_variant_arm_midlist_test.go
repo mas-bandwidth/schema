@@ -20,7 +20,7 @@ import (
 // (test/js-tables/fixedform.mjs). E7's read is NEW-READS-OLD across two
 // generations, so on this leg it is a COMPILED plan selected through the lock
 // (§5.2, §5.6): measured against the tree, V2 reading a V1 file with NO lineage
-// handed in refuses `layout_newer` before any record — the byte driver has no
+// handed in refuses `layout_unknown` before any record — the byte driver has no
 // lineage to hand and the §5.6 retirements name exactly this shape. Under §5
 // the lock is played HERE, where the older unit's entry is handed to the newer
 // reader, which is the same place `TestJSFixedVersioningUnionArmText` asserts
