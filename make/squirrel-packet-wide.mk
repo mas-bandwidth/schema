@@ -85,6 +85,21 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	@grep -Fm1 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log
 	@echo 'packet end Squirrel negative control: a missing end check accepts the trailing byte and the padding'
 
+# PACKET VOID (SPEC §4.8): payload-free union arms cost exactly their tag
+# bits. The shared corpus (testdata/wire/packet-void/cases.txt,
+# make/checks/packet-void.mk): test/packet-void/squirrel answers every case
+# and tools/casegate refuses a case with no answer.
+build/packet-void/squirrel/.stamp: bin/schema test/packet-void/Void.schema make/squirrel-packet-wide.mk
+	@rm -rf build/packet-void/squirrel
+	./bin/schema generate --lang squirrel --out build/packet-void/squirrel test/packet-void/Void.schema
+	@touch $@
+
+.PHONY: packet-void-squirrel
+packet-void-squirrel: build/packet-void/squirrel/.stamp toolchain-squirrel build/casegate
+	$(call packet_void_gate,squirrel) "$(SQ)" test/packet-void/squirrel/main.nut $(PACKET_VOID_PINS) build/packet-void/squirrel
+
+test-squirrel: packet-void-squirrel
+
 
 # THE BARE-INTEGER WIDTH CHECK (test/packet-write-bareint/cases.txt; SPEC §5.1
 # row 11): the packet writer refuses a bare intN/uintN value its width cannot

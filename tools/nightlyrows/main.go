@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/nightlyrows"
+	"github.com/mas-bandwidth/schema/v3/internal/nightlyrows"
 )
 
 func main() {

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/jstable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixirtable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/jstable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rusttable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestCanonicalJSONWriterBytesAreOneAnswer holds every readable corpus instance

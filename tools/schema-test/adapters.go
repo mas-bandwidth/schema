@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // harness is a program that runs one family's instances for any language it

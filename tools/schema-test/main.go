@@ -32,7 +32,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // usageError is a command line schema-test cannot run; it exits 2.

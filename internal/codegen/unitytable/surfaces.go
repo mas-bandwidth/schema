@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func emitTableSurfaces(b *strings.Builder, u *ir.Unit, st *ir.Struct, msgStructs map[string]bool) {
