@@ -29,7 +29,7 @@ func sideModuleRefusal(u *ir.Unit, suffix string) error {
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+suffix)] {
-			return fmt.Errorf("schema files %s and %s%s collide — the Goose target writes %s%s.goose beside %s's modules; rename one file", f.Base, f.Base, suffix, f.Base, suffix, f.Base)
+			return goose.NameErr(fmt.Errorf("schema files %s and %s%s collide — the Goose target writes %s%s.goose beside %s's modules; rename one file", f.Base, f.Base, suffix, f.Base, suffix, f.Base))
 		}
 	}
 	return nil

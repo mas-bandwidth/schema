@@ -1,7 +1,11 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v3/internal/check"
 	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
@@ -21,10 +25,57 @@ import (
 // select. A name one of them refuses is refused by schema check for every
 // target, naming the target, instead of at generate.
 func init() {
-	check.RegisterEmitterNameRule("Goose", func(u *ir.Unit) error { return goose.CheckUnit(u, nil) })
+	check.RegisterEmitterNameRule("C#", csNames)
+	check.RegisterEmitterNameRule("Goose", gooseNameRule)
 	check.RegisterEmitterNameRule("Java", javaNameRule)
 	check.RegisterEmitterNameRule("Python", pythontable.CheckNamesAtCheck)
 	check.RegisterEmitterNameRule("Ruby", rubytable.CheckNamesAtCheck)
+}
+
+// gooseNameRule is every name refusal Goose's generate makes: the namespace
+// check, then the target's whole generate, through the driver as `schema
+// generate --lang goose` runs it, whose refusals by name (goose.NameError: a
+// name two writers of the one namespace both declare, such as a table
+// module's _<e>Variants and the view's own rows; a schema file a module of
+// the target lands on) are lifted. Each Declare is a refusal by name, so
+// none can be missed by a list kept here. A refusal of a construct Goose does
+// not carry yet is no name refusal and is not lifted.
+func gooseNameRule(u *ir.Unit) error {
+	if err := goose.CheckUnit(u, nil); err != nil {
+		return err
+	}
+	_, err := gooseCompiler().Generate(u, "goose", Options{})
+	if ne := (*goose.NameError)(nil); errors.As(err, &ne) {
+		return err
+	}
+	return nil
+}
+
+var gooseCompiler = sync.OnceValue(New)
+
+// csConstraintKeywords are the C# contextual keywords the generated code
+// spells as a generic constraint (`where T : unmanaged`, the table runtime
+// and region code of both C# targets). A constraint keyword means itself only
+// while no type of that name is in scope, and every declaration of the unit
+// is a type of the unit's namespace, the one the constraint is written in:
+// an enum unmanaged turns `where T : unmanaged` into a constraint on the enum,
+// CS0701 (name-buildability n_internal_75). A field or an arm of that name is
+// a member, never in scope as a type, so only a declaration is refused.
+var csConstraintKeywords = map[string]bool{"unmanaged": true}
+
+// csNames refuses a unit that declares a type named like a C# constraint
+// keyword. Both C# targets (cs and unity) run it at generate, and schema check
+// runs it for every target (SPEC §4.6, Emitter name rules).
+func csNames(u *ir.Unit) error {
+	for _, decl := range slices.Sorted(maps.Keys(u.DeclFile)) {
+		if _, isConst := u.Consts[decl]; isConst {
+			continue // a const is a member of the constants class, not a type
+		}
+		if csConstraintKeywords[decl] {
+			return fmt.Errorf("declaration %s is a type of the C# namespace %s, where the generated generic constraint `where T : %s` would name it instead of the constraint (CS0701); rename the declaration", decl, u.Package, decl)
+		}
+	}
+	return nil
 }
 
 // Lua and Lobster run the file- and name-rules of their own emitters (SPEC
