@@ -2600,6 +2600,21 @@ jobs:
           name: proof
           path: build/proof/proof.json
           if-no-files-found: ignore
+      # THE SNAPSHOT these results compute, kept so that when the table above
+      # says test/proof/proof.json is stale (every new conformance case moves a
+      # count, and only this job has all eighteen legs' results), refreshing it
+      # is `gh run download <run> -n proof-snapshot` and a commit, never a
+      # snapshot rebuilt from another run's or a partial set of results.
+      - name: the proof snapshot these results compute
+        if: always()
+        run: go run ./tools/matrix proof -results build/conformance/legs -write
+      - name: keep the proof snapshot
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: proof-snapshot
+          path: test/proof/proof.json
+          if-no-files-found: error
 
   # C# WIRE AND REGION FUZZ (issue #751).
   #

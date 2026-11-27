@@ -12,7 +12,7 @@ import (
 // A DEPRECATED ENUM VARIANT READS AS THE DEFAULT ON THE COMPILED PLAN TOO
 // (docs/SPEC-TABLES.md section 2.15). The writer (testdata/enum-deprecated-plan/old.schema)
 // holds Old as a live variant and writes it in a scalar and in an array element;
-// the reader (new.schema) has retired Old in place, so the fixed read runs the
+// the reader (current.schema) has retired Old in place, so the fixed read runs the
 // COMPILED plan (the writer's layout hash is not the reader's). The scalar reads
 // as the field's declared default (Fierce, ordinal 3) and the array element as
 // the element default None (0), and nothing is counted unknown: the variant is
@@ -35,7 +35,7 @@ func TestJavaCompiledPlanDeprecatedVariantReadsDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, classes := buildRow(t, t.TempDir(), "enum_dep", []sideSpec{
-		{key: "reads", schema: dir + "/new.schema", older: []string{dir + "/old.schema"}},
+		{key: "reads", schema: dir + "/current.schema", older: []string{dir + "/old.schema"}},
 	})
 	got := runProbe(t, classes, "Probe_reads", file)
 	if got.n != 1 || got.refused || got.damaged || got.unknown != 0 {
