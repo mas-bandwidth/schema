@@ -143,7 +143,7 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 	offsets := r.offsets()
 	for i, p := range r.pieces {
 		if p.bits > 0 {
-			g.pf("%slet f%d: u64 = %s;%s\n", ind, i, p.value, p.note)
+			g.pf("%slet schema_f%d: u64 = %s;%s\n", ind, i, p.value, p.note)
 		}
 	}
 
@@ -165,9 +165,9 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 			}
 			switch {
 			case o >= lo:
-				terms = append(terms, shiftLeft(fmt.Sprintf("f%d", i), o-lo))
+				terms = append(terms, shiftLeft(fmt.Sprintf("schema_f%d", i), o-lo))
 			default:
-				terms = append(terms, fmt.Sprintf("(f%d >> %d)", i, lo-o))
+				terms = append(terms, fmt.Sprintf("(schema_f%d >> %d)", i, lo-o))
 			}
 		}
 		packed := strings.Join(terms, " | ")
@@ -175,7 +175,7 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 			packed = "(" + packed + ")" // `as` binds tighter than `|`
 		}
 		g.pf("%s// %s\n", ind, r.wordNote(offsets, j, width))
-		g.pf("%sstream.serialize_bits(&mut (%s as u32), %d)?;\n", ind, packed, width)
+		g.pf("%sschema_stream.serialize_bits(&mut (%s as u32), %d)?;\n", ind, packed, width)
 	}
 }
 
@@ -241,11 +241,11 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 
 	widths := chunkWidths(r.bits)
 	offsets := r.offsets()
-	g.pf("%slet mut c: u32 = 0;\n", ind)
+	g.pf("%slet mut schema_c: u32 = 0;\n", ind)
 	for j, width := range widths {
 		g.pf("%s// %s\n", ind, r.wordNote(offsets, j, width))
-		g.pf("%sstream.serialize_bits(&mut c, %d)?;\n", ind, width)
-		g.pf("%slet c%d = u64::from(c);\n", ind, j)
+		g.pf("%sschema_stream.serialize_bits(&mut schema_c, %d)?;\n", ind, width)
+		g.pf("%slet schema_c%d = u64::from(schema_c);\n", ind, j)
 	}
 
 	var at int64
@@ -262,9 +262,9 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 		for j := first; j <= last; j++ {
 			lo := j * 32
 			if lo <= o {
-				terms = append(terms, shiftRight(fmt.Sprintf("c%d", j), o-lo))
+				terms = append(terms, shiftRight(fmt.Sprintf("schema_c%d", j), o-lo))
 			} else {
-				terms = append(terms, fmt.Sprintf("(c%d << %d)", j, lo-o))
+				terms = append(terms, fmt.Sprintf("(schema_c%d << %d)", j, lo-o))
 			}
 		}
 		expr := strings.Join(terms, " | ")
@@ -275,8 +275,8 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 				expr = fmt.Sprintf("%s & %s", expr, m)
 			}
 		}
-		g.pf("%slet v%d: u64 = %s;\n", ind, i, expr)
-		p.read(ind, fmt.Sprintf("v%d", i))
+		g.pf("%slet schema_v%d: u64 = %s;\n", ind, i, expr)
+		p.read(ind, fmt.Sprintf("schema_v%d", i))
 	}
 }
 
@@ -342,7 +342,7 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 // lives in the runtime — fixed point, compressed float, the 128-bit family —
 // stays on the per-field path and breaks the run.
 func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
-	name := "value." + f.Name
+	name := "schema_value." + f.Name
 	noGuard := func(string) {}
 
 	switch f.Type.Kind {
@@ -503,7 +503,7 @@ func rangeIsFull(min, max *big.Int, bits int64) bool {
 // per-field form uses, so the folded offsets and the refusals are the same
 // arithmetic in the same order.
 func (g *gen) flatIntPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
-	name := "value." + f.Name
+	name := "schema_value." + f.Name
 	if f.Type.Width == 128 {
 		return flatPiece{}, false // the 128-bit family stays on the runtime path
 	}

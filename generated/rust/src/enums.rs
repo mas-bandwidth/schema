@@ -24,14 +24,14 @@ impl Team {
 }
 
 impl core::fmt::Display for Team {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `Team` value, out-of-set included.
-pub fn enum_name_team(value: Team) -> &'static str {
-    match value.0 {
+pub fn enum_name_team(schema_value: Team) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Red",
         2 => "Blue",
@@ -61,14 +61,14 @@ impl ShipType {
 }
 
 impl core::fmt::Display for ShipType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `ShipType` value, out-of-set included.
-pub fn enum_name_ship_type(value: ShipType) -> &'static str {
-    match value.0 {
+pub fn enum_name_ship_type(schema_value: ShipType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Fighter",
         2 => "Corvette",
@@ -99,14 +99,14 @@ impl MissileType {
 }
 
 impl core::fmt::Display for MissileType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `MissileType` value, out-of-set included.
-pub fn enum_name_missile_type(value: MissileType) -> &'static str {
-    match value.0 {
+pub fn enum_name_missile_type(schema_value: MissileType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Heatseeker",
         2 => "Torpedo",
@@ -138,14 +138,14 @@ impl PropType {
 }
 
 impl core::fmt::Display for PropType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `PropType` value, out-of-set included.
-pub fn enum_name_prop_type(value: PropType) -> &'static str {
-    match value.0 {
+pub fn enum_name_prop_type(schema_value: PropType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Asteroid",
         2 => "Chunk",
@@ -174,14 +174,14 @@ impl Pending {
 }
 
 impl core::fmt::Display for Pending {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `Pending` value, out-of-set included.
-pub fn enum_name_pending(value: Pending) -> &'static str {
-    match value.0 {
+pub fn enum_name_pending(schema_value: Pending) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         _ => "???",
     }
@@ -198,8 +198,8 @@ pub const SHIP_FLAGS_AIMING: ShipFlags = 1 << 3;
 pub const SHIP_FLAGS_COUNT: i64 = 4; // the declared variant count (SPEC §4.2)
 
 /// Debug/log name for bit `i` of `ShipFlags` — out-of-range bits name as `"???"`.
-pub fn flag_name_ship_flags(bit: u32) -> &'static str {
-    match bit {
+pub fn flag_name_ship_flags(schema_bit: u32) -> &'static str {
+    match schema_bit {
         0 => "FiringLaser",
         1 => "Boosting",
         2 => "Braking",
@@ -210,41 +210,41 @@ pub fn flag_name_ship_flags(bit: u32) -> &'static str {
 
 /// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
 /// bits past the declared variants as hex.
-pub fn flag_names_ship_flags(value: ShipFlags) -> String {
-    let mut names = String::new();
-    if value & (1 << 0) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+pub fn flag_names_ship_flags(schema_value: ShipFlags) -> String {
+    let mut schema_names = String::new();
+    if schema_value & (1 << 0) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_ship_flags(0));
+        schema_names.push_str(flag_name_ship_flags(0));
     }
-    if value & (1 << 1) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 1) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_ship_flags(1));
+        schema_names.push_str(flag_name_ship_flags(1));
     }
-    if value & (1 << 2) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 2) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_ship_flags(2));
+        schema_names.push_str(flag_name_ship_flags(2));
     }
-    if value & (1 << 3) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 3) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_ship_flags(3));
+        schema_names.push_str(flag_name_ship_flags(3));
     }
-    if value >> 4 != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value >> 4 != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(&format!("{:#x}", (value >> 4) << 4));
+        schema_names.push_str(&format!("{:#x}", (schema_value >> 4) << 4));
     }
-    if names.is_empty() {
-        names.push('0');
+    if schema_names.is_empty() {
+        schema_names.push('0');
     }
-    names
+    schema_names
 }
 

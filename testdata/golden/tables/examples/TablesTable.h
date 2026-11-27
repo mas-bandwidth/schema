@@ -36843,17 +36843,20 @@ inline bool WeaponConfigCookBody( uint8_t * at, const WeaponConfig & value, Tabl
 
 inline bool LoadoutConfigCookBody( uint8_t * at, const LoadoutConfig & value, TableByteOrder order )
 {
+    schema_assert( !( uint64_t( value.grade ) > 3 ) );
     table_cook_put( at + 0, (uint64_t) value.grade, 1, order );
     // 4 slots of storage, value.grades_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.grades_count; i++ )
     {
+        schema_assert( !( uint64_t( value.grades[i] ) > 3 ) );
         table_cook_put( at + 1 + i * 1, (uint64_t) value.grades[i], 1, order );
     }
     table_cook_put( at + 8, (uint64_t) (uint32_t) value.grades_count, 4, order );
     for ( int32_t i = 0; i < 3; i++ )
     {
+        schema_assert( !( uint64_t( value.podium[i] ) > 3 ) );
         table_cook_put( at + 12 + i * 1, (uint64_t) value.podium[i], 1, order );
     }
     table_cook_put( at + 16, (uint64_t) value.perks, 8, order ); // a mask rides raw, in every target
@@ -36956,6 +36959,7 @@ inline bool MoodsCookBody( uint8_t * at, const Moods & value, TableByteOrder ord
     if ( value.row_count < 0 || value.row_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.row_count; i++ )
     {
+        schema_assert( !( uint64_t( value.row[i] ) > 3 || uint64_t( value.row[i] ) == 2 ) );
         table_cook_put( at + 0 + i * 1, (uint64_t) value.row[i], 1, order );
     }
     table_cook_put( at + 4, (uint64_t) (uint32_t) value.row_count, 4, order );
@@ -36964,6 +36968,7 @@ inline bool MoodsCookBody( uint8_t * at, const Moods & value, TableByteOrder ord
 
 inline bool MoodFieldCookBody( uint8_t * at, const MoodField & value, TableByteOrder order )
 {
+    schema_assert( !( uint64_t( value.mood ) > 3 || uint64_t( value.mood ) == 2 ) );
     table_cook_put( at + 0, (uint64_t) value.mood, 1, order );
     table_cook_put( at + 2, (uint64_t) value.tail, 2, order );
     return true;

@@ -94,24 +94,44 @@ void main() {
     'TableFixedReport.layoutHash is last member and zero on default construction',
   );
 
-  // Verify all other report fields are also zero/false on default construction
+  // Verify all other report fields are also zero/empty on default construction.
+  // Today's report (docs/FIXED-FORM-ALGORITHM.md §5.9 #15, the strict read of
+  // §4.5/§5.3): refused, unknown, widened, hash, nonFiniteFloat, layoutHash —
+  // the retired malformed/clamped/kindMismatch/duplicate are gone, each
+  // replaced by a named refusal.
   check(
-    !report.malformed &&
-        report.refused == TableFixedRefusal.none &&
+    report.refused == TableFixedRefusal.none &&
         report.unknown == 0 &&
-        report.kindMismatch == 0 &&
-        report.clamped == 0 &&
         report.widened == 0 &&
-        report.duplicate == 0 &&
-        report.hash == 0,
-    'TableFixedReport: all fields before layoutHash are zero/false on default construction',
+        report.hash == 0 &&
+        report.nonFiniteFloat.isEmpty,
+    'TableFixedReport: all fields before layoutHash are zero/empty on default construction',
   );
 
-  // Reset the report and verify layoutHash is still last and zero
+  // Dirty every member, reset, and verify reset() returns each to zero —
+  // layoutHash included, so a report reused across loads never carries a
+  // stale file hash onto a path that is not one of the two layout refusals.
+  report
+    ..refused = TableFixedRefusal.layoutNewer
+    ..unknown = 3
+    ..widened = 4
+    ..hash = 0x1234
+    ..nonFiniteFloat = 'T.f'
+    ..layoutHash = 0xDEADBEEF;
   report.reset();
   check(
     report.layoutHash == 0,
     'TableFixedReport.layoutHash is zero after reset',
+  );
+  check(
+    report.refused == TableFixedRefusal.none &&
+        report.unknown == 0 &&
+        report.widened == 0 &&
+        report.hash == 0 &&
+        report.nonFiniteFloat.isEmpty,
+    'TableFixedReport: reset() zeroes every member (refused=${report.refused} '
+        'unknown=${report.unknown} widened=${report.widened} hash=${report.hash} '
+        'nonFiniteFloat="${report.nonFiniteFloat}")',
   );
 
   // ---- the verdict

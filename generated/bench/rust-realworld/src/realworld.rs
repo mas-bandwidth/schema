@@ -20,8 +20,8 @@ pub enum Error {
 }
 
 impl From<serialize::Error> for Error {
-    fn from(e: serialize::Error) -> Error {
-        Error::Stream(e)
+    fn from(schema_e: serialize::Error) -> Error {
+        Error::Stream(schema_e)
     }
 }
 
@@ -49,14 +49,14 @@ impl PacketMode {
 }
 
 impl core::fmt::Display for PacketMode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `PacketMode` value, out-of-set included.
-pub fn enum_name_packet_mode(value: PacketMode) -> &'static str {
-    match value.0 {
+pub fn enum_name_packet_mode(schema_value: PacketMode) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Idle",
         2 => "Active",
@@ -79,8 +79,8 @@ pub const PACKET_FLAGS_JAMMING: PacketFlags = 1 << 4;
 pub const PACKET_FLAGS_COUNT: i64 = 5; // the declared variant count (SPEC §4.2)
 
 /// Debug/log name for bit `i` of `PacketFlags` — out-of-range bits name as `"???"`.
-pub fn flag_name_packet_flags(bit: u32) -> &'static str {
-    match bit {
+pub fn flag_name_packet_flags(schema_bit: u32) -> &'static str {
+    match schema_bit {
         0 => "Shielded",
         1 => "Cloaked",
         2 => "Overheated",
@@ -92,48 +92,48 @@ pub fn flag_name_packet_flags(bit: u32) -> &'static str {
 
 /// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
 /// bits past the declared variants as hex.
-pub fn flag_names_packet_flags(value: PacketFlags) -> String {
-    let mut names = String::new();
-    if value & (1 << 0) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+pub fn flag_names_packet_flags(schema_value: PacketFlags) -> String {
+    let mut schema_names = String::new();
+    if schema_value & (1 << 0) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_packet_flags(0));
+        schema_names.push_str(flag_name_packet_flags(0));
     }
-    if value & (1 << 1) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 1) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_packet_flags(1));
+        schema_names.push_str(flag_name_packet_flags(1));
     }
-    if value & (1 << 2) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 2) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_packet_flags(2));
+        schema_names.push_str(flag_name_packet_flags(2));
     }
-    if value & (1 << 3) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 3) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_packet_flags(3));
+        schema_names.push_str(flag_name_packet_flags(3));
     }
-    if value & (1 << 4) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 4) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_packet_flags(4));
+        schema_names.push_str(flag_name_packet_flags(4));
     }
-    if value >> 5 != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value >> 5 != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(&format!("{:#x}", (value >> 5) << 5));
+        schema_names.push_str(&format!("{:#x}", (schema_value >> 5) << 5));
     }
-    if names.is_empty() {
-        names.push('0');
+    if schema_names.is_empty() {
+        schema_names.push('0');
     }
-    names
+    schema_names
 }
 
 // type RealPacket
@@ -277,915 +277,915 @@ pub const REAL_PACKET_MAX_BITS: u64 = 1810;
 pub const REAL_PACKET_MAX_BYTES: usize = 232;
 
 #[inline(always)]
-pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Result {
-    debug_assert!(value.f001_int >= -805495 && value.f001_int <= 805495, "f001_int out of range [-805495, 805495]");
-    debug_assert!(value.f002_f64.is_finite(), "f002_f64 is not finite");
-    debug_assert!(value.f003_int >= -835897 && value.f003_int <= 835897, "f003_int out of range [-835897, 835897]");
-    let f0: u64 = u64::from((value.f001_int as u32).wrapping_sub((-805495_i32) as u32));
-    let f1: u64 = value.f002_f64.to_bits();
-    let f2: u64 = u64::from((value.f003_int as u32).wrapping_sub((-835897_i32) as u32));
+pub fn write_real_packet(schema_stream: &mut WriteStream<'_>, schema_value: &RealPacket) -> Result {
+    debug_assert!(schema_value.f001_int >= -805495 && schema_value.f001_int <= 805495, "f001_int out of range [-805495, 805495]");
+    debug_assert!(schema_value.f002_f64.is_finite(), "f002_f64 is not finite");
+    debug_assert!(schema_value.f003_int >= -835897 && schema_value.f003_int <= 835897, "f003_int out of range [-835897, 835897]");
+    let schema_f0: u64 = u64::from((schema_value.f001_int as u32).wrapping_sub((-805495_i32) as u32));
+    let schema_f1: u64 = schema_value.f002_f64.to_bits();
+    let schema_f2: u64 = u64::from((schema_value.f003_int as u32).wrapping_sub((-835897_i32) as u32));
     // word 0, 32 bits: f001_int[0..21], f002_f64[0..11]
-    stream.serialize_bits(&mut ((f0 | (f1 << 21)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 21)) as u32), 32)?;
     // word 1, 32 bits: f002_f64[11..43]
-    stream.serialize_bits(&mut ((f1 >> 11) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 11) as u32), 32)?;
     // word 2, 32 bits: f002_f64[43..64], f003_int[0..11]
-    stream.serialize_bits(&mut (((f1 >> 43) | (f2 << 21)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 43) | (schema_f2 << 21)) as u32), 32)?;
     // word 3, 10 bits: f003_int[11..21]
-    stream.serialize_bits(&mut ((f2 >> 11) as u32), 10)?;
-    debug_assert!(value.f004_cf32.is_finite() && value.f004_cf32 >= 0.0_f32 && value.f004_cf32 <= 2000.0_f32, "f004_cf32 out of range [0.0_f32, 2000.0_f32]");
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 11) as u32), 10)?;
+    debug_assert!(schema_value.f004_cf32.is_finite() && schema_value.f004_cf32 >= 0.0_f32 && schema_value.f004_cf32 <= 2000.0_f32, "f004_cf32 out of range [0.0_f32, 2000.0_f32]");
     {
-        let mut compressed_value = value.f004_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
+        let mut schema_compressed_value = schema_value.f004_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
     }
-    debug_assert!(value.f005_uint <= 7316, "f005_uint out of range [0, 7316]");
-    debug_assert!(value.f006_int >= -1513 && value.f006_int <= 1513, "f006_int out of range [-1513, 1513]");
-    debug_assert!(value.f007_f32.is_finite(), "f007_f32 is not finite");
-    debug_assert!(value.f009_int >= -22 && value.f009_int <= 22, "f009_int out of range [-22, 22]");
-    debug_assert!(value.f010_f32.is_finite(), "f010_f32 is not finite");
-    debug_assert!(value.f011_bits < 1 << 10, "f011_bits above the bits(10) wire width");
-    let f0: u64 = u64::from(value.f005_uint as u32);
-    let f1: u64 = u64::from((value.f006_int as u32).wrapping_sub((-1513_i32) as u32));
-    let f2: u64 = u64::from(value.f007_f32.to_bits());
-    let f3: u64 = value.f008_u64;
-    let f4: u64 = u64::from((value.f009_int as u32).wrapping_sub((-22_i32) as u32));
-    let f5: u64 = u64::from(value.f010_f32.to_bits());
-    let f6: u64 = u64::from(value.f011_bits);
-    let f7: u64 = u64::from(value.f012_bool);
+    debug_assert!(schema_value.f005_uint <= 7316, "f005_uint out of range [0, 7316]");
+    debug_assert!(schema_value.f006_int >= -1513 && schema_value.f006_int <= 1513, "f006_int out of range [-1513, 1513]");
+    debug_assert!(schema_value.f007_f32.is_finite(), "f007_f32 is not finite");
+    debug_assert!(schema_value.f009_int >= -22 && schema_value.f009_int <= 22, "f009_int out of range [-22, 22]");
+    debug_assert!(schema_value.f010_f32.is_finite(), "f010_f32 is not finite");
+    debug_assert!(schema_value.f011_bits < 1 << 10, "f011_bits above the bits(10) wire width");
+    let schema_f0: u64 = u64::from(schema_value.f005_uint as u32);
+    let schema_f1: u64 = u64::from((schema_value.f006_int as u32).wrapping_sub((-1513_i32) as u32));
+    let schema_f2: u64 = u64::from(schema_value.f007_f32.to_bits());
+    let schema_f3: u64 = schema_value.f008_u64;
+    let schema_f4: u64 = u64::from((schema_value.f009_int as u32).wrapping_sub((-22_i32) as u32));
+    let schema_f5: u64 = u64::from(schema_value.f010_f32.to_bits());
+    let schema_f6: u64 = u64::from(schema_value.f011_bits);
+    let schema_f7: u64 = u64::from(schema_value.f012_bool);
     // word 0, 32 bits: f005_uint[0..13], f006_int[0..12], f007_f32[0..7]
-    stream.serialize_bits(&mut ((f0 | (f1 << 13) | (f2 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 13) | (schema_f2 << 25)) as u32), 32)?;
     // word 1, 32 bits: f007_f32[7..32], f008_u64[0..7]
-    stream.serialize_bits(&mut (((f2 >> 7) | (f3 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 7) | (schema_f3 << 25)) as u32), 32)?;
     // word 2, 32 bits: f008_u64[7..39]
-    stream.serialize_bits(&mut ((f3 >> 7) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f3 >> 7) as u32), 32)?;
     // word 3, 32 bits: f008_u64[39..64], f009_int[0..6], f010_f32[0..1]
-    stream.serialize_bits(&mut (((f3 >> 39) | (f4 << 25) | (f5 << 31)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f3 >> 39) | (schema_f4 << 25) | (schema_f5 << 31)) as u32), 32)?;
     // word 4, 32 bits: f010_f32[1..32], f011_bits[0..1]
-    stream.serialize_bits(&mut (((f5 >> 1) | (f6 << 31)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f5 >> 1) | (schema_f6 << 31)) as u32), 32)?;
     // word 5, 10 bits: f011_bits[1..10], f012_bool[0..1]
-    stream.serialize_bits(&mut (((f6 >> 1) | (f7 << 9)) as u32), 10)?;
-    if value.f012_bool {
-        debug_assert!(value.f013_f32.is_finite(), "f013_f32 is not finite");
-        debug_assert!(value.f014_uint <= 775, "f014_uint out of range [0, 775]");
-        debug_assert!(value.f015_int >= -21 && value.f015_int <= 21, "f015_int out of range [-21, 21]");
-        let f0: u64 = u64::from(value.f013_f32.to_bits());
-        let f1: u64 = u64::from(value.f014_uint as u32);
-        let f2: u64 = u64::from((value.f015_int as u32).wrapping_sub((-21_i32) as u32));
+    schema_stream.serialize_bits(&mut (((schema_f6 >> 1) | (schema_f7 << 9)) as u32), 10)?;
+    if schema_value.f012_bool {
+        debug_assert!(schema_value.f013_f32.is_finite(), "f013_f32 is not finite");
+        debug_assert!(schema_value.f014_uint <= 775, "f014_uint out of range [0, 775]");
+        debug_assert!(schema_value.f015_int >= -21 && schema_value.f015_int <= 21, "f015_int out of range [-21, 21]");
+        let schema_f0: u64 = u64::from(schema_value.f013_f32.to_bits());
+        let schema_f1: u64 = u64::from(schema_value.f014_uint as u32);
+        let schema_f2: u64 = u64::from((schema_value.f015_int as u32).wrapping_sub((-21_i32) as u32));
         // word 0, 32 bits: f013_f32[0..32]
-        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
         // word 1, 16 bits: f014_uint[0..10], f015_int[0..6]
-        stream.serialize_bits(&mut ((f1 | (f2 << 10)) as u32), 16)?;
-        debug_assert!(value.f016_fixed >= -37748736 && value.f016_fixed <= 37748736, "f016_fixed raw value out of range [-37748736, 37748736]");
+        schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 10)) as u32), 16)?;
+        debug_assert!(schema_value.f016_fixed >= -37748736 && schema_value.f016_fixed <= 37748736, "f016_fixed raw value out of range [-37748736, 37748736]");
         {
-            let mut fixed_value = value.f016_fixed;
-            stream.serialize_fixed(&mut fixed_value, 12, 20, -36, 36)?;
+            let mut schema_fixed_value = schema_value.f016_fixed;
+            schema_stream.serialize_fixed(&mut schema_fixed_value, 12, 20, -36, 36)?;
         }
-        debug_assert!(value.f017_uint <= 4606, "f017_uint out of range [0, 4606]");
+        debug_assert!(schema_value.f017_uint <= 4606, "f017_uint out of range [0, 4606]");
         {
-            let mut offset_value = value.f017_uint as u32;
-            stream.serialize_bits(&mut offset_value, 13)?;
+            let mut schema_offset_value = schema_value.f017_uint as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 13)?;
         }
     }
-    debug_assert!(value.f018_int >= -834 && value.f018_int <= 834, "f018_int out of range [-834, 834]");
-    debug_assert!(value.f019_f64.is_finite(), "f019_f64 is not finite");
-    debug_assert!(value.f020_f32.is_finite(), "f020_f32 is not finite");
-    let f0: u64 = u64::from((value.f018_int as u32).wrapping_sub((-834_i32) as u32));
-    let f1: u64 = value.f019_f64.to_bits();
-    let f2: u64 = u64::from(value.f020_f32.to_bits());
+    debug_assert!(schema_value.f018_int >= -834 && schema_value.f018_int <= 834, "f018_int out of range [-834, 834]");
+    debug_assert!(schema_value.f019_f64.is_finite(), "f019_f64 is not finite");
+    debug_assert!(schema_value.f020_f32.is_finite(), "f020_f32 is not finite");
+    let schema_f0: u64 = u64::from((schema_value.f018_int as u32).wrapping_sub((-834_i32) as u32));
+    let schema_f1: u64 = schema_value.f019_f64.to_bits();
+    let schema_f2: u64 = u64::from(schema_value.f020_f32.to_bits());
     // word 0, 32 bits: f018_int[0..11], f019_f64[0..21]
-    stream.serialize_bits(&mut ((f0 | (f1 << 11)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 11)) as u32), 32)?;
     // word 1, 32 bits: f019_f64[21..53]
-    stream.serialize_bits(&mut ((f1 >> 21) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 21) as u32), 32)?;
     // word 2, 32 bits: f019_f64[53..64], f020_f32[0..21]
-    stream.serialize_bits(&mut (((f1 >> 53) | (f2 << 11)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 53) | (schema_f2 << 11)) as u32), 32)?;
     // word 3, 11 bits: f020_f32[21..32]
-    stream.serialize_bits(&mut ((f2 >> 21) as u32), 11)?;
-    debug_assert!(value.f021_ufixed <= 102977536, "f021_ufixed raw value out of range [0, 102977536]");
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 21) as u32), 11)?;
+    debug_assert!(schema_value.f021_ufixed <= 102977536, "f021_ufixed raw value out of range [0, 102977536]");
     {
-        let mut fixed_value = value.f021_ufixed;
-        stream.serialize_fixed(&mut fixed_value, 20, 12, 0, 25141)?;
+        let mut schema_fixed_value = schema_value.f021_ufixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 20, 12, 0, 25141)?;
     }
-    debug_assert!(value.f022_f32.is_finite(), "f022_f32 is not finite");
-    debug_assert!(value.f023_bits < 1 << 25, "f023_bits above the bits(25) wire width");
-    debug_assert!(value.f024_f32.is_finite(), "f024_f32 is not finite");
-    let f0: u64 = u64::from(value.f022_f32.to_bits());
-    let f1: u64 = u64::from(value.f023_bits);
-    let f2: u64 = u64::from(value.f024_f32.to_bits());
+    debug_assert!(schema_value.f022_f32.is_finite(), "f022_f32 is not finite");
+    debug_assert!(schema_value.f023_bits < 1 << 25, "f023_bits above the bits(25) wire width");
+    debug_assert!(schema_value.f024_f32.is_finite(), "f024_f32 is not finite");
+    let schema_f0: u64 = u64::from(schema_value.f022_f32.to_bits());
+    let schema_f1: u64 = u64::from(schema_value.f023_bits);
+    let schema_f2: u64 = u64::from(schema_value.f024_f32.to_bits());
     // word 0, 32 bits: f022_f32[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: f023_bits[0..25], f024_f32[0..7]
-    stream.serialize_bits(&mut ((f1 | (f2 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 25)) as u32), 32)?;
     // word 2, 25 bits: f024_f32[7..32]
-    stream.serialize_bits(&mut ((f2 >> 7) as u32), 25)?;
-    debug_assert!(value.f025_fixed >= -30464 && value.f025_fixed <= 30464, "f025_fixed raw value out of range [-30464, 30464]");
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 7) as u32), 25)?;
+    debug_assert!(schema_value.f025_fixed >= -30464 && schema_value.f025_fixed <= 30464, "f025_fixed raw value out of range [-30464, 30464]");
     {
-        let mut fixed_value = value.f025_fixed;
-        stream.serialize_fixed(&mut fixed_value, 8, 8, -119, 119)?;
+        let mut schema_fixed_value = schema_value.f025_fixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 8, 8, -119, 119)?;
     }
-    debug_assert!(value.f026_bits < 1 << 9, "f026_bits above the bits(9) wire width");
+    debug_assert!(schema_value.f026_bits < 1 << 9, "f026_bits above the bits(9) wire width");
     {
-        let mut raw_value = value.f026_bits;
-        stream.serialize_bits(&mut raw_value, 9)?;
+        let mut schema_raw_value = schema_value.f026_bits;
+        schema_stream.serialize_bits(&mut schema_raw_value, 9)?;
     }
-    debug_assert!(value.f027_cf32.is_finite() && value.f027_cf32 >= -2.0_f32 && value.f027_cf32 <= 2.0_f32, "f027_cf32 out of range [-2.0_f32, 2.0_f32]");
+    debug_assert!(schema_value.f027_cf32.is_finite() && schema_value.f027_cf32 >= -2.0_f32 && schema_value.f027_cf32 <= 2.0_f32, "f027_cf32 out of range [-2.0_f32, 2.0_f32]");
     {
-        let mut compressed_value = value.f027_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
+        let mut schema_compressed_value = schema_value.f027_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     }
-    debug_assert!(value.f028_bits < 1 << 4, "f028_bits above the bits(4) wire width");
-    debug_assert!(value.f030_f32.is_finite(), "f030_f32 is not finite");
-    debug_assert!(value.f031_bits < 1 << 1, "f031_bits above the bits(1) wire width");
-    debug_assert!(value.f032_int >= -3 && value.f032_int <= 3, "f032_int out of range [-3, 3]");
-    debug_assert!(value.f033_uint <= 142780, "f033_uint out of range [0, 142780]");
-    debug_assert!(value.f034_uint <= 14149, "f034_uint out of range [0, 14149]");
-    debug_assert!(value.f035_bits < 1 << 9, "f035_bits above the bits(9) wire width");
-    debug_assert!(value.f036_enum.0 <= 5, "f036_enum above the PacketMode wire range [0, 5]");
-    debug_assert!(value.f039_bits < 1 << 19, "f039_bits above the bits(19) wire width");
-    let f0: u64 = u64::from(value.f028_bits);
-    let f1: u64 = value.f029_i64 as u64;
-    let f2: u64 = u64::from(value.f030_f32.to_bits());
-    let f3: u64 = u64::from(value.f031_bits);
-    let f4: u64 = u64::from((value.f032_int as u32).wrapping_sub((-3_i32) as u32));
-    let f5: u64 = u64::from(value.f033_uint);
-    let f6: u64 = u64::from(value.f034_uint as u32);
-    let f7: u64 = u64::from(value.f035_bits);
-    let f8: u64 = u64::from(value.f036_enum.0);
-    let f9: u64 = u64::from(value.f037_bool);
-    let f10: u64 = u64::from(value.f038_bool);
-    let f11: u64 = u64::from(value.f039_bits);
+    debug_assert!(schema_value.f028_bits < 1 << 4, "f028_bits above the bits(4) wire width");
+    debug_assert!(schema_value.f030_f32.is_finite(), "f030_f32 is not finite");
+    debug_assert!(schema_value.f031_bits < 1 << 1, "f031_bits above the bits(1) wire width");
+    debug_assert!(schema_value.f032_int >= -3 && schema_value.f032_int <= 3, "f032_int out of range [-3, 3]");
+    debug_assert!(schema_value.f033_uint <= 142780, "f033_uint out of range [0, 142780]");
+    debug_assert!(schema_value.f034_uint <= 14149, "f034_uint out of range [0, 14149]");
+    debug_assert!(schema_value.f035_bits < 1 << 9, "f035_bits above the bits(9) wire width");
+    debug_assert!(schema_value.f036_enum.0 <= 5, "f036_enum above the PacketMode wire range [0, 5]");
+    debug_assert!(schema_value.f039_bits < 1 << 19, "f039_bits above the bits(19) wire width");
+    let schema_f0: u64 = u64::from(schema_value.f028_bits);
+    let schema_f1: u64 = schema_value.f029_i64 as u64;
+    let schema_f2: u64 = u64::from(schema_value.f030_f32.to_bits());
+    let schema_f3: u64 = u64::from(schema_value.f031_bits);
+    let schema_f4: u64 = u64::from((schema_value.f032_int as u32).wrapping_sub((-3_i32) as u32));
+    let schema_f5: u64 = u64::from(schema_value.f033_uint);
+    let schema_f6: u64 = u64::from(schema_value.f034_uint as u32);
+    let schema_f7: u64 = u64::from(schema_value.f035_bits);
+    let schema_f8: u64 = u64::from(schema_value.f036_enum.0);
+    let schema_f9: u64 = u64::from(schema_value.f037_bool);
+    let schema_f10: u64 = u64::from(schema_value.f038_bool);
+    let schema_f11: u64 = u64::from(schema_value.f039_bits);
     // word 0, 32 bits: f028_bits[0..4], f029_i64[0..28]
-    stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 4)) as u32), 32)?;
     // word 1, 32 bits: f029_i64[28..60]
-    stream.serialize_bits(&mut ((f1 >> 28) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 28) as u32), 32)?;
     // word 2, 32 bits: f029_i64[60..64], f030_f32[0..28]
-    stream.serialize_bits(&mut (((f1 >> 60) | (f2 << 4)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 60) | (schema_f2 << 4)) as u32), 32)?;
     // word 3, 32 bits: f030_f32[28..32], f031_bits[0..1], f032_int[0..3], f033_uint[0..18], f034_uint[0..6]
-    stream.serialize_bits(&mut (((f2 >> 28) | (f3 << 4) | (f4 << 5) | (f5 << 8) | (f6 << 26)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 28) | (schema_f3 << 4) | (schema_f4 << 5) | (schema_f5 << 8) | (schema_f6 << 26)) as u32), 32)?;
     // word 4, 32 bits: f034_uint[6..14], f035_bits[0..9], f036_enum[0..3], f037_bool[0..1], f038_bool[0..1], f039_bits[0..10]
-    stream.serialize_bits(&mut (((f6 >> 6) | (f7 << 8) | (f8 << 17) | (f9 << 20) | (f10 << 21) | (f11 << 22)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f6 >> 6) | (schema_f7 << 8) | (schema_f8 << 17) | (schema_f9 << 20) | (schema_f10 << 21) | (schema_f11 << 22)) as u32), 32)?;
     // word 5, 9 bits: f039_bits[10..19]
-    stream.serialize_bits(&mut ((f11 >> 10) as u32), 9)?;
-    debug_assert!(value.f040_fixed >= -20480 && value.f040_fixed <= 20480, "f040_fixed raw value out of range [-20480, 20480]");
+    schema_stream.serialize_bits(&mut ((schema_f11 >> 10) as u32), 9)?;
+    debug_assert!(schema_value.f040_fixed >= -20480 && schema_value.f040_fixed <= 20480, "f040_fixed raw value out of range [-20480, 20480]");
     {
-        let mut fixed_value = value.f040_fixed;
-        stream.serialize_fixed(&mut fixed_value, 4, 12, -5, 5)?;
+        let mut schema_fixed_value = schema_value.f040_fixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 4, 12, -5, 5)?;
     }
-    debug_assert!(value.f041_int >= -55 && value.f041_int <= 55, "f041_int out of range [-55, 55]");
-    debug_assert!(value.f042_bits < 1 << 30, "f042_bits above the bits(30) wire width");
-    let f0: u64 = u64::from((value.f041_int as u32).wrapping_sub((-55_i32) as u32));
-    let f1: u64 = u64::from(value.f042_bits);
-    let f2: u64 = u64::from(value.f043_bool);
+    debug_assert!(schema_value.f041_int >= -55 && schema_value.f041_int <= 55, "f041_int out of range [-55, 55]");
+    debug_assert!(schema_value.f042_bits < 1 << 30, "f042_bits above the bits(30) wire width");
+    let schema_f0: u64 = u64::from((schema_value.f041_int as u32).wrapping_sub((-55_i32) as u32));
+    let schema_f1: u64 = u64::from(schema_value.f042_bits);
+    let schema_f2: u64 = u64::from(schema_value.f043_bool);
     // word 0, 32 bits: f041_int[0..7], f042_bits[0..25]
-    stream.serialize_bits(&mut ((f0 | (f1 << 7)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 7)) as u32), 32)?;
     // word 1, 6 bits: f042_bits[25..30], f043_bool[0..1]
-    stream.serialize_bits(&mut (((f1 >> 25) | (f2 << 5)) as u32), 6)?;
-    if value.f043_bool {
-        debug_assert!(value.f044_f32.is_finite(), "f044_f32 is not finite");
-        debug_assert!(value.f045_bits < 1 << 12, "f045_bits above the bits(12) wire width");
-        debug_assert!(value.f046_uint <= 76063, "f046_uint out of range [0, 76063]");
-        debug_assert!(value.f047_int >= -430976 && value.f047_int <= 430976, "f047_int out of range [-430976, 430976]");
-        let f0: u64 = u64::from(value.f044_f32.to_bits());
-        let f1: u64 = u64::from(value.f045_bits);
-        let f2: u64 = u64::from(value.f046_uint);
-        let f3: u64 = u64::from((value.f047_int as u32).wrapping_sub((-430976_i32) as u32));
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 25) | (schema_f2 << 5)) as u32), 6)?;
+    if schema_value.f043_bool {
+        debug_assert!(schema_value.f044_f32.is_finite(), "f044_f32 is not finite");
+        debug_assert!(schema_value.f045_bits < 1 << 12, "f045_bits above the bits(12) wire width");
+        debug_assert!(schema_value.f046_uint <= 76063, "f046_uint out of range [0, 76063]");
+        debug_assert!(schema_value.f047_int >= -430976 && schema_value.f047_int <= 430976, "f047_int out of range [-430976, 430976]");
+        let schema_f0: u64 = u64::from(schema_value.f044_f32.to_bits());
+        let schema_f1: u64 = u64::from(schema_value.f045_bits);
+        let schema_f2: u64 = u64::from(schema_value.f046_uint);
+        let schema_f3: u64 = u64::from((schema_value.f047_int as u32).wrapping_sub((-430976_i32) as u32));
         // word 0, 32 bits: f044_f32[0..32]
-        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
         // word 1, 32 bits: f045_bits[0..12], f046_uint[0..17], f047_int[0..3]
-        stream.serialize_bits(&mut ((f1 | (f2 << 12) | (f3 << 29)) as u32), 32)?;
+        schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 12) | (schema_f3 << 29)) as u32), 32)?;
         // word 2, 17 bits: f047_int[3..20]
-        stream.serialize_bits(&mut ((f3 >> 3) as u32), 17)?;
+        schema_stream.serialize_bits(&mut ((schema_f3 >> 3) as u32), 17)?;
     }
     {
-        let mut float_value = value.f048_f64;
-        stream.serialize_f64(&mut float_value)?;
+        let mut schema_float_value = schema_value.f048_f64;
+        schema_stream.serialize_f64(&mut schema_float_value)?;
     }
-    debug_assert!(value.f049_ufixed <= 49152, "f049_ufixed raw value out of range [0, 49152]");
+    debug_assert!(schema_value.f049_ufixed <= 49152, "f049_ufixed raw value out of range [0, 49152]");
     {
-        let mut fixed_value = value.f049_ufixed;
-        stream.serialize_fixed(&mut fixed_value, 2, 14, 0, 3)?;
+        let mut schema_fixed_value = schema_value.f049_ufixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 14, 0, 3)?;
     }
     {
-        let mut bool_value = value.f050_bool;
-        stream.serialize_bool(&mut bool_value)?;
+        let mut schema_bool_value = schema_value.f050_bool;
+        schema_stream.serialize_bool(&mut schema_bool_value)?;
     }
-    if value.f050_bool {
-        debug_assert!(value.f052_int >= -57 && value.f052_int <= 57, "f052_int out of range [-57, 57]");
-        debug_assert!(value.f053_f32.is_finite(), "f053_f32 is not finite");
-        debug_assert!(value.f054_int >= -35 && value.f054_int <= 35, "f054_int out of range [-35, 35]");
-        let f0: u64 = u64::from(value.f051_bool);
-        let f1: u64 = u64::from((value.f052_int as u32).wrapping_sub((-57_i32) as u32));
-        let f2: u64 = u64::from(value.f053_f32.to_bits());
-        let f3: u64 = u64::from((value.f054_int as u32).wrapping_sub((-35_i32) as u32));
+    if schema_value.f050_bool {
+        debug_assert!(schema_value.f052_int >= -57 && schema_value.f052_int <= 57, "f052_int out of range [-57, 57]");
+        debug_assert!(schema_value.f053_f32.is_finite(), "f053_f32 is not finite");
+        debug_assert!(schema_value.f054_int >= -35 && schema_value.f054_int <= 35, "f054_int out of range [-35, 35]");
+        let schema_f0: u64 = u64::from(schema_value.f051_bool);
+        let schema_f1: u64 = u64::from((schema_value.f052_int as u32).wrapping_sub((-57_i32) as u32));
+        let schema_f2: u64 = u64::from(schema_value.f053_f32.to_bits());
+        let schema_f3: u64 = u64::from((schema_value.f054_int as u32).wrapping_sub((-35_i32) as u32));
         // word 0, 32 bits: f051_bool[0..1], f052_int[0..7], f053_f32[0..24]
-        stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 8)) as u32), 32)?;
+        schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 1) | (schema_f2 << 8)) as u32), 32)?;
         // word 1, 15 bits: f053_f32[24..32], f054_int[0..7]
-        stream.serialize_bits(&mut (((f2 >> 24) | (f3 << 8)) as u32), 15)?;
+        schema_stream.serialize_bits(&mut (((schema_f2 >> 24) | (schema_f3 << 8)) as u32), 15)?;
     }
-    debug_assert!(value.f056_int >= -13 && value.f056_int <= 13, "f056_int out of range [-13, 13]");
-    debug_assert!(value.f057_int >= -15 && value.f057_int <= 15, "f057_int out of range [-15, 15]");
-    debug_assert!(value.f058_f32.is_finite(), "f058_f32 is not finite");
-    debug_assert!(value.f059_f64.is_finite(), "f059_f64 is not finite");
-    debug_assert!(value.f060_bits < 1 << 8, "f060_bits above the bits(8) wire width");
-    let f0: u64 = u64::from(value.f055_bool);
-    let f1: u64 = u64::from((value.f056_int as u32).wrapping_sub((-13_i32) as u32));
-    let f2: u64 = u64::from((value.f057_int as u32).wrapping_sub((-15_i32) as u32));
-    let f3: u64 = u64::from(value.f058_f32.to_bits());
-    let f4: u64 = value.f059_f64.to_bits();
-    let f5: u64 = u64::from(value.f060_bits);
+    debug_assert!(schema_value.f056_int >= -13 && schema_value.f056_int <= 13, "f056_int out of range [-13, 13]");
+    debug_assert!(schema_value.f057_int >= -15 && schema_value.f057_int <= 15, "f057_int out of range [-15, 15]");
+    debug_assert!(schema_value.f058_f32.is_finite(), "f058_f32 is not finite");
+    debug_assert!(schema_value.f059_f64.is_finite(), "f059_f64 is not finite");
+    debug_assert!(schema_value.f060_bits < 1 << 8, "f060_bits above the bits(8) wire width");
+    let schema_f0: u64 = u64::from(schema_value.f055_bool);
+    let schema_f1: u64 = u64::from((schema_value.f056_int as u32).wrapping_sub((-13_i32) as u32));
+    let schema_f2: u64 = u64::from((schema_value.f057_int as u32).wrapping_sub((-15_i32) as u32));
+    let schema_f3: u64 = u64::from(schema_value.f058_f32.to_bits());
+    let schema_f4: u64 = schema_value.f059_f64.to_bits();
+    let schema_f5: u64 = u64::from(schema_value.f060_bits);
     // word 0, 32 bits: f055_bool[0..1], f056_int[0..5], f057_int[0..5], f058_f32[0..21]
-    stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 6) | (f3 << 11)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 1) | (schema_f2 << 6) | (schema_f3 << 11)) as u32), 32)?;
     // word 1, 32 bits: f058_f32[21..32], f059_f64[0..21]
-    stream.serialize_bits(&mut (((f3 >> 21) | (f4 << 11)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f3 >> 21) | (schema_f4 << 11)) as u32), 32)?;
     // word 2, 32 bits: f059_f64[21..53]
-    stream.serialize_bits(&mut ((f4 >> 21) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f4 >> 21) as u32), 32)?;
     // word 3, 19 bits: f059_f64[53..64], f060_bits[0..8]
-    stream.serialize_bits(&mut (((f4 >> 53) | (f5 << 11)) as u32), 19)?;
-    debug_assert!(value.f061_cf32.is_finite() && value.f061_cf32 >= -90.0_f32 && value.f061_cf32 <= 90.0_f32, "f061_cf32 out of range [-90.0_f32, 90.0_f32]");
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 53) | (schema_f5 << 11)) as u32), 19)?;
+    debug_assert!(schema_value.f061_cf32.is_finite() && schema_value.f061_cf32 >= -90.0_f32 && schema_value.f061_cf32 <= 90.0_f32, "f061_cf32 out of range [-90.0_f32, 90.0_f32]");
     {
-        let mut compressed_value = value.f061_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
+        let mut schema_compressed_value = schema_value.f061_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
     }
-    debug_assert!(value.f062_uint <= 503, "f062_uint out of range [0, 503]");
-    debug_assert!(value.f064_uint <= 299, "f064_uint out of range [0, 299]");
-    let f0: u64 = u64::from(value.f062_uint as u32);
-    let f1: u64 = value.f063_i64 as u64;
-    let f2: u64 = u64::from(value.f064_uint as u32);
+    debug_assert!(schema_value.f062_uint <= 503, "f062_uint out of range [0, 503]");
+    debug_assert!(schema_value.f064_uint <= 299, "f064_uint out of range [0, 299]");
+    let schema_f0: u64 = u64::from(schema_value.f062_uint as u32);
+    let schema_f1: u64 = schema_value.f063_i64 as u64;
+    let schema_f2: u64 = u64::from(schema_value.f064_uint as u32);
     // word 0, 32 bits: f062_uint[0..9], f063_i64[0..23]
-    stream.serialize_bits(&mut ((f0 | (f1 << 9)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 9)) as u32), 32)?;
     // word 1, 32 bits: f063_i64[23..55]
-    stream.serialize_bits(&mut ((f1 >> 23) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 23) as u32), 32)?;
     // word 2, 18 bits: f063_i64[55..64], f064_uint[0..9]
-    stream.serialize_bits(&mut (((f1 >> 55) | (f2 << 9)) as u32), 18)?;
-    debug_assert!(value.f065_cf32.is_finite() && value.f065_cf32 >= 0.0_f32 && value.f065_cf32 <= 30.0_f32, "f065_cf32 out of range [0.0_f32, 30.0_f32]");
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 55) | (schema_f2 << 9)) as u32), 18)?;
+    debug_assert!(schema_value.f065_cf32.is_finite() && schema_value.f065_cf32 >= 0.0_f32 && schema_value.f065_cf32 <= 30.0_f32, "f065_cf32 out of range [0.0_f32, 30.0_f32]");
     {
-        let mut compressed_value = value.f065_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
+        let mut schema_compressed_value = schema_value.f065_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
     }
-    debug_assert!(value.f066_ufixed <= 32768, "f066_ufixed raw value out of range [0, 32768]");
+    debug_assert!(schema_value.f066_ufixed <= 32768, "f066_ufixed raw value out of range [0, 32768]");
     {
-        let mut fixed_value = value.f066_ufixed;
-        stream.serialize_fixed(&mut fixed_value, 2, 14, 0, 2)?;
+        let mut schema_fixed_value = schema_value.f066_ufixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 14, 0, 2)?;
     }
-    debug_assert!(value.f067_cf32.is_finite() && value.f067_cf32 >= -100.0_f32 && value.f067_cf32 <= 100.0_f32, "f067_cf32 out of range [-100.0_f32, 100.0_f32]");
+    debug_assert!(schema_value.f067_cf32.is_finite() && schema_value.f067_cf32 >= -100.0_f32 && schema_value.f067_cf32 <= 100.0_f32, "f067_cf32 out of range [-100.0_f32, 100.0_f32]");
     {
-        let mut compressed_value = value.f067_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
+        let mut schema_compressed_value = schema_value.f067_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
     }
-    debug_assert!(value.f068_cf32.is_finite() && value.f068_cf32 >= 0.0_f32 && value.f068_cf32 <= 2000.0_f32, "f068_cf32 out of range [0.0_f32, 2000.0_f32]");
+    debug_assert!(schema_value.f068_cf32.is_finite() && schema_value.f068_cf32 >= 0.0_f32 && schema_value.f068_cf32 <= 2000.0_f32, "f068_cf32 out of range [0.0_f32, 2000.0_f32]");
     {
-        let mut compressed_value = value.f068_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
+        let mut schema_compressed_value = schema_value.f068_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
     }
-    debug_assert!(value.f069_bits < 1 << 11, "f069_bits above the bits(11) wire width");
-    debug_assert!(value.f070_uint <= 2, "f070_uint out of range [0, 2]");
-    let f0: u64 = u64::from(value.f069_bits);
-    let f1: u64 = u64::from(value.f070_uint as u32);
+    debug_assert!(schema_value.f069_bits < 1 << 11, "f069_bits above the bits(11) wire width");
+    debug_assert!(schema_value.f070_uint <= 2, "f070_uint out of range [0, 2]");
+    let schema_f0: u64 = u64::from(schema_value.f069_bits);
+    let schema_f1: u64 = u64::from(schema_value.f070_uint as u32);
     // word 0, 13 bits: f069_bits[0..11], f070_uint[0..2]
-    stream.serialize_bits(&mut ((f0 | (f1 << 11)) as u32), 13)?;
-    debug_assert!(value.f071_cf32.is_finite() && value.f071_cf32 >= 0.0_f32 && value.f071_cf32 <= 10.0_f32, "f071_cf32 out of range [0.0_f32, 10.0_f32]");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 11)) as u32), 13)?;
+    debug_assert!(schema_value.f071_cf32.is_finite() && schema_value.f071_cf32 >= 0.0_f32 && schema_value.f071_cf32 <= 10.0_f32, "f071_cf32 out of range [0.0_f32, 10.0_f32]");
     {
-        let mut compressed_value = value.f071_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
+        let mut schema_compressed_value = schema_value.f071_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
     }
-    debug_assert!(value.f072_cf32.is_finite() && value.f072_cf32 >= 0.0_f32 && value.f072_cf32 <= 100.0_f32, "f072_cf32 out of range [0.0_f32, 100.0_f32]");
+    debug_assert!(schema_value.f072_cf32.is_finite() && schema_value.f072_cf32 >= 0.0_f32 && schema_value.f072_cf32 <= 100.0_f32, "f072_cf32 out of range [0.0_f32, 100.0_f32]");
     {
-        let mut compressed_value = value.f072_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.f072_cf32;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.f073_int >= -4 && value.f073_int <= 4, "f073_int out of range [-4, 4]");
-    let f0: u64 = u64::from((value.f073_int as u32).wrapping_sub((-4_i32) as u32));
-    let f1: u64 = u64::from(value.f074_bool);
+    debug_assert!(schema_value.f073_int >= -4 && schema_value.f073_int <= 4, "f073_int out of range [-4, 4]");
+    let schema_f0: u64 = u64::from((schema_value.f073_int as u32).wrapping_sub((-4_i32) as u32));
+    let schema_f1: u64 = u64::from(schema_value.f074_bool);
     // word 0, 5 bits: f073_int[0..4], f074_bool[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 5)?;
-    if value.f074_bool {
-        debug_assert!(value.f076_int >= -26218 && value.f076_int <= 26218, "f076_int out of range [-26218, 26218]");
-        debug_assert!(value.f077_int >= -17 && value.f077_int <= 17, "f077_int out of range [-17, 17]");
-        debug_assert!(value.f078_bits < 1 << 9, "f078_bits above the bits(9) wire width");
-        debug_assert!(value.f079_uint <= 17, "f079_uint out of range [0, 17]");
-        let f0: u64 = value.f075_u64;
-        let f1: u64 = u64::from((value.f076_int as u32).wrapping_sub((-26218_i32) as u32));
-        let f2: u64 = u64::from((value.f077_int as u32).wrapping_sub((-17_i32) as u32));
-        let f3: u64 = u64::from(value.f078_bits);
-        let f4: u64 = u64::from(value.f079_uint as u32);
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 4)) as u32), 5)?;
+    if schema_value.f074_bool {
+        debug_assert!(schema_value.f076_int >= -26218 && schema_value.f076_int <= 26218, "f076_int out of range [-26218, 26218]");
+        debug_assert!(schema_value.f077_int >= -17 && schema_value.f077_int <= 17, "f077_int out of range [-17, 17]");
+        debug_assert!(schema_value.f078_bits < 1 << 9, "f078_bits above the bits(9) wire width");
+        debug_assert!(schema_value.f079_uint <= 17, "f079_uint out of range [0, 17]");
+        let schema_f0: u64 = schema_value.f075_u64;
+        let schema_f1: u64 = u64::from((schema_value.f076_int as u32).wrapping_sub((-26218_i32) as u32));
+        let schema_f2: u64 = u64::from((schema_value.f077_int as u32).wrapping_sub((-17_i32) as u32));
+        let schema_f3: u64 = u64::from(schema_value.f078_bits);
+        let schema_f4: u64 = u64::from(schema_value.f079_uint as u32);
         // word 0, 32 bits: f075_u64[0..32]
-        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
         // word 1, 32 bits: f075_u64[32..64]
-        stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+        schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
         // word 2, 32 bits: f076_int[0..16], f077_int[0..6], f078_bits[0..9], f079_uint[0..1]
-        stream.serialize_bits(&mut ((f1 | (f2 << 16) | (f3 << 22) | (f4 << 31)) as u32), 32)?;
+        schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 16) | (schema_f3 << 22) | (schema_f4 << 31)) as u32), 32)?;
         // word 3, 4 bits: f079_uint[1..5]
-        stream.serialize_bits(&mut ((f4 >> 1) as u32), 4)?;
+        schema_stream.serialize_bits(&mut ((schema_f4 >> 1) as u32), 4)?;
     }
-    debug_assert!(value.f081_bits < 1 << 29, "f081_bits above the bits(29) wire width");
-    debug_assert!(value.f082_bits < 1 << 25, "f082_bits above the bits(25) wire width");
-    debug_assert!(value.f083_enum.0 <= 5, "f083_enum above the PacketMode wire range [0, 5]");
-    let f0: u64 = u64::from(value.f080_bool);
-    let f1: u64 = u64::from(value.f081_bits);
-    let f2: u64 = u64::from(value.f082_bits);
-    let f3: u64 = u64::from(value.f083_enum.0);
+    debug_assert!(schema_value.f081_bits < 1 << 29, "f081_bits above the bits(29) wire width");
+    debug_assert!(schema_value.f082_bits < 1 << 25, "f082_bits above the bits(25) wire width");
+    debug_assert!(schema_value.f083_enum.0 <= 5, "f083_enum above the PacketMode wire range [0, 5]");
+    let schema_f0: u64 = u64::from(schema_value.f080_bool);
+    let schema_f1: u64 = u64::from(schema_value.f081_bits);
+    let schema_f2: u64 = u64::from(schema_value.f082_bits);
+    let schema_f3: u64 = u64::from(schema_value.f083_enum.0);
     // word 0, 32 bits: f080_bool[0..1], f081_bits[0..29], f082_bits[0..2]
-    stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 30)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 1) | (schema_f2 << 30)) as u32), 32)?;
     // word 1, 26 bits: f082_bits[2..25], f083_enum[0..3]
-    stream.serialize_bits(&mut (((f2 >> 2) | (f3 << 23)) as u32), 26)?;
-    debug_assert!(value.f084_ufixed <= 128, "f084_ufixed raw value out of range [0, 128]");
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 2) | (schema_f3 << 23)) as u32), 26)?;
+    debug_assert!(schema_value.f084_ufixed <= 128, "f084_ufixed raw value out of range [0, 128]");
     {
-        let mut fixed_value = value.f084_ufixed;
-        stream.serialize_fixed(&mut fixed_value, 1, 7, 0, 1)?;
+        let mut schema_fixed_value = schema_value.f084_ufixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 1, 7, 0, 1)?;
     }
-    debug_assert!(value.f085_bits < 1 << 21, "f085_bits above the bits(21) wire width");
-    debug_assert!(value.f086_uint <= 399, "f086_uint out of range [0, 399]");
-    debug_assert!(value.f087_f64.is_finite(), "f087_f64 is not finite");
-    debug_assert!(value.f088_int >= -694 && value.f088_int <= 694, "f088_int out of range [-694, 694]");
-    debug_assert!(value.f089_bits < 1 << 48, "f089_bits above the bits(48) wire width");
-    debug_assert!(value.f090_uint <= 214, "f090_uint out of range [0, 214]");
-    debug_assert!(value.f091_flags < 1 << 5, "f091_flags has a mask bit above the 5-bit wire width");
-    let f0: u64 = u64::from(value.f085_bits);
-    let f1: u64 = u64::from(value.f086_uint as u32);
-    let f2: u64 = value.f087_f64.to_bits();
-    let f3: u64 = u64::from((value.f088_int as u32).wrapping_sub((-694_i32) as u32));
-    let f4: u64 = value.f089_bits;
-    let f5: u64 = u64::from(value.f090_uint as u32);
-    let f6: u64 = value.f091_flags;
-    let f7: u64 = u64::from(value.f092_bool);
-    let f8: u64 = value.f093_bits;
-    let f9: u64 = u64::from(value.f094_bool);
+    debug_assert!(schema_value.f085_bits < 1 << 21, "f085_bits above the bits(21) wire width");
+    debug_assert!(schema_value.f086_uint <= 399, "f086_uint out of range [0, 399]");
+    debug_assert!(schema_value.f087_f64.is_finite(), "f087_f64 is not finite");
+    debug_assert!(schema_value.f088_int >= -694 && schema_value.f088_int <= 694, "f088_int out of range [-694, 694]");
+    debug_assert!(schema_value.f089_bits < 1 << 48, "f089_bits above the bits(48) wire width");
+    debug_assert!(schema_value.f090_uint <= 214, "f090_uint out of range [0, 214]");
+    debug_assert!(schema_value.f091_flags < 1 << 5, "f091_flags has a mask bit above the 5-bit wire width");
+    let schema_f0: u64 = u64::from(schema_value.f085_bits);
+    let schema_f1: u64 = u64::from(schema_value.f086_uint as u32);
+    let schema_f2: u64 = schema_value.f087_f64.to_bits();
+    let schema_f3: u64 = u64::from((schema_value.f088_int as u32).wrapping_sub((-694_i32) as u32));
+    let schema_f4: u64 = schema_value.f089_bits;
+    let schema_f5: u64 = u64::from(schema_value.f090_uint as u32);
+    let schema_f6: u64 = schema_value.f091_flags;
+    let schema_f7: u64 = u64::from(schema_value.f092_bool);
+    let schema_f8: u64 = schema_value.f093_bits;
+    let schema_f9: u64 = u64::from(schema_value.f094_bool);
     // word 0, 32 bits: f085_bits[0..21], f086_uint[0..9], f087_f64[0..2]
-    stream.serialize_bits(&mut ((f0 | (f1 << 21) | (f2 << 30)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 21) | (schema_f2 << 30)) as u32), 32)?;
     // word 1, 32 bits: f087_f64[2..34]
-    stream.serialize_bits(&mut ((f2 >> 2) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 2) as u32), 32)?;
     // word 2, 32 bits: f087_f64[34..64], f088_int[0..2]
-    stream.serialize_bits(&mut (((f2 >> 34) | (f3 << 30)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 34) | (schema_f3 << 30)) as u32), 32)?;
     // word 3, 32 bits: f088_int[2..11], f089_bits[0..23]
-    stream.serialize_bits(&mut (((f3 >> 2) | (f4 << 9)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f3 >> 2) | (schema_f4 << 9)) as u32), 32)?;
     // word 4, 32 bits: f089_bits[23..48], f090_uint[0..7]
-    stream.serialize_bits(&mut (((f4 >> 23) | (f5 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 23) | (schema_f5 << 25)) as u32), 32)?;
     // word 5, 32 bits: f090_uint[7..8], f091_flags[0..5], f092_bool[0..1], f093_bits[0..25]
-    stream.serialize_bits(&mut (((f5 >> 7) | (f6 << 1) | (f7 << 6) | (f8 << 7)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f5 >> 7) | (schema_f6 << 1) | (schema_f7 << 6) | (schema_f8 << 7)) as u32), 32)?;
     // word 6, 32 bits: f093_bits[25..57]
-    stream.serialize_bits(&mut ((f8 >> 25) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f8 >> 25) as u32), 32)?;
     // word 7, 8 bits: f093_bits[57..64], f094_bool[0..1]
-    stream.serialize_bits(&mut (((f8 >> 57) | (f9 << 7)) as u32), 8)?;
-    debug_assert!(value.f095_fixed >= -103350272 && value.f095_fixed <= 103350272, "f095_fixed raw value out of range [-103350272, 103350272]");
+    schema_stream.serialize_bits(&mut (((schema_f8 >> 57) | (schema_f9 << 7)) as u32), 8)?;
+    debug_assert!(schema_value.f095_fixed >= -103350272 && schema_value.f095_fixed <= 103350272, "f095_fixed raw value out of range [-103350272, 103350272]");
     {
-        let mut fixed_value = value.f095_fixed;
-        stream.serialize_fixed(&mut fixed_value, 16, 16, -1577, 1577)?;
+        let mut schema_fixed_value = schema_value.f095_fixed;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 16, 16, -1577, 1577)?;
     }
-    debug_assert!(value.f096_bits < 1 << 18, "f096_bits above the bits(18) wire width");
-    debug_assert!(value.f097_bits < 1 << 12, "f097_bits above the bits(12) wire width");
-    let f0: u64 = u64::from(value.f096_bits);
-    let f1: u64 = u64::from(value.f097_bits);
+    debug_assert!(schema_value.f096_bits < 1 << 18, "f096_bits above the bits(18) wire width");
+    debug_assert!(schema_value.f097_bits < 1 << 12, "f097_bits above the bits(12) wire width");
+    let schema_f0: u64 = u64::from(schema_value.f096_bits);
+    let schema_f1: u64 = u64::from(schema_value.f097_bits);
     // word 0, 30 bits: f096_bits[0..18], f097_bits[0..12]
-    stream.serialize_bits(&mut ((f0 | (f1 << 18)) as u32), 30)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 18)) as u32), 30)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> Result {
-    read_real_packet_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_real_packet(schema_stream: &mut ReadStream<'_>, schema_value: &mut RealPacket) -> Result {
+    read_real_packet_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_real_packet_body(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_real_packet_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut RealPacket) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f001_int[0..21], f002_f64[0..11]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f002_f64[11..43]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f002_f64[43..64], f003_int[0..11]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 10 bits: f003_int[11..21]
-    stream.serialize_bits(&mut c, 10)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 & 0x1fffff;
-    if v0 > 1610990 {
+    schema_stream.serialize_bits(&mut schema_c, 10)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1fffff;
+    if schema_v0 > 1610990 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f001_int = (v0 as u32).wrapping_add((-805495_i32) as u32) as i32;
-    let v1: u64 = (c0 >> 21) | (c1 << 11) | (c2 << 43);
-    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.f001_int = (schema_v0 as u32).wrapping_add((-805495_i32) as u32) as i32;
+    let schema_v1: u64 = (schema_c0 >> 21) | (schema_c1 << 11) | (schema_c2 << 43);
+    if schema_v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f002_f64 = f64::from_bits(v1);
-    let v2: u64 = ((c2 >> 21) | (c3 << 11)) & 0x1fffff;
-    if v2 > 1671794 {
+    schema_value.f002_f64 = f64::from_bits(schema_v1);
+    let schema_v2: u64 = ((schema_c2 >> 21) | (schema_c3 << 11)) & 0x1fffff;
+    if schema_v2 > 1671794 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f003_int = (v2 as u32).wrapping_add((-835897_i32) as u32) as i32;
-    stream.serialize_compressed_float_precomputed(&mut value.f004_cf32, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
-    let mut c: u32 = 0;
+    schema_value.f003_int = (schema_v2 as u32).wrapping_add((-835897_i32) as u32) as i32;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f004_cf32, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f005_uint[0..13], f006_int[0..12], f007_f32[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f007_f32[7..32], f008_u64[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f008_u64[7..39]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: f008_u64[39..64], f009_int[0..6], f010_f32[0..1]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: f010_f32[1..32], f011_bits[0..1]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 10 bits: f011_bits[1..10], f012_bool[0..1]
-    stream.serialize_bits(&mut c, 10)?;
-    let c5 = u64::from(c);
-    let v0: u64 = c0 & 0x1fff;
-    if v0 > 7316 {
+    schema_stream.serialize_bits(&mut schema_c, 10)?;
+    let schema_c5 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1fff;
+    if schema_v0 > 7316 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f005_uint = (v0 as i32) as u16;
-    let v1: u64 = (c0 >> 13) & 0xfff;
-    if v1 > 3026 {
+    schema_value.f005_uint = (schema_v0 as i32) as u16;
+    let schema_v1: u64 = (schema_c0 >> 13) & 0xfff;
+    if schema_v1 > 3026 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f006_int = ((v1 as u32).wrapping_add((-1513_i32) as u32) as i32) as i16;
-    let v2: u64 = ((c0 >> 25) | (c1 << 7)) & 0xffffffff;
-    if v2 & 0x7f800000 == 0x7f800000 {
+    schema_value.f006_int = ((schema_v1 as u32).wrapping_add((-1513_i32) as u32) as i32) as i16;
+    let schema_v2: u64 = ((schema_c0 >> 25) | (schema_c1 << 7)) & 0xffffffff;
+    if schema_v2 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f007_f32 = f32::from_bits(v2 as u32);
-    let v3: u64 = (c1 >> 25) | (c2 << 7) | (c3 << 39);
-    value.f008_u64 = v3;
-    let v4: u64 = (c3 >> 25) & 0x3f;
-    if v4 > 44 {
+    schema_value.f007_f32 = f32::from_bits(schema_v2 as u32);
+    let schema_v3: u64 = (schema_c1 >> 25) | (schema_c2 << 7) | (schema_c3 << 39);
+    schema_value.f008_u64 = schema_v3;
+    let schema_v4: u64 = (schema_c3 >> 25) & 0x3f;
+    if schema_v4 > 44 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f009_int = ((v4 as u32).wrapping_add((-22_i32) as u32) as i32) as i8;
-    let v5: u64 = ((c3 >> 31) | (c4 << 1)) & 0xffffffff;
-    if v5 & 0x7f800000 == 0x7f800000 {
+    schema_value.f009_int = ((schema_v4 as u32).wrapping_add((-22_i32) as u32) as i32) as i8;
+    let schema_v5: u64 = ((schema_c3 >> 31) | (schema_c4 << 1)) & 0xffffffff;
+    if schema_v5 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f010_f32 = f32::from_bits(v5 as u32);
-    let v6: u64 = ((c4 >> 31) | (c5 << 1)) & 0x3ff;
-    value.f011_bits = v6 as u32;
-    let v7: u64 = (c5 >> 9) & 0x1;
-    value.f012_bool = v7 != 0;
-    if value.f012_bool {
-        let mut c: u32 = 0;
+    schema_value.f010_f32 = f32::from_bits(schema_v5 as u32);
+    let schema_v6: u64 = ((schema_c4 >> 31) | (schema_c5 << 1)) & 0x3ff;
+    schema_value.f011_bits = schema_v6 as u32;
+    let schema_v7: u64 = (schema_c5 >> 9) & 0x1;
+    schema_value.f012_bool = schema_v7 != 0;
+    if schema_value.f012_bool {
+        let mut schema_c: u32 = 0;
         // word 0, 32 bits: f013_f32[0..32]
-        stream.serialize_bits(&mut c, 32)?;
-        let c0 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c0 = u64::from(schema_c);
         // word 1, 16 bits: f014_uint[0..10], f015_int[0..6]
-        stream.serialize_bits(&mut c, 16)?;
-        let c1 = u64::from(c);
-        let v0: u64 = c0 & 0xffffffff;
-        if v0 & 0x7f800000 == 0x7f800000 {
+        schema_stream.serialize_bits(&mut schema_c, 16)?;
+        let schema_c1 = u64::from(schema_c);
+        let schema_v0: u64 = schema_c0 & 0xffffffff;
+        if schema_v0 & 0x7f800000 == 0x7f800000 {
             // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
             return Err(Error::Stream(serialize::Error::NonFiniteFloat));
         }
-        value.f013_f32 = f32::from_bits(v0 as u32);
-        let v1: u64 = c1 & 0x3ff;
-        if v1 > 775 {
+        schema_value.f013_f32 = f32::from_bits(schema_v0 as u32);
+        let schema_v1: u64 = schema_c1 & 0x3ff;
+        if schema_v1 > 775 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f014_uint = (v1 as i32) as u16;
-        let v2: u64 = (c1 >> 10) & 0x3f;
-        if v2 > 42 {
+        schema_value.f014_uint = (schema_v1 as i32) as u16;
+        let schema_v2: u64 = (schema_c1 >> 10) & 0x3f;
+        if schema_v2 > 42 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f015_int = ((v2 as u32).wrapping_add((-21_i32) as u32) as i32) as i8;
-        stream.serialize_fixed(&mut value.f016_fixed, 12, 20, -36, 36)?;
+        schema_value.f015_int = ((schema_v2 as u32).wrapping_add((-21_i32) as u32) as i32) as i8;
+        schema_stream.serialize_fixed(&mut schema_value.f016_fixed, 12, 20, -36, 36)?;
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 4606)?;
-            value.f017_uint = range_value as u16;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 4606)?;
+            schema_value.f017_uint = schema_range_value as u16;
         }
     } else {
-        value.f013_f32 = 0.0;
-        value.f014_uint = 0;
-        value.f015_int = 0;
-        value.f016_fixed = 0;
-        value.f017_uint = 0;
+        schema_value.f013_f32 = 0.0;
+        schema_value.f014_uint = 0;
+        schema_value.f015_int = 0;
+        schema_value.f016_fixed = 0;
+        schema_value.f017_uint = 0;
     }
-    let mut c: u32 = 0;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f018_int[0..11], f019_f64[0..21]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f019_f64[21..53]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f019_f64[53..64], f020_f32[0..21]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 11 bits: f020_f32[21..32]
-    stream.serialize_bits(&mut c, 11)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 & 0x7ff;
-    if v0 > 1668 {
+    schema_stream.serialize_bits(&mut schema_c, 11)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7ff;
+    if schema_v0 > 1668 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f018_int = ((v0 as u32).wrapping_add((-834_i32) as u32) as i32) as i16;
-    let v1: u64 = (c0 >> 11) | (c1 << 21) | (c2 << 53);
-    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.f018_int = ((schema_v0 as u32).wrapping_add((-834_i32) as u32) as i32) as i16;
+    let schema_v1: u64 = (schema_c0 >> 11) | (schema_c1 << 21) | (schema_c2 << 53);
+    if schema_v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f019_f64 = f64::from_bits(v1);
-    let v2: u64 = ((c2 >> 11) | (c3 << 21)) & 0xffffffff;
-    if v2 & 0x7f800000 == 0x7f800000 {
+    schema_value.f019_f64 = f64::from_bits(schema_v1);
+    let schema_v2: u64 = ((schema_c2 >> 11) | (schema_c3 << 21)) & 0xffffffff;
+    if schema_v2 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f020_f32 = f32::from_bits(v2 as u32);
-    stream.serialize_fixed(&mut value.f021_ufixed, 20, 12, 0, 25141)?;
-    let mut c: u32 = 0;
+    schema_value.f020_f32 = f32::from_bits(schema_v2 as u32);
+    schema_stream.serialize_fixed(&mut schema_value.f021_ufixed, 20, 12, 0, 25141)?;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f022_f32[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f023_bits[0..25], f024_f32[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 25 bits: f024_f32[7..32]
-    stream.serialize_bits(&mut c, 25)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    if v0 & 0x7f800000 == 0x7f800000 {
+    schema_stream.serialize_bits(&mut schema_c, 25)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    if schema_v0 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f022_f32 = f32::from_bits(v0 as u32);
-    let v1: u64 = c1 & 0x1ffffff;
-    value.f023_bits = v1 as u32;
-    let v2: u64 = ((c1 >> 25) | (c2 << 7)) & 0xffffffff;
-    if v2 & 0x7f800000 == 0x7f800000 {
+    schema_value.f022_f32 = f32::from_bits(schema_v0 as u32);
+    let schema_v1: u64 = schema_c1 & 0x1ffffff;
+    schema_value.f023_bits = schema_v1 as u32;
+    let schema_v2: u64 = ((schema_c1 >> 25) | (schema_c2 << 7)) & 0xffffffff;
+    if schema_v2 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f024_f32 = f32::from_bits(v2 as u32);
-    stream.serialize_fixed(&mut value.f025_fixed, 8, 8, -119, 119)?;
-    stream.serialize_bits(&mut value.f026_bits, 9)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f027_cf32, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
-    let mut c: u32 = 0;
+    schema_value.f024_f32 = f32::from_bits(schema_v2 as u32);
+    schema_stream.serialize_fixed(&mut schema_value.f025_fixed, 8, 8, -119, 119)?;
+    schema_stream.serialize_bits(&mut schema_value.f026_bits, 9)?;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f027_cf32, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f028_bits[0..4], f029_i64[0..28]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f029_i64[28..60]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f029_i64[60..64], f030_f32[0..28]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: f030_f32[28..32], f031_bits[0..1], f032_int[0..3], f033_uint[0..18], f034_uint[0..6]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: f034_uint[6..14], f035_bits[0..9], f036_enum[0..3], f037_bool[0..1], f038_bool[0..1], f039_bits[0..10]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 9 bits: f039_bits[10..19]
-    stream.serialize_bits(&mut c, 9)?;
-    let c5 = u64::from(c);
-    let v0: u64 = c0 & 0xf;
-    value.f028_bits = v0 as u32;
-    let v1: u64 = (c0 >> 4) | (c1 << 28) | (c2 << 60);
-    value.f029_i64 = v1 as i64;
-    let v2: u64 = ((c2 >> 4) | (c3 << 28)) & 0xffffffff;
-    if v2 & 0x7f800000 == 0x7f800000 {
+    schema_stream.serialize_bits(&mut schema_c, 9)?;
+    let schema_c5 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xf;
+    schema_value.f028_bits = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 4) | (schema_c1 << 28) | (schema_c2 << 60);
+    schema_value.f029_i64 = schema_v1 as i64;
+    let schema_v2: u64 = ((schema_c2 >> 4) | (schema_c3 << 28)) & 0xffffffff;
+    if schema_v2 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f030_f32 = f32::from_bits(v2 as u32);
-    let v3: u64 = (c3 >> 4) & 0x1;
-    value.f031_bits = v3 as u32;
-    let v4: u64 = (c3 >> 5) & 0x7;
-    if v4 > 6 {
+    schema_value.f030_f32 = f32::from_bits(schema_v2 as u32);
+    let schema_v3: u64 = (schema_c3 >> 4) & 0x1;
+    schema_value.f031_bits = schema_v3 as u32;
+    let schema_v4: u64 = (schema_c3 >> 5) & 0x7;
+    if schema_v4 > 6 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f032_int = ((v4 as u32).wrapping_add((-3_i32) as u32) as i32) as i8;
-    let v5: u64 = (c3 >> 8) & 0x3ffff;
-    if v5 > 142780 {
+    schema_value.f032_int = ((schema_v4 as u32).wrapping_add((-3_i32) as u32) as i32) as i8;
+    let schema_v5: u64 = (schema_c3 >> 8) & 0x3ffff;
+    if schema_v5 > 142780 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f033_uint = (v5 as i32) as u32;
-    let v6: u64 = ((c3 >> 26) | (c4 << 6)) & 0x3fff;
-    if v6 > 14149 {
+    schema_value.f033_uint = (schema_v5 as i32) as u32;
+    let schema_v6: u64 = ((schema_c3 >> 26) | (schema_c4 << 6)) & 0x3fff;
+    if schema_v6 > 14149 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f034_uint = (v6 as i32) as u16;
-    let v7: u64 = (c4 >> 8) & 0x1ff;
-    value.f035_bits = v7 as u32;
-    let v8: u64 = (c4 >> 17) & 0x7;
-    if v8 > 5 {
+    schema_value.f034_uint = (schema_v6 as i32) as u16;
+    let schema_v7: u64 = (schema_c4 >> 8) & 0x1ff;
+    schema_value.f035_bits = schema_v7 as u32;
+    let schema_v8: u64 = (schema_c4 >> 17) & 0x7;
+    if schema_v8 > 5 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f036_enum = PacketMode(v8 as u8);
-    let v9: u64 = (c4 >> 20) & 0x1;
-    value.f037_bool = v9 != 0;
-    let v10: u64 = (c4 >> 21) & 0x1;
-    value.f038_bool = v10 != 0;
-    let v11: u64 = ((c4 >> 22) | (c5 << 10)) & 0x7ffff;
-    value.f039_bits = v11 as u32;
-    stream.serialize_fixed(&mut value.f040_fixed, 4, 12, -5, 5)?;
-    let mut c: u32 = 0;
+    schema_value.f036_enum = PacketMode(schema_v8 as u8);
+    let schema_v9: u64 = (schema_c4 >> 20) & 0x1;
+    schema_value.f037_bool = schema_v9 != 0;
+    let schema_v10: u64 = (schema_c4 >> 21) & 0x1;
+    schema_value.f038_bool = schema_v10 != 0;
+    let schema_v11: u64 = ((schema_c4 >> 22) | (schema_c5 << 10)) & 0x7ffff;
+    schema_value.f039_bits = schema_v11 as u32;
+    schema_stream.serialize_fixed(&mut schema_value.f040_fixed, 4, 12, -5, 5)?;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f041_int[0..7], f042_bits[0..25]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 6 bits: f042_bits[25..30], f043_bool[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0x7f;
-    if v0 > 110 {
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7f;
+    if schema_v0 > 110 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f041_int = ((v0 as u32).wrapping_add((-55_i32) as u32) as i32) as i8;
-    let v1: u64 = ((c0 >> 7) | (c1 << 25)) & 0x3fffffff;
-    value.f042_bits = v1 as u32;
-    let v2: u64 = (c1 >> 5) & 0x1;
-    value.f043_bool = v2 != 0;
-    if value.f043_bool {
-        let mut c: u32 = 0;
+    schema_value.f041_int = ((schema_v0 as u32).wrapping_add((-55_i32) as u32) as i32) as i8;
+    let schema_v1: u64 = ((schema_c0 >> 7) | (schema_c1 << 25)) & 0x3fffffff;
+    schema_value.f042_bits = schema_v1 as u32;
+    let schema_v2: u64 = (schema_c1 >> 5) & 0x1;
+    schema_value.f043_bool = schema_v2 != 0;
+    if schema_value.f043_bool {
+        let mut schema_c: u32 = 0;
         // word 0, 32 bits: f044_f32[0..32]
-        stream.serialize_bits(&mut c, 32)?;
-        let c0 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c0 = u64::from(schema_c);
         // word 1, 32 bits: f045_bits[0..12], f046_uint[0..17], f047_int[0..3]
-        stream.serialize_bits(&mut c, 32)?;
-        let c1 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c1 = u64::from(schema_c);
         // word 2, 17 bits: f047_int[3..20]
-        stream.serialize_bits(&mut c, 17)?;
-        let c2 = u64::from(c);
-        let v0: u64 = c0 & 0xffffffff;
-        if v0 & 0x7f800000 == 0x7f800000 {
+        schema_stream.serialize_bits(&mut schema_c, 17)?;
+        let schema_c2 = u64::from(schema_c);
+        let schema_v0: u64 = schema_c0 & 0xffffffff;
+        if schema_v0 & 0x7f800000 == 0x7f800000 {
             // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
             return Err(Error::Stream(serialize::Error::NonFiniteFloat));
         }
-        value.f044_f32 = f32::from_bits(v0 as u32);
-        let v1: u64 = c1 & 0xfff;
-        value.f045_bits = v1 as u32;
-        let v2: u64 = (c1 >> 12) & 0x1ffff;
-        if v2 > 76063 {
+        schema_value.f044_f32 = f32::from_bits(schema_v0 as u32);
+        let schema_v1: u64 = schema_c1 & 0xfff;
+        schema_value.f045_bits = schema_v1 as u32;
+        let schema_v2: u64 = (schema_c1 >> 12) & 0x1ffff;
+        if schema_v2 > 76063 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f046_uint = (v2 as i32) as u32;
-        let v3: u64 = ((c1 >> 29) | (c2 << 3)) & 0xfffff;
-        if v3 > 861952 {
+        schema_value.f046_uint = (schema_v2 as i32) as u32;
+        let schema_v3: u64 = ((schema_c1 >> 29) | (schema_c2 << 3)) & 0xfffff;
+        if schema_v3 > 861952 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f047_int = (v3 as u32).wrapping_add((-430976_i32) as u32) as i32;
+        schema_value.f047_int = (schema_v3 as u32).wrapping_add((-430976_i32) as u32) as i32;
     } else {
-        value.f044_f32 = 0.0;
-        value.f045_bits = 0;
-        value.f046_uint = 0;
-        value.f047_int = 0;
+        schema_value.f044_f32 = 0.0;
+        schema_value.f045_bits = 0;
+        schema_value.f046_uint = 0;
+        schema_value.f047_int = 0;
     }
-    stream.serialize_f64(&mut value.f048_f64)?;
-    stream.serialize_fixed(&mut value.f049_ufixed, 2, 14, 0, 3)?;
-    stream.serialize_bool(&mut value.f050_bool)?;
-    if value.f050_bool {
-        let mut c: u32 = 0;
+    schema_stream.serialize_f64(&mut schema_value.f048_f64)?;
+    schema_stream.serialize_fixed(&mut schema_value.f049_ufixed, 2, 14, 0, 3)?;
+    schema_stream.serialize_bool(&mut schema_value.f050_bool)?;
+    if schema_value.f050_bool {
+        let mut schema_c: u32 = 0;
         // word 0, 32 bits: f051_bool[0..1], f052_int[0..7], f053_f32[0..24]
-        stream.serialize_bits(&mut c, 32)?;
-        let c0 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c0 = u64::from(schema_c);
         // word 1, 15 bits: f053_f32[24..32], f054_int[0..7]
-        stream.serialize_bits(&mut c, 15)?;
-        let c1 = u64::from(c);
-        let v0: u64 = c0 & 0x1;
-        value.f051_bool = v0 != 0;
-        let v1: u64 = (c0 >> 1) & 0x7f;
-        if v1 > 114 {
+        schema_stream.serialize_bits(&mut schema_c, 15)?;
+        let schema_c1 = u64::from(schema_c);
+        let schema_v0: u64 = schema_c0 & 0x1;
+        schema_value.f051_bool = schema_v0 != 0;
+        let schema_v1: u64 = (schema_c0 >> 1) & 0x7f;
+        if schema_v1 > 114 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f052_int = ((v1 as u32).wrapping_add((-57_i32) as u32) as i32) as i8;
-        let v2: u64 = ((c0 >> 8) | (c1 << 24)) & 0xffffffff;
-        if v2 & 0x7f800000 == 0x7f800000 {
+        schema_value.f052_int = ((schema_v1 as u32).wrapping_add((-57_i32) as u32) as i32) as i8;
+        let schema_v2: u64 = ((schema_c0 >> 8) | (schema_c1 << 24)) & 0xffffffff;
+        if schema_v2 & 0x7f800000 == 0x7f800000 {
             // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
             return Err(Error::Stream(serialize::Error::NonFiniteFloat));
         }
-        value.f053_f32 = f32::from_bits(v2 as u32);
-        let v3: u64 = (c1 >> 8) & 0x7f;
-        if v3 > 70 {
+        schema_value.f053_f32 = f32::from_bits(schema_v2 as u32);
+        let schema_v3: u64 = (schema_c1 >> 8) & 0x7f;
+        if schema_v3 > 70 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f054_int = ((v3 as u32).wrapping_add((-35_i32) as u32) as i32) as i8;
+        schema_value.f054_int = ((schema_v3 as u32).wrapping_add((-35_i32) as u32) as i32) as i8;
     } else {
-        value.f051_bool = false;
-        value.f052_int = 0;
-        value.f053_f32 = 0.0;
-        value.f054_int = 0;
+        schema_value.f051_bool = false;
+        schema_value.f052_int = 0;
+        schema_value.f053_f32 = 0.0;
+        schema_value.f054_int = 0;
     }
-    let mut c: u32 = 0;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f055_bool[0..1], f056_int[0..5], f057_int[0..5], f058_f32[0..21]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f058_f32[21..32], f059_f64[0..21]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f059_f64[21..53]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 19 bits: f059_f64[53..64], f060_bits[0..8]
-    stream.serialize_bits(&mut c, 19)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 & 0x1;
-    value.f055_bool = v0 != 0;
-    let v1: u64 = (c0 >> 1) & 0x1f;
-    if v1 > 26 {
+    schema_stream.serialize_bits(&mut schema_c, 19)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1;
+    schema_value.f055_bool = schema_v0 != 0;
+    let schema_v1: u64 = (schema_c0 >> 1) & 0x1f;
+    if schema_v1 > 26 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f056_int = ((v1 as u32).wrapping_add((-13_i32) as u32) as i32) as i8;
-    let v2: u64 = (c0 >> 6) & 0x1f;
-    if v2 > 30 {
+    schema_value.f056_int = ((schema_v1 as u32).wrapping_add((-13_i32) as u32) as i32) as i8;
+    let schema_v2: u64 = (schema_c0 >> 6) & 0x1f;
+    if schema_v2 > 30 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f057_int = ((v2 as u32).wrapping_add((-15_i32) as u32) as i32) as i8;
-    let v3: u64 = ((c0 >> 11) | (c1 << 21)) & 0xffffffff;
-    if v3 & 0x7f800000 == 0x7f800000 {
+    schema_value.f057_int = ((schema_v2 as u32).wrapping_add((-15_i32) as u32) as i32) as i8;
+    let schema_v3: u64 = ((schema_c0 >> 11) | (schema_c1 << 21)) & 0xffffffff;
+    if schema_v3 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f058_f32 = f32::from_bits(v3 as u32);
-    let v4: u64 = (c1 >> 11) | (c2 << 21) | (c3 << 53);
-    if v4 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.f058_f32 = f32::from_bits(schema_v3 as u32);
+    let schema_v4: u64 = (schema_c1 >> 11) | (schema_c2 << 21) | (schema_c3 << 53);
+    if schema_v4 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f059_f64 = f64::from_bits(v4);
-    let v5: u64 = (c3 >> 11) & 0xff;
-    value.f060_bits = v5 as u32;
-    stream.serialize_compressed_float_precomputed(&mut value.f061_cf32, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
-    let mut c: u32 = 0;
+    schema_value.f059_f64 = f64::from_bits(schema_v4);
+    let schema_v5: u64 = (schema_c3 >> 11) & 0xff;
+    schema_value.f060_bits = schema_v5 as u32;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f061_cf32, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f062_uint[0..9], f063_i64[0..23]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f063_i64[23..55]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 18 bits: f063_i64[55..64], f064_uint[0..9]
-    stream.serialize_bits(&mut c, 18)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 & 0x1ff;
-    if v0 > 503 {
+    schema_stream.serialize_bits(&mut schema_c, 18)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1ff;
+    if schema_v0 > 503 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f062_uint = (v0 as i32) as u16;
-    let v1: u64 = (c0 >> 9) | (c1 << 23) | (c2 << 55);
-    value.f063_i64 = v1 as i64;
-    let v2: u64 = (c2 >> 9) & 0x1ff;
-    if v2 > 299 {
+    schema_value.f062_uint = (schema_v0 as i32) as u16;
+    let schema_v1: u64 = (schema_c0 >> 9) | (schema_c1 << 23) | (schema_c2 << 55);
+    schema_value.f063_i64 = schema_v1 as i64;
+    let schema_v2: u64 = (schema_c2 >> 9) & 0x1ff;
+    if schema_v2 > 299 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f064_uint = (v2 as i32) as u16;
-    stream.serialize_compressed_float_precomputed(&mut value.f065_cf32, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
-    stream.serialize_fixed(&mut value.f066_ufixed, 2, 14, 0, 2)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f067_cf32, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
-    stream.serialize_compressed_float_precomputed(&mut value.f068_cf32, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
-    let mut c: u32 = 0;
+    schema_value.f064_uint = (schema_v2 as i32) as u16;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f065_cf32, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
+    schema_stream.serialize_fixed(&mut schema_value.f066_ufixed, 2, 14, 0, 2)?;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f067_cf32, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f068_cf32, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 13 bits: f069_bits[0..11], f070_uint[0..2]
-    stream.serialize_bits(&mut c, 13)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x7ff;
-    value.f069_bits = v0 as u32;
-    let v1: u64 = (c0 >> 11) & 0x3;
-    if v1 > 2 {
+    schema_stream.serialize_bits(&mut schema_c, 13)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7ff;
+    schema_value.f069_bits = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 11) & 0x3;
+    if schema_v1 > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f070_uint = (v1 as i32) as u8;
-    stream.serialize_compressed_float_precomputed(&mut value.f071_cf32, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
-    stream.serialize_compressed_float_precomputed(&mut value.f072_cf32, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
-    let mut c: u32 = 0;
+    schema_value.f070_uint = (schema_v1 as i32) as u8;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f071_cf32, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.f072_cf32, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 5 bits: f073_int[0..4], f074_bool[0..1]
-    stream.serialize_bits(&mut c, 5)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0xf;
-    if v0 > 8 {
+    schema_stream.serialize_bits(&mut schema_c, 5)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xf;
+    if schema_v0 > 8 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f073_int = ((v0 as u32).wrapping_add((-4_i32) as u32) as i32) as i8;
-    let v1: u64 = (c0 >> 4) & 0x1;
-    value.f074_bool = v1 != 0;
-    if value.f074_bool {
-        let mut c: u32 = 0;
+    schema_value.f073_int = ((schema_v0 as u32).wrapping_add((-4_i32) as u32) as i32) as i8;
+    let schema_v1: u64 = (schema_c0 >> 4) & 0x1;
+    schema_value.f074_bool = schema_v1 != 0;
+    if schema_value.f074_bool {
+        let mut schema_c: u32 = 0;
         // word 0, 32 bits: f075_u64[0..32]
-        stream.serialize_bits(&mut c, 32)?;
-        let c0 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c0 = u64::from(schema_c);
         // word 1, 32 bits: f075_u64[32..64]
-        stream.serialize_bits(&mut c, 32)?;
-        let c1 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c1 = u64::from(schema_c);
         // word 2, 32 bits: f076_int[0..16], f077_int[0..6], f078_bits[0..9], f079_uint[0..1]
-        stream.serialize_bits(&mut c, 32)?;
-        let c2 = u64::from(c);
+        schema_stream.serialize_bits(&mut schema_c, 32)?;
+        let schema_c2 = u64::from(schema_c);
         // word 3, 4 bits: f079_uint[1..5]
-        stream.serialize_bits(&mut c, 4)?;
-        let c3 = u64::from(c);
-        let v0: u64 = c0 | (c1 << 32);
-        value.f075_u64 = v0;
-        let v1: u64 = c2 & 0xffff;
-        if v1 > 52436 {
+        schema_stream.serialize_bits(&mut schema_c, 4)?;
+        let schema_c3 = u64::from(schema_c);
+        let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+        schema_value.f075_u64 = schema_v0;
+        let schema_v1: u64 = schema_c2 & 0xffff;
+        if schema_v1 > 52436 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f076_int = ((v1 as u32).wrapping_add((-26218_i32) as u32) as i32) as i16;
-        let v2: u64 = (c2 >> 16) & 0x3f;
-        if v2 > 34 {
+        schema_value.f076_int = ((schema_v1 as u32).wrapping_add((-26218_i32) as u32) as i32) as i16;
+        let schema_v2: u64 = (schema_c2 >> 16) & 0x3f;
+        if schema_v2 > 34 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f077_int = ((v2 as u32).wrapping_add((-17_i32) as u32) as i32) as i8;
-        let v3: u64 = (c2 >> 22) & 0x1ff;
-        value.f078_bits = v3 as u32;
-        let v4: u64 = ((c2 >> 31) | (c3 << 1)) & 0x1f;
-        if v4 > 17 {
+        schema_value.f077_int = ((schema_v2 as u32).wrapping_add((-17_i32) as u32) as i32) as i8;
+        let schema_v3: u64 = (schema_c2 >> 22) & 0x1ff;
+        schema_value.f078_bits = schema_v3 as u32;
+        let schema_v4: u64 = ((schema_c2 >> 31) | (schema_c3 << 1)) & 0x1f;
+        if schema_v4 > 17 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        value.f079_uint = (v4 as i32) as u8;
+        schema_value.f079_uint = (schema_v4 as i32) as u8;
     } else {
-        value.f075_u64 = 0;
-        value.f076_int = 0;
-        value.f077_int = 0;
-        value.f078_bits = 0;
-        value.f079_uint = 0;
+        schema_value.f075_u64 = 0;
+        schema_value.f076_int = 0;
+        schema_value.f077_int = 0;
+        schema_value.f078_bits = 0;
+        schema_value.f079_uint = 0;
     }
-    let mut c: u32 = 0;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f080_bool[0..1], f081_bits[0..29], f082_bits[0..2]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 26 bits: f082_bits[2..25], f083_enum[0..3]
-    stream.serialize_bits(&mut c, 26)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0x1;
-    value.f080_bool = v0 != 0;
-    let v1: u64 = (c0 >> 1) & 0x1fffffff;
-    value.f081_bits = v1 as u32;
-    let v2: u64 = ((c0 >> 30) | (c1 << 2)) & 0x1ffffff;
-    value.f082_bits = v2 as u32;
-    let v3: u64 = (c1 >> 23) & 0x7;
-    if v3 > 5 {
+    schema_stream.serialize_bits(&mut schema_c, 26)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1;
+    schema_value.f080_bool = schema_v0 != 0;
+    let schema_v1: u64 = (schema_c0 >> 1) & 0x1fffffff;
+    schema_value.f081_bits = schema_v1 as u32;
+    let schema_v2: u64 = ((schema_c0 >> 30) | (schema_c1 << 2)) & 0x1ffffff;
+    schema_value.f082_bits = schema_v2 as u32;
+    let schema_v3: u64 = (schema_c1 >> 23) & 0x7;
+    if schema_v3 > 5 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f083_enum = PacketMode(v3 as u8);
-    stream.serialize_fixed(&mut value.f084_ufixed, 1, 7, 0, 1)?;
-    let mut c: u32 = 0;
+    schema_value.f083_enum = PacketMode(schema_v3 as u8);
+    schema_stream.serialize_fixed(&mut schema_value.f084_ufixed, 1, 7, 0, 1)?;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f085_bits[0..21], f086_uint[0..9], f087_f64[0..2]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f087_f64[2..34]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f087_f64[34..64], f088_int[0..2]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: f088_int[2..11], f089_bits[0..23]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: f089_bits[23..48], f090_uint[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: f090_uint[7..8], f091_flags[0..5], f092_bool[0..1], f093_bits[0..25]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 32 bits: f093_bits[25..57]
-    stream.serialize_bits(&mut c, 32)?;
-    let c6 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c6 = u64::from(schema_c);
     // word 7, 8 bits: f093_bits[57..64], f094_bool[0..1]
-    stream.serialize_bits(&mut c, 8)?;
-    let c7 = u64::from(c);
-    let v0: u64 = c0 & 0x1fffff;
-    value.f085_bits = v0 as u32;
-    let v1: u64 = (c0 >> 21) & 0x1ff;
-    if v1 > 399 {
+    schema_stream.serialize_bits(&mut schema_c, 8)?;
+    let schema_c7 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1fffff;
+    schema_value.f085_bits = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 21) & 0x1ff;
+    if schema_v1 > 399 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f086_uint = (v1 as i32) as u16;
-    let v2: u64 = (c0 >> 30) | (c1 << 2) | (c2 << 34);
-    if v2 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.f086_uint = (schema_v1 as i32) as u16;
+    let schema_v2: u64 = (schema_c0 >> 30) | (schema_c1 << 2) | (schema_c2 << 34);
+    if schema_v2 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.f087_f64 = f64::from_bits(v2);
-    let v3: u64 = ((c2 >> 30) | (c3 << 2)) & 0x7ff;
-    if v3 > 1388 {
+    schema_value.f087_f64 = f64::from_bits(schema_v2);
+    let schema_v3: u64 = ((schema_c2 >> 30) | (schema_c3 << 2)) & 0x7ff;
+    if schema_v3 > 1388 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f088_int = ((v3 as u32).wrapping_add((-694_i32) as u32) as i32) as i16;
-    let v4: u64 = ((c3 >> 9) | (c4 << 23)) & 0xffffffffffff;
-    value.f089_bits = v4;
-    let v5: u64 = ((c4 >> 25) | (c5 << 7)) & 0xff;
-    if v5 > 214 {
+    schema_value.f088_int = ((schema_v3 as u32).wrapping_add((-694_i32) as u32) as i32) as i16;
+    let schema_v4: u64 = ((schema_c3 >> 9) | (schema_c4 << 23)) & 0xffffffffffff;
+    schema_value.f089_bits = schema_v4;
+    let schema_v5: u64 = ((schema_c4 >> 25) | (schema_c5 << 7)) & 0xff;
+    if schema_v5 > 214 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f090_uint = (v5 as i32) as u8;
-    let v6: u64 = (c5 >> 1) & 0x1f;
-    value.f091_flags = v6;
-    let v7: u64 = (c5 >> 6) & 0x1;
-    value.f092_bool = v7 != 0;
-    let v8: u64 = (c5 >> 7) | (c6 << 25) | (c7 << 57);
-    value.f093_bits = v8;
-    let v9: u64 = (c7 >> 7) & 0x1;
-    value.f094_bool = v9 != 0;
-    stream.serialize_fixed(&mut value.f095_fixed, 16, 16, -1577, 1577)?;
-    let mut c: u32 = 0;
+    schema_value.f090_uint = (schema_v5 as i32) as u8;
+    let schema_v6: u64 = (schema_c5 >> 1) & 0x1f;
+    schema_value.f091_flags = schema_v6;
+    let schema_v7: u64 = (schema_c5 >> 6) & 0x1;
+    schema_value.f092_bool = schema_v7 != 0;
+    let schema_v8: u64 = (schema_c5 >> 7) | (schema_c6 << 25) | (schema_c7 << 57);
+    schema_value.f093_bits = schema_v8;
+    let schema_v9: u64 = (schema_c7 >> 7) & 0x1;
+    schema_value.f094_bool = schema_v9 != 0;
+    schema_stream.serialize_fixed(&mut schema_value.f095_fixed, 16, 16, -1577, 1577)?;
+    let mut schema_c: u32 = 0;
     // word 0, 30 bits: f096_bits[0..18], f097_bits[0..12]
-    stream.serialize_bits(&mut c, 30)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x3ffff;
-    value.f096_bits = v0 as u32;
-    let v1: u64 = (c0 >> 18) & 0xfff;
-    value.f097_bits = v1 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 30)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x3ffff;
+    schema_value.f096_bits = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 18) & 0xfff;
+    schema_value.f097_bits = schema_v1 as u32;
     Ok(())
 }
 

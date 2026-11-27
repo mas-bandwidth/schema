@@ -29,12 +29,12 @@ fixed table RangedWidths
 	// THE CLAMP: a narrower-than-lane bits(N) is held to 2^N - 1 on the high
 	// side only, and counts one clamped when the forgery is real.
 	for _, want := range []string{
-		"*oor += (value.b8 > 255) as i32; // bits(8)'s own width",
-		"value.b8 = value.b8.min(255);",
-		"*oor += (value.b12 > 4095) as i32; // bits(12)'s own width",
-		"value.b12 = value.b12.min(4095);",
-		"*oor += (value.b48 > 281474976710655) as i32; // bits(48)'s own width",
-		"value.b48 = value.b48.min(281474976710655);",
+		"*schema_oor += (schema_value.b8 > 255) as i32; // bits(8)'s own width",
+		"schema_value.b8 = schema_value.b8.min(255);",
+		"*schema_oor += (schema_value.b12 > 4095) as i32; // bits(12)'s own width",
+		"schema_value.b12 = schema_value.b12.min(4095);",
+		"*schema_oor += (schema_value.b48 > 281474976710655) as i32; // bits(48)'s own width",
+		"schema_value.b48 = schema_value.b48.min(281474976710655);",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("a bits(N) narrower than its storage lane must clamp to 2^N-1; missing %q", want)

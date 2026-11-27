@@ -134,7 +134,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 	"rust": {
 		noCount:  "    pub const COUNT: ",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
-		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
+		nameFunc: "pub fn enum_name_weapon_fire_type(schema_value: WeaponFireType) -> &'static str {",
 	},
 	"python": {
 		noCount:  "    Count = ",

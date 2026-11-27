@@ -21716,6 +21716,7 @@ inline bool TableEntityCookBody( uint8_t * at, const TableEntity & value, TableB
     table_cook_put( at + 28, (uint64_t) value.vel_y, 4, order );
     table_cook_put( at + 32, (uint64_t) value.vel_z, 4, order );
     table_cook_put( at + 36, (uint64_t) value.health, 4, order );
+    schema_assert( !( uint64_t( value.weapon ) > 15 ) );
     table_cook_put( at + 40, (uint64_t) value.weapon, 1, order );
     table_cook_put( at + 48, (uint64_t) value.damage, 8, order ); // a mask rides raw, in every target
     table_cook_put( at + 56, (uint64_t) ( value.moving ? 1 : 0 ), 1, order );

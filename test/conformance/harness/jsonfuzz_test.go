@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,10 +97,15 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 	makeDriverScript := func(t *testing.T, sabotage string) string {
 		t.Helper()
 		script := filepath.Join(t.TempDir(), "synthetic-driver.sh")
+		// the variable TestMain enters the synthetic leg on, spelled NAME=value
+		// on its own: that is how the TestMain gate (internal/ci
+		// TestNoTestMainLeavesBeforeItRunsTheTests) knows the early exit
+		// there is this helper process's
+		driverEnv := "SCHEMA_JSONFUZZ_TEST_DRIVER=1"
 		body := "#!/bin/sh\n" +
-			"export SCHEMA_JSONFUZZ_TEST_DRIVER=1\n" +
+			"export " + driverEnv + "\n" +
 			"export SCHEMA_JSONFUZZ_SABOTAGE=" + sabotage + "\n" +
-			"exec \"" + exe + "\" -test.run=^TestJSONFuzzSyntheticDriverHelper$ -- \"$@\"\n"
+			"exec \"" + exe + "\" \"$@\"\n"
 		if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 			t.Fatalf("write synthetic driver: %v", err)
 		}
@@ -156,17 +162,13 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 	}
 }
 
-func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
-	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") != "1" {
-		t.Skip("helper for TestJSONFuzzPlantedNegativeControls")
-	}
-	var args []string
-	for i, a := range os.Args {
-		if a == "--" {
-			args = os.Args[i+1:]
-			break
-		}
-	}
+// jsonFuzzSyntheticDriver is the synthetic json-fuzz leg
+// TestJSONFuzzPlantedNegativeControls runs: the test binary itself, entered
+// from TestMain when SCHEMA_JSONFUZZ_TEST_DRIVER=1, before any test or flag
+// parse. It is not a Test: a helper written as a Test that skips outside its
+// subprocess is a skip in every ordinary run, and the nightly readiness gate
+// refuses an unclassified skip (nightly 45119714773, native-harness).
+func jsonFuzzSyntheticDriver(args []string) {
 	if len(args) < 3 {
 		os.Exit(2)
 	}
@@ -254,7 +256,8 @@ func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 		}
 	case "json-write":
 		if len(lines) == 0 {
-			t.Fatal("lines is empty: the loop below would check nothing")
+			fmt.Fprintln(os.Stderr, "synthetic json-fuzz driver: the manifest is empty, so json-write would check nothing")
+			os.Exit(1)
 		}
 		for _, line := range lines {
 			f := strings.Fields(strings.TrimSpace(line))

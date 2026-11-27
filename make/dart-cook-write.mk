@@ -37,9 +37,19 @@ conformance-dart-cook-write-negative-control: build/conformance-harness build/co
 		test/conformance/dart/main.dart > $(DART_COOK_WRITE_NC)/main.dart
 	$(DART) compile exe -o $(DART_COOK_WRITE_NC)/driver-bin $(DART_COOK_WRITE_NC)/main.dart >/dev/null
 	@printf 'dart %s/%s/driver-bin\n' "$(CURDIR)" "$(DART_COOK_WRITE_NC)" > $(DART_COOK_WRITE_NC)/drivers.txt
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
-	./build/conformance-harness run --drivers $(DART_COOK_WRITE_NC)/drivers.txt \
-		--work $(DART_COOK_WRITE_NC)/work > $(DART_COOK_WRITE_NC)/log 2>&1 || true
+# the sabotaged writer MUST turn the harness red: its exit status is read, not
+# swallowed. Exit 0 means the sabotage went unseen; a nonzero exit with no
+# FAILURES section in the log is a harness that died, not a red row.
+	@st=0; ./build/conformance-harness run --drivers $(DART_COOK_WRITE_NC)/drivers.txt \
+		--work $(DART_COOK_WRITE_NC)/work > $(DART_COOK_WRITE_NC)/log 2>&1 || st=$$?; \
+	if [ $$st -eq 0 ]; then \
+		echo "NEGATIVE CONTROL FAILED: a cook writer that fills a counted array's dead slot left the whole harness green"; \
+		cat $(DART_COOK_WRITE_NC)/log; exit 1; \
+	fi; \
+	if ! grep -q '^FAILURES$$' $(DART_COOK_WRITE_NC)/log; then \
+		echo "NEGATIVE CONTROL FAILED: the harness exited $$st without a FAILURES section: it died, it did not go red on a row"; \
+		cat $(DART_COOK_WRITE_NC)/log; exit 1; \
+	fi
 	@if grep -qE '^cook-write +pass ([0-9]+)/\1 *$$' $(DART_COOK_WRITE_NC)/log; then \
 		echo "NEGATIVE CONTROL FAILED: a cook writer that fills a counted array's dead slot left the Dart cook-write line green"; \
 		cat $(DART_COOK_WRITE_NC)/log; exit 1; \

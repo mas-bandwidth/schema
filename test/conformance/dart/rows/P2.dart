@@ -145,7 +145,9 @@ List<p1home.Chain> read(Uint8List bytes, int count) {
   );
   check(n == count, 'read: chainFixedLoad answers $count records (got $n)');
   check(
-    !report.malformed && report.refused == 0,
+    report.refused == p1home.TableFixedRefusal.none &&
+        report.unknown == 0 &&
+        report.widened == 0,
     'read: a clean read moves no counter',
   );
   return values;
