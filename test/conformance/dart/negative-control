@@ -85,7 +85,7 @@ if [ "$mode" = absent ]; then
     cat > "$out/driver" <<EOF
 #!/bin/sh
 case "\${2:-}" in
-  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|json-write)
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|write-refusal-cook|write-refusal-block|json-write)
     exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
 esac
 exec "$root/$out/conformance-dart" "\$@"
@@ -138,12 +138,30 @@ if ! grep -rqF "$marker" "$out/build/tables-generated-dart"; then
     exit 1
 fi
 
+# THE UNITS THE LISTS ABOVE DO NOT NAME (countedmin, prior, shapes, surfaces,
+# and the rest main.dart has imported since) come from the tree `make
+# build/conformance-dart` generated, unsabotaged and linked: main.dart imports
+# every one, and the sabotage only has to reach the units above, which the
+# marker check holds. Without them the driver does not compile, and a control
+# that fails to build detects nothing.
+for d in "$root"/build/tables-generated-dart*/*/; do
+    rel=${d#"$root"/}
+    rel=${rel%/}
+    if [ ! -e "$out/$rel" ]; then
+        mkdir -p "$out/$(dirname "$rel")"
+        ln -s "$root/$rel" "$out/$rel"
+    fi
+done
+
 cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
 "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
+# the surfaces the JIT runs with asserts on: the same list as
+# test/conformance/dart/driver, which grew write-refusal-cook and
+# write-refusal-block after this copy was written (their rows went red here)
 cat > "$out/driver" <<EOF
 #!/bin/sh
 case "\${2:-}" in
-  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|json-write)
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|write-refusal-cook|write-refusal-block|json-write)
     exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
 esac
 exec "$root/$out/conformance-dart" "\$@"

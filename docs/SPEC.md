@@ -1942,6 +1942,16 @@ All compile errors with positions:
   keyword or the float literals `nan` and `infinity`, which its lexer never
   reads as an identifier) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  a member (a field of a `type` or `table`, or a union arm, packet or
+  table-closure) spelled like a named type some member of the same
+  declaration is declared with, its own or a sibling's (an enum `kind`
+  beside a field or arm `kind kind`, or `kind Kind2` beside `mode kind`: C++
+  refuses the member as a declaration that changes the meaning of the type
+  name, comparing the name as written, and Dart as a member that hides the
+  type in the class body, comparing its lowerCamel spelling, so a field
+  `Kind kind` is refused for Dart; `kind Kind` is two names in every target
+  and builds, as does a field `kind` on a declaration none of whose members
+  uses the type `kind`), and
   refuses for every target, naming the target, a unit one of them refuses,
   so those names are refused at check rather than at generate. Every refusal
   by name a target makes at generate is one of these, or one of the rules

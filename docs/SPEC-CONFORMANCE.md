@@ -381,6 +381,7 @@ per-port check where no shared case exercises it.
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
+| wire-eof | a wire-fuzz leg's stream ends only between frames: EOF before an index's first byte is a clean close (exit 0, no reply); 1 to 3 index bytes, a cut length or a cut body at EOF refuses with a non-zero exit, the cut named on stderr and no reply (SPEC-TABLES.md §4.2; test/conformance/README.md, the stream) | `harness wire-eof`, one case table (`wireeof.go`), run on every leg by `make tables-wire-eof` (`tables-wire-eof-<leg>` for the 18 legs, `tables-wire-eof-rust-card`, `tables-wire-eof-java-card`); `TestWireEOFSoundDriverPassesEveryCase`, `TestWireEOFPlantedBugsGoRed`, `TestWireEOFNoKnownRootIsAnError`, `TestWireEOFNamesTheFirstKnownEntry` (#4969) |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
 | builder-arm-claims-bound-roots | a wire-fuzz arm claims a root only when the leg holds that arm's read for it, and answers any other root absent by name; a truncated `shapes.Bounds` under `--builder` is refused as the engine refuses it, never thrown (SPEC-TABLES.md §4.2, AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT) | `make tables-cs-builder-fuzz` over the corpus seeds `shapes_bounds_*`, `tblsurf`, `tblvaluedefaults` and `packetunions` roots, red on an absent seed |
@@ -698,6 +699,74 @@ make tables-fixedform-corpus
 SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/luatable \
   -run '^TestLuaFixedCorpusEveryRoot$'
 ```
+
+### A member named like a type its declaration uses
+
+The checker refuses, for every target, a member spelled like a named type
+some member of the same declaration is declared with: a field of a `type` or
+a `table`, or a union arm (packet or table-closure), named like its own type
+or a sibling's. C++ declares `kind kind = kind::None;` (or `kind mode;` then
+`Kind2 kind;`) in the struct, which g++ refuses as a declaration that changes
+the meaning of `kind`, and Dart declares `kind kind = kind.none;` in the
+class, where the member hides the type in the whole class body
+([SPEC §4.6](SPEC.md#46-shape-checks), Emitter name rules). C++ compares the
+member as written and Dart its lowerCamel spelling, so a field `Kind kind`
+is refused for Dart alone.
+
+Each of `Inner`, `Cased`, `Pair` and `U` below is refused on its own: `Cased`
+names Dart, the others C++ and Dart.
+
+```schema
+package probe
+enum kind { Alpha, Beta, Gamma }
+enum Kind2 { A, B }
+type Inner { kind kind }
+type Cased { Kind kind }
+type Pair
+{
+    mode kind
+    kind Kind2
+}
+union U { kind kind }
+```
+
+Rename the member (`mode kind`) or the type (`kind Kind`, two names in every
+target) for an accepted schema; a field `kind` on a declaration whose members
+use no type `kind` is accepted too. `TestMemberNamedLikeAType` checks every
+refusal above, a packet union's arm, the targets each refusal names, that the
+diagnostic cites SPEC §4.6 once, and six accepted spellings. The
+name-buildability rows (`testdata/name-buildability`, held by
+`TestNameBuildabilityCorpus` at check and built in all 18 targets by the
+nightly `tools/namebuild`) hold the same cases:
+
+| Row | Verdict | What it holds |
+|---|---|---|
+| `e_kind` | refused, C++ and Dart | a field `kind kind` |
+| `e_kind_arm` | refused, C++ and Dart | a table union arm `kind kind` |
+| `e_kind_case` | refused, Dart | a field `Kind kind` |
+| `e_kind_sibling` | refused, C++ and Dart | `kind Kind2` beside `mode kind` |
+| `e_kind_upper` | builds | a field `kind Kind` |
+| `e_kind_other_owner` | builds | `kind Kind2` on a type that does not use `kind` |
+
+### A table-closure union in the Dart fixed form
+
+A union with an enum or flags arm is a table-closure construct
+([SPEC-TABLES §2.6](SPEC-TABLES.md)), assembled beside the decl stream, so the
+Dart packet emitter never declares its class. A table that holds one gets the
+union's storage class (`U`, `zeroU`, a plain-int tag) from its own
+`<Base>Fixed.dart`, never an import of a packet class that does not exist.
+
+```schema
+package probe
+enum Mode { Alpha, Beta, Gamma }
+union U { mode Mode }
+table Rec { pick U }
+```
+
+`TestFixedFormDeclaresATableClosureUnion` (internal/codegen/darttable) checks
+an enum arm, a flags arm and two enum arms; the name-buildability row
+`u_enum_arm_table` builds the same schema in all 18 targets, Dart's
+`dart analyze` included.
 ### Announcement vocabulary entry budget
 
 Use a fresh receiver for each row. Compile the variable-only `tables/blobs`

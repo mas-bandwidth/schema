@@ -43,18 +43,20 @@ public final class WireFuzz {
 
         byte[] out = new byte[1024];
         while (true) {
-            long index;
-            try {
-                index = readU32(stdin);
-            } catch (EOFException e) {
+            // THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/
+            // wireeof.go): no index byte at EOF is the clean close; one to
+            // three are a truncated frame, and so is a cut length or body.
+            int first = stdin.read();
+            if (first < 0) {
                 break;
             }
-            long size = readU32(stdin);
+            long index = first | readExact(stdin, 3, "a mutant index") << 8;
+            long size = readExact(stdin, 4, "a mutant length");
             byte[] wire = new byte[(int) size];
             int got = 0;
             while (got < size) {
                 int n = stdin.read(wire, got, (int) size - got);
-                if (n < 0) { System.exit(1); }
+                if (n < 0) { truncated("a mutant"); }
                 got += n;
             }
 
@@ -110,6 +112,22 @@ public final class WireFuzz {
             }
             stdout.flush();
         }
+    }
+
+    private static void truncated(String where) {
+        System.err.println("wire-fuzz: the stream ended inside " + where);
+        System.exit(1);
+    }
+
+    // n (1 to 4) little-endian bytes that must all be there
+    private static long readExact(InputStream in, int n, String where) throws IOException {
+        long v = 0;
+        for (int i = 0; i < n; i++) {
+            int b = in.read();
+            if (b < 0) { truncated(where); }
+            v |= (long) b << (8 * i);
+        }
+        return v;
     }
 
     private static long readU32(InputStream in) throws IOException {
