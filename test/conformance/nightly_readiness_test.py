@@ -422,7 +422,7 @@ class Contracts(unittest.TestCase):
             self.assertIsNone(m.packet_count(tmp,"go","GO_LUDICROUS_CHECKS"))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),68)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),67)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):

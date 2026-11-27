@@ -148,6 +148,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 define tables_generate_dart
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/examples tables/examples
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/pointers tables/pointers
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/blobs tables/blobs
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/lists tables/lists
@@ -873,8 +874,16 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
+# HB, the unit test/conformance/dart/rows/C12.dart imports
+# (build/hb-dart/HBFixed.dart): make/conformance-rows.mk builds it for the
+# Dart rows.
+build/hb-dart/.stamp: bin/schema test/tables/HB.schema make/dart.mk
+	@rm -rf build/hb-dart
+	./bin/schema generate --lang dart --out build/hb-dart test/tables/HB.schema
+	@touch $@
+
 .PHONY: tables-dart-fixed-form
-tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
@@ -882,10 +891,10 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart fixed form: every generated library is format-canonical"
-	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- $(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
 	@mkdir -p build
 	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
-	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- ./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
 
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
@@ -1928,7 +1937,23 @@ test-dart: conformance-dart-text-boundary
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+build/conformance-write-bounds-dart.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) --enable-asserts --snapshot-kind=kernel --snapshot=$@ test/conformance/dart/main.dart >/dev/null
+
+.PHONY: table-write-bounds-dart
+table-write-bounds-dart: build/conformance-harness build/conformance-write-bounds-dart.dill
+	@printf 'dart %s --enable-asserts %s/build/conformance-write-bounds-dart.dill\n' "$(DART)" "$(CURDIR)" > build/conformance-write-bounds-dart.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-dart.drivers \
+		--only dart --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-dart
+
+test-dart: table-write-bounds-dart
+
 
 # A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
 # docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an

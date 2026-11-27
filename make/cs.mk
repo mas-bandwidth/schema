@@ -135,6 +135,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
 	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang cs --out $(2)/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
@@ -184,7 +185,7 @@ tables-cs-generate-into:
 	@mkdir -p $(OUT)
 	$(call tables_generate_cs_parallel,$(GEN),$(OUT))
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -643,11 +644,11 @@ tables-cs-leg:
 	$(MAKE) tables-cs-leg-debug
 	$(MAKE) tables-cs-leg-release
 
-tables-cs-leg-debug: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run
+tables-cs-leg-debug: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run
 
-tables-cs-leg-release: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release
+tables-cs-leg-release: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release
 
 # PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
 # unsplit leg measured 133 s per configuration in CI run 42554833739
@@ -667,16 +668,16 @@ tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- core
 tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- evolution
-tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-debug-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -- fixed
 tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- wire
 tables-cs-leg-release-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- core
 tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
-tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+tables-cs-leg-release-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release -- fixed
 
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
@@ -1302,6 +1303,18 @@ TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
 TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
+
+.PHONY: table-write-bounds-cs
+table-write-bounds-cs: build/conformance-harness build-conformance-cs
+	@printf 'cs %s %s\n' "$(DOTNET)" "$(CS_CONFORMANCE_DLL)" > build/conformance-write-bounds-cs.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-cs.drivers \
+		--only cs --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-cs
+
+test-cs: table-write-bounds-cs
+
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
