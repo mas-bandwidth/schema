@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -76,6 +77,7 @@ func nightlyCorpusFromMake(t *testing.T) string {
 		t.Fatal(err)
 	}
 	const file = "build/squirrel-nightly-fuzz/corpus.txt"
+	testinputs.Make(t, "tables")
 	cmd := testproc.Command(t, "make", "--no-print-directory", file)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
