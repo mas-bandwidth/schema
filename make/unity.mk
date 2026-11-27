@@ -94,6 +94,28 @@ packet-defaults-unity-negative-control: build/packet-defaults/unity/.stamp
 		{ echo 'NEGATIVE CONTROL FAILED: Unity C# failed for another reason'; cat $(UNITY_DEFAULTS_NC)/log; exit 1; }
 	@echo 'packet defaults Unity negative control: missing default bytes fail the construction-form check'
 
+# ---- packet-void corpus (SPEC §4.8; make/checks/packet-void.mk) ----
+
+# The driver answers every case of testdata/wire/packet-void/cases.txt through
+# the Unity-target public write and one-packet read, the generated units
+# compiled in the Unity dialect, in a Debug and a Release build;
+# tools/casegate refuses a case with no answer.
+.PHONY: packet-void-unity
+PACKET_VOID_UNITY := build/packet-void/unity
+
+$(PACKET_VOID_UNITY)/.stamp: bin/schema test/packet-void/Void.schema make/unity.mk
+	@rm -rf $(PACKET_VOID_UNITY)/generated
+	./bin/schema generate --lang unity --out $(PACKET_VOID_UNITY)/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-unity: $(PACKET_VOID_UNITY)/.stamp build/casegate
+	$(DOTNET) build test/packet-void/unity/packet-void-unity.csproj -c Debug -o $(PACKET_VOID_UNITY)/debug \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_UNITY)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,unity) $(DOTNET) $(PACKET_VOID_UNITY)/debug/packet-void-unity.dll $(PACKET_VOID_PINS)
+	$(DOTNET) build test/packet-void/unity/packet-void-unity.csproj -c Release -o $(PACKET_VOID_UNITY)/release \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_UNITY)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,unity) $(DOTNET) $(PACKET_VOID_UNITY)/release/packet-void-unity.dll $(PACKET_VOID_PINS)
+
 # ---- packet UTF-8: the read refusals agree with the C++ oracle ----
 
 build/packet-text/unity/.stamp: bin/schema test/packet-text/Text.schema

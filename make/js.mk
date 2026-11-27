@@ -1953,6 +1953,20 @@ packet-end-js-negative-control: packet-end-js
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-end/js-negative/log; exit 1; }
 	@echo 'packet end JavaScript negative control: the flat end check removal reds the trailing-byte vector'
 
+# THE PACKET-VOID CORPUS, JavaScript (SPEC §4.8; make/checks/packet-void.mk):
+# the driver answers every case of testdata/wire/packet-void/cases.txt through
+# both generated tiers, runtime and flat, checked and production;
+# tools/casegate refuses a case with no answer.
+.PHONY: packet-void-js
+build/packet-void/js/.stamp: bin/schema test/packet-void/Void.schema make/js.mk
+	@rm -f build/packet-void/js/*.js build/packet-void/js/*.d.ts
+	./bin/schema generate --lang js --out build/packet-void/js $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-js: build/packet-void/js/.stamp build/casegate
+	$(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
+	NODE_ENV=production $(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
+
 # THE PACKET-WRITE COMPRESSED-FLOAT CHECK (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): every shared case in
 # test/packet-write-cfloat is written through the flat tier and the runtime
