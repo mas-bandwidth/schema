@@ -20,7 +20,7 @@
 #
 # usage: cpp-clean-format.sh <ratchet-file> <census|check> <tree>...
 # env:   CLANG_FORMAT, JOBS, OUT (scratch dir)
-set -eu
+set -eu -o pipefail
 ratchet=$1
 mode=$2
 shift 2
@@ -75,12 +75,12 @@ judged=$(wc -l < "$OUT/format/results.txt" | tr -d ' ')
 if [ "$listed" != "$judged" ]; then
 	echo "tables-cpp-clean: $listed files were listed and $judged came back with a verdict"; bad=1
 fi
-grep "^ERROR$tab" "$OUT/format/results.txt" | cut -f2- | while IFS= read -r f; do
+sed -n "s/^ERROR$tab//p" "$OUT/format/results.txt" | while IFS= read -r f; do
 	echo "tables-cpp-clean: $CLANG_FORMAT exited non-zero on $f, so its output is no verdict"
 done > "$OUT/format/errors.txt"
 if [ -s "$OUT/format/errors.txt" ]; then head -40 "$OUT/format/errors.txt"; bad=1; fi
-# one line per drifting file
-grep "^DRIFT$tab" "$OUT/format/results.txt" | cut -f2- | sort > "$OUT/format/drift.txt" || true
+# one line per drifting file (sed, not grep: no drift is an empty list, not an error)
+sed -n "s/^DRIFT$tab//p" "$OUT/format/results.txt" | sort > "$OUT/format/drift.txt"
 
 if [ "$mode" = census ]; then
 	[ $bad -eq 0 ] || exit 1
