@@ -34,15 +34,18 @@ table Root {
 }
 `)
 	m := tabletext.NewModel(u)
+	// An authored [E]T holds one value per variant (docs/SPEC.md §5.1,
+	// SF-35: never a missing slot filled in), so the authored rows spell B at
+	// its default where the text leaves it out.
 	rows := []struct{ name, text, authored string }{
 		{"omitted", `{}`, `%{}`},
 		{"declared-default", `{"scalar":0.2}`, `%{"scalar" => 0.2}`},
 		{"rounded-default", `{"scalar":0.2}`, `%{"scalar" => 0.20000000298023224}`},
-		{"nested-defaults", `{"children":{"A":{"value":0.2}},"rows":[{"value":0.2},{"value":0.2}],"child":{"value":0.2}}`, `%{"children" => %{"A" => %{"value" => 0.2}}, "rows" => [%{"value" => 0.2}, %{"value" => 0.2}], "child" => %{"value" => 0.2}}`},
-		{"positive-underflow", `{"keyed":{"A":1e-50},"samples":[1e-50,0]}`, `%{"keyed" => %{"A" => 1.0e-50}, "samples" => [1.0e-50, 0.0]}`},
-		{"negative-zero", `{"scalar":-0.0,"keyed":{"A":-0.0},"samples":[-0.0,0]}`, `%{"scalar" => -0.0, "keyed" => %{"A" => -0.0}, "samples" => [-0.0, 0.0]}`},
-		{"negative-underflow", `{"keyed":{"A":-1e-50},"samples":[-1e-50,0]}`, `%{"keyed" => %{"A" => -1.0e-50}, "samples" => [-1.0e-50, 0.0]}`},
-		{"nondefault", `{"scalar":0.3,"keyed":{"A":0.3},"samples":[0.3,0.2]}`, `%{"scalar" => 0.3, "keyed" => %{"A" => 0.3}, "samples" => [0.3, 0.2]}`},
+		{"nested-defaults", `{"children":{"A":{"value":0.2}},"rows":[{"value":0.2},{"value":0.2}],"child":{"value":0.2}}`, `%{"children" => %{"A" => %{"value" => 0.2}, "B" => %{}}, "rows" => [%{"value" => 0.2}, %{"value" => 0.2}], "child" => %{"value" => 0.2}}`},
+		{"positive-underflow", `{"keyed":{"A":1e-50},"samples":[1e-50,0]}`, `%{"keyed" => %{"A" => 1.0e-50, "B" => 0.0}, "samples" => [1.0e-50, 0.0]}`},
+		{"negative-zero", `{"scalar":-0.0,"keyed":{"A":-0.0},"samples":[-0.0,0]}`, `%{"scalar" => -0.0, "keyed" => %{"A" => -0.0, "B" => 0.0}, "samples" => [-0.0, 0.0]}`},
+		{"negative-underflow", `{"keyed":{"A":-1e-50},"samples":[-1e-50,0]}`, `%{"keyed" => %{"A" => -1.0e-50, "B" => 0.0}, "samples" => [-1.0e-50, 0.0]}`},
+		{"nondefault", `{"scalar":0.3,"keyed":{"A":0.3},"samples":[0.3,0.2]}`, `%{"scalar" => 0.3, "keyed" => %{"A" => 0.3, "B" => 0.0}, "samples" => [0.3, 0.2]}`},
 	}
 	var probe strings.Builder
 	probe.WriteString(`

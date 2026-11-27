@@ -10058,7 +10058,10 @@ that answers the stream `test/conformance/README.md` states, forty lines of
 `Load`, `Save` and a report copied out — because the mutators, the oracle and
 the comparison live in the harness once, for every language. A port with no
 variable class answers the roster with a `0` for every variable root and is
-fuzzed over the fixed ones, and the line says how many seeds were absent.
+fuzzed over the fixed ones, and the line says how many seeds were absent and
+names the roots they belong to, each with its count: `N seeds absent (roots
+the leg has no codec for: unit.Root (n seeds), ...)`. A count alone sends
+whoever reads a red to rebuild the harness to learn its cause.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it

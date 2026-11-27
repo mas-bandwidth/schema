@@ -431,6 +431,7 @@ per-port check where no shared case exercises it.
 | GAP-9 | `make conformance-port` fails on any absence (§5); a port declares its gated keys by answering absent (README); gaps Zig3, OC14 | `TestCompleteRunRefusesEveryAbsence` (#4706) |
 | dart-plain-roster-whole | the Dart driver advertises every root the plain wire-fuzz arm names, fixed class and variable alike; a seed the plain arm leaves absent fails the gate rather than standing as a count in its summary line (SPEC-TABLES.md §4.2) | `TestDartPlainRosterAllRoots` in `tables-dart-wire-fuzz` (#4949) |
 | GAP-10 | First use counts every reference, skipped bytes included (SPEC-TABLES §3); gaps Sw5 | `framing skipped_ids_first_use`, `skipped_ids_out_of_order` (#4706) |
+| wire-fuzz-absent-roots-named | a wire-fuzz run that leaves seeds absent names each absent root on its summary line as `unit.Root (n seeds)`, in name order, beside the count; a count alone is not the line (SPEC-TABLES.md §4.2, the sweep's naming) | `TestWireFuzzAbsentRootsAreNamed` |
 | GAP-11 | A `tag` edit: `0` None, `n` the `n`-th arm; path steps through maps, keyed arrays and arms; `count` on an empty array takes the element default; `wide:`/`units` retired (FORMAT.md); gaps Sw6, Sw7, OC10, OC15, Zig10, Zig11, Zig12, Zig17 | `wref_`/`fref_`/`mref_`/`jref_union_tag_none`; the `write-refusal` rows' map, keyed and arm paths (#4706) |
 | GAP-12 | The definitions digest, pinned: leaf kinds (enum `7`), roles, row order, one-sided fill, `was` ids (FIXED-FORM-ALGORITHM §5.2; SPEC-TABLES §21); gaps Sw8, OC4, Zig15 | `testdata/conformance/fixed-digest/vector.txt` (`TestFixedDefinitionsDigestVector`) (#4706) |
 | GAP-13 | Synthetic layout ids; a timestamp lays as kind `5`; the union tag width (FIXED-FORM-ALGORITHM §1); gaps OC3, OC5, ObjC10 | the digest vector's layout; every `schema.lock` `layout=` (#4706) |
@@ -1281,6 +1282,30 @@ refusal-verdict-only), so the case is the leg's unit test.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
+### Unlawful handed-in lineage entry
+
+Read the reference corpus files `old_unknown_census.bin` (one record) and
+`many_unknown_census.bin` (three records), written by `VOLD_unknown_census`,
+with a `VNEW_unknown_census` build whose lineage is handed the OLD layout as
+an entry. `VNEW` removed `Item.drop`, so the entry is unlawful
+([FIXED-FORM-ALGORITHM §5.4](FIXED-FORM-ALGORITHM.md#54-the-counter-and-the-refusals-per-op-and-per-condition),
+§5.9 #30; FIXED-FORM-VERSIONING-TESTS.md, `unknown_census`). Each load
+refuses `layout_malformed` before any record lands. Every report counter,
+`unknown` included, stays zero. A second load of the same file refuses the
+same way. A load that returns the named fields and counts `unknown` (1 for
+the field, or 4 or 3 when counted per element or per record) fails this
+test: it landed values from a layout the compile should have refused.
+
+Go answers both files with `TestFixedVersioningUnknownCensus` and
+`TestFixedVersioningUnknownCensusManyRecords` in `internal/codegen/gotable`.
+Elixir answers them with the same tests in `internal/codegen/elixirtable`,
+and its conformance row `test/conformance/elixir/rows/R16.exs` checks a
+three-record file the row writes itself. Run, with the corpus built:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable ./internal/codegen/elixirtable \
+  -run "^TestFixedVersioningUnknownCensus"
+```
 
 ### Counted-array slots after a fixed refusal
 
