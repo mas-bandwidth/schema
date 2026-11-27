@@ -10,8 +10,9 @@ import (
 )
 
 // A malformed read returns no records and resets caller storage. A named
-// preflight refusal resets every row handed in too (ruling R4). An accumulated malformed
-// bit from an earlier read must not turn a later valid read into fresh damage.
+// preflight refusal resets every row handed in too (ruling R4). A read clears the
+// report it is handed (SPEC-TABLES §6.5, §6.6): an earlier read's damage bit neither
+// turns a later valid read into damage nor survives it.
 func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it builds and runs the generated fixed-load probe)")
@@ -60,8 +61,8 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
     let mut report = TableFixedReport::default();
     report.damaged = true;
     if root_fixed_load(&mut values, &valid, &mut plan, &mut remap, &mut report) != Some(2)
-        || values[0].a != 5 || values[1].a != 6 || !report.damaged {
-        failures.push("reused report: old damage changed this valid read".to_string());
+        || values[0].a != 5 || values[1].a != 6 || report != TableFixedReport::default() {
+        failures.push(format!("reused report: a valid read did not clear the report it was handed: {report:?}"));
     }
     if failures.is_empty() { println!("FIXED_TRANSACTION ok"); }
     else { for failure in failures { println!("FIXED_TRANSACTION BAD {failure}"); } std::process::exit(1); }
