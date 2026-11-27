@@ -1,6 +1,6 @@
-github.com/mas-bandwidth/schema/v2/tools/releasetargets|fmt||
-github.com/mas-bandwidth/schema/v2/tools/releasetargets.test|fmt github.com/mas-bandwidth/schema/v2/tools/releasetargets testing||
-github.com/mas-bandwidth/schema/v2/internal/ci|fmt||
-github.com/mas-bandwidth/schema/v2/internal/ci.test|fmt github.com/mas-bandwidth/schema/v2/internal/ci testing||
-github.com/mas-bandwidth/schema/v2/internal/goldens|fmt||
-github.com/mas-bandwidth/schema/v2/ir|fmt||
+github.com/mas-bandwidth/schema/v3/tools/releasetargets|fmt||
+github.com/mas-bandwidth/schema/v3/tools/releasetargets.test|fmt github.com/mas-bandwidth/schema/v3/tools/releasetargets testing||
+github.com/mas-bandwidth/schema/v3/internal/ci|fmt||
+github.com/mas-bandwidth/schema/v3/internal/ci.test|fmt github.com/mas-bandwidth/schema/v3/internal/ci testing||
+github.com/mas-bandwidth/schema/v3/internal/goldens|fmt||
+github.com/mas-bandwidth/schema/v3/ir|fmt||

@@ -2,7 +2,7 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/viewlisting"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestLuaTypeView generates every unit of the tables conformance manifest and

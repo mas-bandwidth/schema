@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 func TestAnnouncementEntryBudget(t *testing.T) {

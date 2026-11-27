@@ -3,7 +3,7 @@ package tablewire
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A MAP COUNT WHOSE LEB RUNS PAST THE MAP'S OWN L IS DAMAGE, IN EVERY

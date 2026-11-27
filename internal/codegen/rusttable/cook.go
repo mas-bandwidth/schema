@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cookModule assembles <base>_cook.rs: the §7 read runtime (emitted once per

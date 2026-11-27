@@ -3,7 +3,7 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -13,13 +13,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedCorpusBuild runs the corpus's own make target once per test binary, so

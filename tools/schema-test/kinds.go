@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // goTestAdapter runs language-free Go tests: a test whose inputs are

@@ -155,7 +155,7 @@ all: bin/schema
 # tag on a release build and tag-commits-hash elsewhere; outside a git checkout
 # the stamp is left empty and internal/version falls back to the build info.
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
-LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
+LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v3/internal/version.version=$(VERSION),)
 
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
@@ -5425,18 +5425,22 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-# Enter a fresh make only after the stamp has written the collection sources:
-# expanding their wildcards in this make can freeze an empty first-build list.
-# The outer file target keeps the ordinary schema, driver and runtime-header
-# incremental triggers; the inner target restores the complete object graph.
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
-	@$(MAKE) --no-print-directory _conformance-cpp-binary
+# THE DRIVER'S OWN TU COMPILES IN THE SAME PARALLEL PASS. main.cpp is the
+# largest translation unit here (it includes every generated header); compiled
+# after the object pass it ran alone on one core, so the nightly paid its whole
+# compile on top of the objects'. It is now one more object of the pass and
+# only the link is left after it. The object is named apart from
+# conformance_main.o (make/verify-compiled.mk), which _verify-cpp-fuzz-bins
+# builds in its own sub-make, so the two never write one file at once.
+build/conformance-cpp-objs/_main/conformance_driver.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
-.PHONY: _conformance-cpp-binary
-_conformance-cpp-binary: test/conformance/cpp/main.cpp $(CONFORMANCE_OBJECTS)
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_OBJECTS) -o build/conformance-cpp
+	@$(MAKE) --no-print-directory build/conformance-cpp-objs/_main/conformance_driver.o $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_driver.o \
+		$(CONFORMANCE_OBJECTS) -o $@
 
 build/tables-generated/writebounds/.stamp: bin/schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated/writebounds
@@ -7757,8 +7761,8 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # The version is past every tag but keeps the current major: releasetag refuses
-# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
-# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and
+# go.mod names /v3, so a v3 version passes.
 RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
 RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json

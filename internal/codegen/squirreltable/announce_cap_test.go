@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // THE ANNOUNCEMENT WRITER REFUSES A VOCABULARY ITS READERS REFUSE

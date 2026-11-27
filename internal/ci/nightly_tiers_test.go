@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/nightlyrows"
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/nightlyrows"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // THE NIGHTLY-ONLY FOOTGUN (2026-11-22). The strict Ruby gate ran only in

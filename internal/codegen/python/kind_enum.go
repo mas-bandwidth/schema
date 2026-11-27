@@ -3,7 +3,7 @@ package python
 import (
 	"strconv"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // An enum is a plain int on the wire, range [0, Max] (SPEC §4.2).

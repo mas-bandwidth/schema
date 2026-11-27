@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A counted [A..B] holds A inside a union arm (ruling R10; SPEC.md §5.1 row

@@ -15,8 +15,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // MessageReason is why a message or an announcement was REFUSED. A refusal is

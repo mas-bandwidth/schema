@@ -333,7 +333,7 @@ $(CARDS_GO_STAMP): bin/schema $(wildcard tables/cards/*.schema tables/cards/*.go
 	./bin/schema generate --lang go --out build/tables-generated-go/cards-future tables/cards/testdata/upgrade/future/DECLARATION.schema
 	$(call go_table_module,cards-initial,cardsinitial)
 	$(call go_table_module,cards-future,cardsfuture)
-	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
+	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v3 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
@@ -590,7 +590,7 @@ endef
 # the same wiring for a module directory named whole; it sits two levels under
 # build/, as every generated table module does
 define go_table_module_in
-@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > $(1)/go.mod
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v3 => ../../..\n' $(2) > $(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -754,7 +754,7 @@ build/tables-generated-go/writebounds/.stamp: bin/schema make/go.mk testdata/con
 
 build/conformance-go-writebounds: build/tables-generated-go/writebounds/.stamp test/conformance/go/main.go test/conformance/go/regions.go test/conformance/go/writerefusal.go test/conformance/go/codec_writebounds.go test/conformance/go/stubs_writebounds.go $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
 	@mkdir -p build
-	@printf 'module conformancego\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\twritebounds v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s/%s\nreplace writebounds => %s/build/tables-generated-go/writebounds\n' "$(CURDIR)" "$(CURDIR)" "$(SERIALIZE_GO_RUNTIME)" "$(CURDIR)" > build/conformance-go-writebounds.mod
+	@printf 'module conformancego\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\twritebounds v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s/%s\nreplace writebounds => %s/build/tables-generated-go/writebounds\n' "$(CURDIR)" "$(CURDIR)" "$(SERIALIZE_GO_RUNTIME)" "$(CURDIR)" > build/conformance-go-writebounds.mod
 	cd test/conformance/go && go build -modfile="$(CURDIR)/build/conformance-go-writebounds.mod" -tags writebounds_only -o ../../../$@ .
 
 # THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
