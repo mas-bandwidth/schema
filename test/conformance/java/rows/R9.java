@@ -52,7 +52,10 @@ public final class R9 {
 
     private static int red = 0;
 
-    /** the destination byte a refusal must never write. */
+    /** a value the caller holds before the read: a refusal lands nothing
+     *  from the file and leaves the row at its DECLARED DEFAULTS, never at
+     *  this (docs/FIXED-FORM-ALGORITHM.md §5.3, "REFUSE is total";
+     *  SPEC-TABLES §6.5, the caller's values after a refusal). */
     private static final int MARKER = 4242;
 
     /** the layout's own four-byte entry count, at the head of the layout. */
@@ -163,7 +166,8 @@ public final class R9 {
      *  malformed is NOT (the two answers are never both set); the name is
      *  the ONE name and never the §1.1 rule a walk would have named; no
      *  counter moved; the name carries no layout hash; and REFUSE is total —
-     *  not one destination byte written. */
+     *  nothing read from the file lands and the row handed in is back at its
+     *  declared defaults. */
     private static void refusesOneName(byte[] f, TableFixed.Reason ifWalked, String what) {
         final CfgFixed.Value[] v = { new CfgFixed.Value() };
         v[0].a = MARKER;
@@ -174,7 +178,7 @@ public final class R9 {
                 && r.reason == TableFixed.Reason.layoutMalformed;
         final boolean joint = !r.damaged && r.unknown == 0
                 && r.widened == 0 && r.layoutHash == 0;
-        final boolean total = v[0].a == MARKER;
+        final boolean total = v[0].a != MARKER && v[0].a == new CfgFixed.Value().a;
         check(underKnown && oneName && joint && total,
                 what + " — under the KNOWN hash the answer is the ONE name layout_malformed"
                 + (ifWalked == null ? "" : ", never " + ifWalked)

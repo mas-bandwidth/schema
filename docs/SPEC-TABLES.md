@@ -2028,7 +2028,9 @@ never in the packet header, and in JavaScript in `<Base>.js` importing each
 `table` arm class its constructor instantiates (`new <Arm>()`) from the unit
 home that defines it (`./<Home>Table.js` when the union is in the unit's
 fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
-construct); a `type`
+construct), and in Dart by the table emitters themselves (the fixed form's
+`<Base>Fixed.dart` declares its storage class with a plain-int tag, since the
+packet emitter declares no class for it); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -9859,6 +9861,18 @@ in other words as none. A plain-arm line whose reason begins `split:` holds a ro
 leg's builder arm fuzzes instead, and the builder arm's run refuses a split
 root it does not answer, so no root is split to no arm. A port adds a new root
 to its wire-fuzz driver in the change that adds the root to the corpus.
+**The leg's stream ends only between frames.** The fuzzer drives each leg
+over a pipe (`test/conformance/README.md`, "The wire-fuzz driver"): the
+roster once, then one FRAME per mutant, a `u32` roster index, a `u32` length
+and that many bytes. The harness closes the pipe only after a whole frame.
+EOF before an index's first byte is the end of the stream, and the leg exits
+0. EOF INSIDE a frame REFUSES: one to three index bytes, a length cut short,
+or fewer body bytes than the length names is a truncated frame, never a
+short one. The leg names the cut on stderr, exits non-zero and writes no
+reply, and the cut bytes never reach a reader as if they were the whole
+wire. A leg that took a cut frame for a close or a whole mutant would turn
+a truncated run green. `harness wire-eof` holds every leg's driver to this
+rule, one case table for all of them (`make tables-wire-eof`).
 
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
@@ -10064,7 +10078,10 @@ that answers the stream `test/conformance/README.md` states, forty lines of
 `Load`, `Save` and a report copied out — because the mutators, the oracle and
 the comparison live in the harness once, for every language. A port with no
 variable class answers the roster with a `0` for every variable root and is
-fuzzed over the fixed ones, and the line says how many seeds were absent.
+fuzzed over the fixed ones, and the line says how many seeds were absent and
+names the roots they belong to, each with its count: `N seeds absent (roots
+the leg has no codec for: unit.Root (n seeds), ...)`. A count alone sends
+whoever reads a red to rebuild the harness to learn its cause.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it
@@ -11022,7 +11039,10 @@ the class. A Go fixed refusal is a typed
   wire's count of them, and answers a count of `0`; a fixed batch read resets
   EVERY row it was handed, and the same holds for a refusal of the bounds
   pass after the records landed. No partial value survives a refusal, and no
-  value keeps what the caller held before the call. A language whose read
+  value keeps what the caller held before the call: a reset row holds EVERY
+  field a fresh value holds, a counted array's element slots past its count
+  included, so a language whose element slots are objects resets each slot in
+  place and does not stop at the count. A language whose read
   hands back a fresh collection rather than filling the caller's answers a
   refusal with one shape for every reason (a framing refusal and a body
   refusal look alike to the caller), and a read that fills a caller's list

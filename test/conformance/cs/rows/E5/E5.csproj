@@ -8,7 +8,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>E5</AssemblyName>
-    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../build/tables-generated-cs</TablesGeneratedDir>
+    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
   </PropertyGroup>
 
   <ItemGroup>

@@ -135,6 +135,7 @@ var catalog = []Entry{
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
 	e("internal/viewlisting", "view listing vs IR", "go test ./internal/viewlisting", "go test ./internal/viewlisting"),
 	e("internal/wireabsent", "wire-fuzz absence clause and ledger path", "go test ./internal/wireabsent", "go test ./internal/wireabsent"),
+	e("internal/wirealone", "the framing rows decidable from the wire alone, read for each port's wire-walk control", "go test ./internal/wirealone", "go test ./internal/wirealone"),
 
 	// internal/codegen/
 	e("internal/codegen/c", "C packet emitter", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),

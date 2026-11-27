@@ -55,3 +55,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |
 | `wireabsent/` | wire-fuzz absence clause and ledger path | `go test ./internal/wireabsent` | `go test ./internal/wireabsent` |
+| `wirealone/` | the framing rows decidable from the wire alone, read for each port's wire-walk control | `go test ./internal/wirealone` | `go test ./internal/wirealone` |

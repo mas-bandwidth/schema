@@ -384,8 +384,8 @@ void main(List<String> args) {
       v.TagsType.max != 2 ||
       v.SingleType.max != 1 ||
       v.EmptyType.max != 0 ||
-      v.enumNameMixedType(v.MixedType.ping) != 'Ping' ||
-      v.enumNameTagsType(v.TagsType.pong) != 'Pong' ||
+      v.enumNameMixedType(v.MixedType.ping as int) != 'Ping' ||
+      v.enumNameTagsType(v.TagsType.pong as int) != 'Pong' ||
       v.mixedMaxBits != 23 ||
       v.tagsMaxBits != 2 ||
       v.singleMaxBits != 1 ||

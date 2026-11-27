@@ -47,11 +47,17 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 		cf=$1; st=$2; wk=$3; shift 3
 		out="$wk/res.$$"
 		for f in "$@"; do
-			if "$cf" --style="$st" "$f" | cmp -s "$f" -; then
+			# the formatter runs on its own, so its exit status is read: piped
+			# into cmp, a crash looked like drift, and drift passes on the ratchet
+			fmt="$wk/fmt.$$"
+			if ! "$cf" --style="$st" "$f" > "$fmt"; then
+				printf "FAILED\t%s\n" "$f" >> "$out"
+			elif cmp -s "$f" "$fmt"; then
 				printf "CLEAN\t%s\n" "$f" >> "$out"
 			else
 				printf "DRIFT\t%s\n" "$f" >> "$out"
-					fi
+			fi
+			rm -f "$fmt"
 		done
 	' _ "$CLANG_FORMAT" "$style" "$work" < "$OUT/c-format-files.txt"
 fi
@@ -73,6 +79,9 @@ if [ -s "$OUT/c-format-results.txt" ]; then
 	while IFS="$(printf '\t')" read -r verdict f; do
 		if [ "$verdict" = "CLEAN" ]; then
 			if grep -Fxq "$f" "$allow"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi
+		elif [ "$verdict" = "FAILED" ]; then
+			echo "tables-c-clean: clang-format failed on $f" >&2
+			bad=1
 		else
 			echo "$f" >> "$seen"
 			grep -Fxq "$f" "$allow" || { echo "tables-c-clean: clang-format drift in $f, which $allow does not list (the list only shrinks)"; bad=1; }

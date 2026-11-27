@@ -312,7 +312,13 @@ t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
 c_max_items	builds	-	a const named in lowercase: Ruby spells it MAX_ITEMS (SPEC §4.6, Ruby mapping)
-e_kind	builds	-	an enum named in lowercase: Ruby spells it Kind
+e_kind	refuse-at-check	C++	an enum named in lowercase beside a field of its own name: C++ and Dart cannot spell kind kind (SPEC §4.6)
+e_kind_arm	refuse-at-check	C++	a table union arm named like its own enum: C++ and Dart cannot spell the arm kind kind (SPEC §4.6)
+e_kind_case	refuse-at-check	Dart	a field Kind of type kind: Dart spells the field kind and it hides its own type (SPEC §4.6)
+e_kind_sibling	refuse-at-check	C++	a field kind of type Kind2 beside a field of type kind: the member hides a type its class uses in C++ and Dart (SPEC §4.6)
+e_kind_upper	builds	-	a field kind of type Kind: two names in every target (SPEC §4.6)
+e_kind_other_owner	builds	-	a field kind on a type that does not use the enum kind (SPEC §4.6)
+u_enum_arm_table	builds	-	a table-closure union (an enum arm) reached from a table: the Dart fixed form owns its storage class
 e_infinity	refuse-at-check	Lobster	an enum named infinity: the Lobster lexer reads infinity (and nan) as a float literal, never an identifier; split from n_internal_33
 e_unmanaged	refuse-at-check	C#	an enum named unmanaged: the C# constraint where T : unmanaged then names the enum (CS0701); split from n_internal_75
 u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module PickType
@@ -342,6 +348,8 @@ pkg_next	refuse-at-check	Lobster	package is a runtime binding of the Lobster run
 pkg_read	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_view	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_descriptor	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_p	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster local)
+pkg_depth	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster parameter)
 v_None_	refuse-at-check	Lobster	variant None_: the generated KindNone collides with Kind.None
 j_type_outer_class	refuse-at-check	Java	a type named like its file outer class
 j_field_Boolean	refuse-at-check	Java	field Boolean maps to a reserved Java word
@@ -390,7 +398,7 @@ n_internal_37	builds	-	generator-internal names key_bytes_used..kp (80), each an
 n_internal_38	builds	-	generator-internal names kpair..layouts (80), each an enum, a table field and a union arm
 n_internal_39	builds	-	generator-internal names lazy..limb (80), each an enum, a table field and a union arm
 n_internal_40	builds	-	generator-internal names limbs..longer (80), each an enum, a table field and a union arm
-n_internal_41	builds	-	generator-internal names lookup..mapKeyInDomain (80), each an enum, a table field and a union arm
+n_internal_41	builds	-	generator-internal names lookup..mapKeyInDomain (80), each an enum, a table field and a union arm; main is a field and an arm only, since an enum main is refused at check (n_dart_main)
 n_internal_42	builds	-	generator-internal names mapKeyNumber..measureInt128 (80), each an enum, a table field and a union arm
 n_internal_43	builds	-	generator-internal names measureInt64..more (80), each an enum, a table field and a union arm
 n_internal_44	builds	-	generator-internal names most..nArms (80), each an enum, a table field and a union arm
@@ -441,3 +449,4 @@ n_internal_88	builds	-	generator-internal names words_at..zero_range (22), each 
 n_internal_89	builds	-	generator-internal names aend..uat (23), each an enum, a table field and a union arm
 n_internal_90	builds	-	generator-internal names armid..keyid (2), each an enum, a table field and a union arm
 n_internal_91	builds	-	generator-internal names arm, inner, kind, types (4), each an enum, a table field and a union arm; the probe types are Part and Mode, so none shadows them
+n_dart_main	refuse-at-check	Dart	an enum named main: Dart reserves a library's main for the entry point, a function, and an enum's type is its schema name (SPEC §4.6)

@@ -706,6 +706,19 @@ static uint32_t read_u32()
     return (uint32_t) b[0] | (uint32_t) b[1] << 8 | (uint32_t) b[2] << 16 | (uint32_t) b[3] << 24;
 }
 
+// The next mutant's index: 1 when read, 0 when the stream ended cleanly on a
+// frame boundary, -1 when it ended inside the index (1 to 3 bytes), which is a
+// truncated frame and never a close (test/conformance/harness/wireeof.go).
+static int read_index( uint32_t * index )
+{
+    uint8_t b[4];
+    size_t got = fread( b, 1, 4, stdin );
+    if ( got == 0 && feof( stdin ) ) { return 0; }
+    if ( got != 4 ) { return -1; }
+    *index = (uint32_t) b[0] | (uint32_t) b[1] << 8 | (uint32_t) b[2] << 16 | (uint32_t) b[3] << 24;
+    return 1;
+}
+
 static bool read_name( char * out, size_t capacity )
 {
     uint8_t b[2];
@@ -766,10 +779,13 @@ int main( int argc, char ** argv )
     // the mutants, until EOF
     for ( ;; )
     {
-        uint32_t index = read_u32();
-        if ( index == 0xFFFFFFFFu ) { break; }
-        uint32_t length = read_u32();
-        if ( length == 0xFFFFFFFFu ) { break; }
+        uint32_t index = 0;
+        int got = read_index( &index );
+        if ( got == 0 ) { break; }
+        if ( got < 0 ) { fprintf( stderr, "wire-fuzz leg: the stream ended inside a mutant index\n" ); return 1; }
+        uint8_t lb[4];
+        if ( !read_exact( lb, 4 ) ) { fprintf( stderr, "wire-fuzz leg: the stream ended inside a mutant length\n" ); return 1; }
+        uint32_t length = (uint32_t) lb[0] | (uint32_t) lb[1] << 8 | (uint32_t) lb[2] << 16 | (uint32_t) lb[3] << 24;
         if ( index >= count || roster[index] == NULL )
         {
             fprintf( stderr, "wire-fuzz leg: mutant names roster entry %u, which this leg cannot read\n", index );

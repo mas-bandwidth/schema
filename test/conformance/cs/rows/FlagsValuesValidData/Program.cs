@@ -63,7 +63,7 @@ internal static class Program
         // declared defaults (the LoadoutConfig ctor fills them) so the
         // diff is just the Perks mask.
         Tabledemo.LoadoutConfig src = new Tabledemo.LoadoutConfig();
-        src.Perks = wantMask;
+        src.Perks = (Tabledemo.Perks)wantMask; // Perks is a typed [Flags] enum over ulong
 
         long need = Tabledemo.Schema.LoadoutConfigMeasure(src);
         if (need <= 0)
@@ -101,11 +101,11 @@ internal static class Program
             return false;
         }
 
-        if (dst.Perks != wantMask)
+        if ((ulong)dst.Perks != wantMask)
         {
             Console.Error.WriteLine(
                 "FAIL: round-trip {0}: want Perks=0x{1:x}, got 0x{2:x}",
-                label, wantMask, dst.Perks);
+                label, wantMask, (ulong)dst.Perks);
             return false;
         }
 
@@ -123,7 +123,8 @@ internal static class Program
         // loadout_full.cook). A C# leg that asserts the same Perks
         // value proves the two implementations agree on the wire's
         // mask encoding.
-        const string path = "../../../../../testdata/wire/tables/loadout_full.bin";
+        // the row runs from the repo root (tools/conformancerows)
+        const string path = "testdata/wire/tables/loadout_full.bin";
         byte[] bytes;
         try
         {
@@ -150,11 +151,11 @@ internal static class Program
         // The golden sets exactly Shielded (bit 0); Cloaked and Turbo are
         // off, so the mask is 0x1, not 0x7.
         const ulong want = 0x1ul;
-        if (dst.Perks != want)
+        if ((ulong)dst.Perks != want)
         {
             Console.Error.WriteLine(
                 "FAIL: pinned golden — want Perks=0x{0:x} (Shielded), got 0x{1:x}",
-                want, dst.Perks);
+                want, (ulong)dst.Perks);
             return false;
         }
 

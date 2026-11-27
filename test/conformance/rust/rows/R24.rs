@@ -5,6 +5,18 @@
 //    text is counted in bytes with the clamp in units; slack is unspecified
 //    on read and not a refusal"
 //
+// THE LAW MOVED TWICE since this row was cut, and the row follows it:
+//   * strict-only-read (docs/rulings.json, 2026-11-03): no read clamps. A
+//     length outside [0, cap] refuses the WHOLE load (docs/FIXED-FORM-ALGORITHM.md
+//     :449, §4.5 `text` row: "REFUSE length_over_bound"; this leg's reason is
+//     OutOfRange, the reason being per-language detail: refusal-verdict-only).
+//     Clause 2's "clamp in units" is now "the BOUND in units".
+//   * fixed-dead-bytes-are-zero (docs/rulings.json, 2026-11-10), superseding
+//     the slack rule quoted below: "The bytes past the used length are DEAD,
+//     and a non-zero one refuses wire_damaged in the CHECK pass" (§4.5).
+//     Clause 3 is now "slack is DEAD and a non-zero byte refuses as damage".
+// The original quotes are kept for the mapping of each old assertion.
+//
 // THE LAW, sentence by sentence (the card's pointer is
 // docs/FIXED-FORM-ALGORITHM.md:1682 — §7's proof item, the corpus row; a
 // mechanical match, verified unchanged on fixed-table-form — and the
@@ -28,7 +40,11 @@
 //
 // The PRODUCTION path is `fx_root_fixed_load`, the generated reader for
 // FX1's `fixed table FxRoot` (test/tables/FX1.schema): `label string(8)`,
-// its length word at body[22..26] and its 8-byte span at body[26..34]. The
+// its length word at body[22..26] and its 8-byte span at body[26..34].
+// (Wide text is RETIRED since this row was cut — docs/rulings.json
+// wstring-removed-utf8 — so clause 1's wide half is now that ruling's verdict;
+// clauses 2 and 3 keep their wide-shaped Text entries as the run's plain
+// bound-in-`aux` arithmetic, which is unit-agnostic.) The
 // WIDE half has no generated fixture on this leg — the wide-text unit is
 // generated for the C++ reference and Dart and nobody else
 // (test/tables/FXW.schema:10-14) — so the wide clauses are asserted on the
@@ -124,7 +140,7 @@ fn wide_text_entry() -> TableFixedEntry {
 fn run_wide(entry: TableFixedEntry, record: &[u8]) -> (Vec<u8>, TableFixedReport) {
     let mut image = [0u8; 12];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[entry], &[], record, &mut image, &mut report);
+    table_fixed_run(&[entry], &[], &[], record, &mut image, &mut report);
     (image.to_vec(), report)
 }
 
@@ -155,28 +171,44 @@ fn r24_ill_formed_used_units_refuse_by_name_narrow() {
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
 }
 
-// CLAUSE 1 (wide): ill-formed text in the USED UNITS refuses by name. The
-// used units carry an unpaired high surrogate — 0xD800 with no low half —
-// which §4.5 names a content violation on the wide flavour.
+// CLAUSE 1 (wide), AS RULED NOW: wide text is RETIRED (docs/rulings.json
+// wstring-removed-utf8, 2026-10-31: "I thought we removed wstring from
+// serialize, and replaced with utf8, we should do the same from schema"). Its
+// kind code 33 is "retired (wide text) — NOT in the closed set"
+// (docs/FIXED-FORM-ALGORITHM.md:92), so there are no wide USED UNITS left to
+// judge: this clause once ran a hand-built wide Text entry over an unpaired
+// surrogate and asserted text_ill_formed. Its replacement is the verdict the
+// spec gives a wide-text field on the wire today — a layout naming kind 33 is
+// a form this reader never saw, refused BY NAME layout_kind_unknown, never
+// stepped over — beside a control that the same layout with a narrow
+// string(N) (kind 12) parses. The narrow content refusal is clause 1 above.
+fn one_field_layout(kind: u8, size: u32) -> Vec<u8> {
+    let mut b = Vec::new();
+    b.extend_from_slice(&2u32.to_le_bytes());
+    for (id, k, sz, ch) in [(1u64, 13u8, size, 1u32), (2u64, kind, size, 0u32)] {
+        b.extend_from_slice(&id.to_le_bytes());
+        b.push(k);
+        b.extend_from_slice(&sz.to_le_bytes());
+        b.extend_from_slice(&ch.to_le_bytes());
+    }
+    b
+}
+
 #[test]
-fn r24_ill_formed_used_units_refuse_by_name_wide() {
+fn r24_wide_text_is_retired_and_refused_by_name() {
     FAILURES.store(0, Ordering::Relaxed);
-    println!("R24 clause 1 (wide): an unpaired surrogate in the used units refuses by name");
-    // [len = 2 units] [0x0048 'H'] [0xD800 lone high] then slack units
-    let record: [u8; 12] = [2, 0, 0, 0, 0x48, 0x00, 0x00, 0xD8, b'a', 0, b'b', 0];
-    let (image, report) = run_wide(wide_text_entry(), &record);
+    println!("R24 clause 1 (wide): a retired wide-text kind (33) is refused layout_kind_unknown");
+    let wide = one_field_layout(33, 12);
+    let got = TableFixedBlock::parse(&wide).err();
     checkf!(
-        report.refused,
-        "unpaired surrogate: the entry REFUSES (fix 11): {report:?}"
+        got == Some(TableFixedReason::LayoutKindUnknown),
+        "wide text: a layout naming kind 33 refuses BY NAME layout_kind_unknown, got {:?}",
+        got.map(|r| r.name())
     );
+    let narrow = one_field_layout(12, 12);
     checkf!(
-        report.reason.name() == "text_ill_formed",
-        "unpaired surrogate: the refusal is NAMED text_ill_formed, got {:?}",
-        report.reason.name()
-    );
-    checkf!(
-        image[0..4] == [0, 0, 0, 0],
-        "unpaired surrogate: nothing lands, the length word stays zero"
+        TableFixedBlock::parse(&narrow).is_ok(),
+        "wide text control: the same layout with string(N), kind 12, parses"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
@@ -196,27 +228,38 @@ fn r24_narrow_counted_in_bytes_with_the_clamp_in_bytes() {
         values[0].label_length == 5,
         "five bytes: the length word lands 5, in BYTES"
     );
+    // strict-only-read: was `oor == 0` (no clamp); now not refused out_of_range
     checkf!(
-        report.oor == 0 && !report.damaged && !report.refused,
-        "five bytes: no clamp, no damage: {report:?}"
+        report.reason.name() == "none" && !report.damaged && !report.refused,
+        "five bytes: not out of range, no damage: {report:?}"
     );
-    // the clamp is in the length's own units: a length word of 100 over a
-    // full, LEGAL 8-byte span clamps to 8 and counts one clamped
+    // the BOUND is in the length's own units: a length word of 100 over a
+    // full, LEGAL 8-byte span is past the 8-byte bound. strict-only-read: it
+    // once clamped to 8 and counted one clamped; it now refuses the whole
+    // load (docs/FIXED-FORM-ALGORITHM.md:449) and lands nothing (R4).
     let mut file = record_with_label(b"abcdefgh"); // 8 legal bytes, no zero among them
     file[label_length_word_at()..label_length_word_at() + 4].copy_from_slice(&100i32.to_le_bytes());
     let (n, values, report) = load(&file);
-    checkf!(n == Some(1), "length 100: the record reads: {report:?}");
+    checkf!(n.is_none(), "length 100: the load REFUSES (was: reads on clamped): {report:?}");
     checkf!(
-        values[0].label_length == 8,
-        "length 100: the length clamps to the bound, 8 bytes"
+        values[0].label_length == FxRootRow::default().label_length,
+        "length 100: nothing lands, the length is the declared default (was: clamps to 8)"
     );
     checkf!(
-        report.oor == 1,
-        "length 100: the clamp counts ONCE: {report:?}"
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "length 100: refused out_of_range (was: the clamp counts ONCE): {report:?}"
     );
     checkf!(
-        &values[0].label[..8] == b"abcdefgh" && !report.damaged && !report.refused,
-        "length 100: the content is read over the clamped length: {report:?}"
+        !report.damaged,
+        "length 100: a bound refusal is not damage: {report:?}"
+    );
+    // the bound is exactly 8 bytes: a length word of 8 over the same span reads
+    let mut file = record_with_label(b"abcdefgh");
+    file[label_length_word_at()..label_length_word_at() + 4].copy_from_slice(&8i32.to_le_bytes());
+    let (n, values, report) = load(&file);
+    checkf!(
+        n == Some(1) && values[0].label_length == 8 && &values[0].label[..8] == b"abcdefgh" && !report.refused,
+        "length 8: AT the bound reads whole: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
@@ -239,66 +282,82 @@ fn r24_wide_counted_in_units_with_the_clamp_in_units() {
         image[4..8] == [b'h', 0, b'e', 0],
         "wide units: the two units land as their bytes"
     );
+    // strict-only-read: `oor` is the runtime's `held` now — the out-of-range
+    // mark LOAD refuses the whole batch out_of_range on (fixedform.go's load:
+    // `if report.held != 0 { return report.refuse(OutOfRange) }`)
     checkf!(
-        !report.damaged && !report.refused && report.oor == 0,
-        "wide units: no clamp, no damage: {report:?}"
+        !report.damaged && !report.refused && report.held == 0,
+        "wide units: nothing out of range, no damage: {report:?}"
     );
-    // the clamp holds in UNITS: a length word of 6 over a 4-unit bound clamps
-    // to 4 units and counts one clamped
+    // the BOUND holds in UNITS: a length word of 6 over a 4-unit bound is past
+    // it. strict-only-read: the run raises the out-of-range mark ONCE, which
+    // is the load's out_of_range refusal; it no longer clamps-and-counts as a
+    // landed value (the image's word is scratch the refused load discards).
     let record: [u8; 12] = [6, 0, 0, 0, b'h', 0, b'e', 0, b'l', 0, b'l', 0];
+    let (_image, report) = run_wide(wide_text_entry(), &record);
+    checkf!(
+        report.held == 1,
+        "wide bound: a length of 6 units past the 4-unit bound raises the out-of-range mark ONCE: {report:?}"
+    );
+    // and 4 units is AT the bound: no mark
+    let record: [u8; 12] = [4, 0, 0, 0, b'h', 0, b'e', 0, b'l', 0, b'l', 0];
     let (image, report) = run_wide(wide_text_entry(), &record);
     checkf!(
-        image[0..4] == 4u32.to_le_bytes(),
-        "wide clamp: the length clamps to the bound, 4 units"
-    );
-    checkf!(
-        report.oor == 1,
-        "wide clamp: the clamp counts ONCE: {report:?}"
+        report.held == 0 && image[0..4] == 4u32.to_le_bytes(),
+        "wide bound: 4 units is in the bound, no mark: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
 }
 
-// CLAUSE 3: slack is unspecified on read and not a refusal
-// (docs/SPEC-TABLES.md:6750). NARROW: garbage in the slack past the used
-// length — well-formed or not — is read correctly, refuses nothing and moves
-// no counter.
+// CLAUSE 3, AS RULED NOW (docs/rulings.json fixed-dead-bytes-are-zero,
+// superseding docs/SPEC-TABLES.md:6750's "unspecified on read and not a
+// refusal"): the bytes past the used length are DEAD, and a non-zero one
+// refuses the whole load as wire damage in the CHECK pass, before any record
+// lands (docs/FIXED-FORM-ALGORITHM.md §4.5 `text` row, §5.3 step 11). The old
+// assertions "reads on / not a refusal / no counter / text lands" map to
+// "returns None / damaged / no counter / nothing lands".
 #[test]
-fn r24_slack_unspecified_on_read_and_not_a_refusal() {
+fn r24_slack_is_dead_and_nonzero_refuses_as_damage() {
     FAILURES.store(0, Ordering::Relaxed);
-    println!("R24 clause 3 (narrow): garbage in the slack is not judged");
+    println!("R24 clause 3 (narrow): garbage in the slack refuses as damage");
     let mut file = record_with_label(b"ab");
     for k in 2..8 {
-        file[label_byte_at(k)] = 0xFF; // garbage in the slack, used length stays 2
+        file[label_byte_at(k)] = 0xFF; // garbage in the dead span, used length stays 2
     }
     let (n, values, report) = load(&file);
-    checkf!(n == Some(1), "slack garbage: the record reads on: {report:?}");
+    checkf!(n.is_none(), "slack garbage: the load REFUSES (was: reads on): {report:?}");
     checkf!(
-        !report.refused && !report.damaged,
-        "slack garbage: NOT a refusal and NOT malformed: {report:?}"
+        report.damaged,
+        "slack garbage: wire damage, the dead-byte check (was: not malformed): {report:?}"
     );
     checkf!(
-        report.oor == 0
-            && report.unknown == 0
-            && report.mismatch == 0
-            && report.widened == 0,
+        report.held == 0 && report.unknown == 0 && report.widened == 0,
         "slack garbage: no counter moves: {report:?}"
     );
     checkf!(
-        values[0].label_length == 2 && &values[0].label[..2] == b"ab",
-        "slack garbage: the used text lands as written"
+        values[0].label_length == FxRootRow::default().label_length,
+        "slack garbage: nothing lands (was: the used text lands as written)"
+    );
+    // THE CONTROL: the same record with ZERO slack reads, the text as written
+    let (n, values, report) = load(&record_with_label(b"ab"));
+    checkf!(
+        n == Some(1) && !report.damaged && !report.refused
+            && values[0].label_length == 2 && &values[0].label[..2] == b"ab",
+        "zero slack: the record reads and the used text lands: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
 }
 
 // CLAUSE 3 (wide): the slack UNITS behind the used length are not judged
-// either — even a lone surrogate there, which would refuse as CONTENT in the
-// used units, is slack here: unspecified, not a refusal, no counter.
+// as CONTENT — a lone surrogate there is no content violation, and the run
+// raises nothing for it — but they are DEAD (fixed-dead-bytes-are-zero), so
+// the CHECK pass the load runs before any record lands flags them.
 #[test]
-fn r24_wide_slack_unspecified_and_not_a_refusal() {
+fn r24_wide_slack_is_not_content_and_is_dead() {
     FAILURES.store(0, Ordering::Relaxed);
-    println!("R24 clause 3 (wide): garbage units in the slack are not judged");
+    println!("R24 clause 3 (wide): garbage units in the slack are dead, not content");
     // used = 1 unit; the rest of the span is surrogate and 0xFFFF garbage
     let record: [u8; 12] = [1, 0, 0, 0, 0x48, 0x00, 0x00, 0xD8, 0xFF, 0xFF, 0xFF, 0xFF];
     let (image, report) = run_wide(wide_text_entry(), &record);
@@ -306,9 +365,19 @@ fn r24_wide_slack_unspecified_and_not_a_refusal() {
         image[0..4] == 1u32.to_le_bytes(),
         "wide slack: the used length lands 1 unit"
     );
+    // strict-only-read: was `oor == 0`; the run's out-of-range mark is `held`
     checkf!(
-        !report.damaged && !report.refused && report.oor == 0,
-        "wide slack: not judged, not a refusal, no counter: {report:?}"
+        !report.damaged && !report.refused && report.held == 0,
+        "wide slack: not a content refusal, no out-of-range mark: {report:?}"
+    );
+    checkf!(
+        table_fixed_dead(&[wide_text_entry()], &[], &record),
+        "wide slack: the CHECK pass flags the non-zero dead units (fixed-dead-bytes-are-zero)"
+    );
+    let clean: [u8; 12] = [1, 0, 0, 0, 0x48, 0x00, 0, 0, 0, 0, 0, 0];
+    checkf!(
+        !table_fixed_dead(&[wide_text_entry()], &[], &clean),
+        "wide slack: zero dead units pass the CHECK pass"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");

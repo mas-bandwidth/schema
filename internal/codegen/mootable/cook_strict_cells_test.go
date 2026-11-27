@@ -74,7 +74,7 @@ func cookStrictCellsFails(t *testing.T, mutate func(*testing.T, *generatedUnit))
 
 	// cook-write: byte-for-byte in both orders, reread equal.
 	rows := cookWriteRows(t)
-	wfails, answered, _ := cookWriteFailures(t, rows, mutate)
+	wfails, answered, _ := cookWriteFailures(t, rows, mutate, false)
 	for _, f := range wfails {
 		fails = append(fails, "cook-write: "+f)
 	}

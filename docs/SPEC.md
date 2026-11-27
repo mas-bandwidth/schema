@@ -1901,7 +1901,22 @@ All compile errors with positions:
   declares (`int32_t`) stays a member in C++: the pass that writes the
   emitter's own uses of the platform's type as `::int32_t` leaves a
   member's declarator (`Inner int32_t;`), its reads in a member function
-  (`return int32_t;`, `&int32_t`) and `offsetof( T, int32_t )` bare.
+  (`return int32_t;`, `&int32_t`) and `offsetof( T, int32_t )` bare. Where a
+  target has no spelling a schema identifier cannot take, a generator-owned
+  name carries the prefix `schema_`, which the checker refuses on every
+  declaration (the Go descriptor closures' parameter `schema_v`, the Java
+  `enumName<E>` parameter `schema_value`, the Go union record's payload
+  extent `schema_payload`). A name a generator derives from schema names is
+  a one-to-one function of them (two declarations never derive one name:
+  the Dart text form's helpers are `schema_textName_<E>` and
+  `schema_textFromName_<E>`, not `<e>Name` and `<e>FromName`, which met at
+  `daysFromName` for enums `days` and `daysFrom`), and it is spelled by the
+  emitter, never made by rewriting emitted text that holds schema names (a
+  rewrite of `depth` or `SaveBody` reaches a field or arm of that name). A
+  Dart union's tag type does not implement int, so an arm may share a name
+  with any int member (`sign`, `floor`, `isNaN`). A name a target reserves
+  outright is refused at check for every target, naming it: a declaration
+  spelled `main` in Dart, which reserves `main` for the entry point.
   The proof is the corpus rows `n_internal_*` of
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and
@@ -1927,6 +1942,16 @@ All compile errors with positions:
   keyword or the float literals `nan` and `infinity`, which its lexer never
   reads as an identifier) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  a member (a field of a `type` or `table`, or a union arm, packet or
+  table-closure) spelled like a named type some member of the same
+  declaration is declared with, its own or a sibling's (an enum `kind`
+  beside a field or arm `kind kind`, or `kind Kind2` beside `mode kind`: C++
+  refuses the member as a declaration that changes the meaning of the type
+  name, comparing the name as written, and Dart as a member that hides the
+  type in the class body, comparing its lowerCamel spelling, so a field
+  `Kind kind` is refused for Dart; `kind Kind` is two names in every target
+  and builds, as does a field `kind` on a declaration none of whose members
+  uses the type `kind`), and
   refuses for every target, naming the target, a unit one of them refuses,
   so those names are refused at check rather than at generate. Every refusal
   by name a target makes at generate is one of these, or one of the rules

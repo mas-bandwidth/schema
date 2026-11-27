@@ -12,6 +12,24 @@ static int read_number( uint64_t * value, int bytes )
     for ( i = 0; i < bytes; i++ ) { int b = getchar(); if ( b == EOF ) { return 0; } *value |= (uint64_t) b << (8*i); }
     return 1;
 }
+/* The next mutant's index: 1 when read, 0 when the stream ended cleanly on a
+   frame boundary, -1 when it ended inside the index (1 to 3 bytes), which is
+   a truncated frame and never a close (test/conformance/harness/wireeof.go). */
+static int read_index( uint64_t * value )
+{
+    int i, b; *value = 0;
+    for ( i = 0; i < 4; i++ ) {
+        b = getchar();
+        if ( b == EOF ) { return i == 0 ? 0 : -1; }
+        *value |= (uint64_t) b << (8*i);
+    }
+    return 1;
+}
+static int truncated( const char * where )
+{
+    fprintf( stderr, "wire-fuzz-c: the stream ended inside %s\n", where );
+    return 1;
+}
 static void write_number( uint64_t value, int bytes )
 {
     int i; for ( i = 0; i < bytes; i++ ) { putchar( (int) ((value >> (8*i)) & 255) ); }
@@ -66,14 +84,19 @@ int main( int argc, char ** argv )
         putchar( roster[i] != NULL );
     }
     fflush( stdout );
-    while ( read_number( &index, 4 ) ) {
+    for ( ;; ) {
         const ConformanceCodec * codec;
         uint8_t * wire, * saved = NULL; void * value; int loaded; int64_t length, region_bytes;
         ConformanceReport report;
-        if ( index >= count || roster[index] == NULL || !read_number( &size, 4 ) ) { return 1; }
+        int got = read_index( &index );
+        if ( got == 0 ) { break; }
+        if ( got < 0 ) { return truncated( "a mutant index" ); }
+        if ( !read_number( &size, 4 ) ) { return truncated( "a mutant length" ); }
+        if ( index >= count || roster[index] == NULL ) { fprintf( stderr, "wire-fuzz-c: a mutant for roster entry %llu, which this leg answered 0\n", (unsigned long long) index ); return 1; }
         codec = roster[index];
         wire = (uint8_t *) malloc( (size_t) (size ? size : 1) );
-        if ( wire == NULL || fread( wire, 1, (size_t) size, stdin ) != size ) { return 1; }
+        if ( wire == NULL ) { return 1; }
+        if ( fread( wire, 1, (size_t) size, stdin ) != size ) { free( wire ); return truncated( "a mutant" ); }
         memset( &report, 0, sizeof( report ) );
         if(forms[index]==3){length=codec->retain_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
         if(forms[index]==2){length=codec->message_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}

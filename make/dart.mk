@@ -27,7 +27,7 @@ tables-dart-view: bin/schema test/dart-tables/view_main.dart
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
 		$(DART) build/dart-view/$$pkg-main.dart > build/dart-view/$$pkg.listing \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout=0 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
 
@@ -719,7 +719,7 @@ tables-dart-generate-into: $(DART_COUNTED_MIN_VARIABLE)
 	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_dart,$(GEN),$(OUT))) & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart/cards tables/cards & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE) & pids="$$pids $$!"; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
@@ -1787,22 +1787,22 @@ include make/schema-dart-generated-strict-analyze-gate.mk
 # removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
 # exactly the two carried json-hostile zero rows red. Nothing tracked is written.
 .PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
-conformance-negative-control-dart-walk: build/conformance-harness
+conformance-negative-control-dart-walk: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control walk "$(DART)"
 
-conformance-negative-control-dart-zero: build/conformance-harness
+conformance-negative-control-dart-zero: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control zero "$(DART)"
 
 # THE FRAMING SURFACE'S (docs/LAYERS/1-framing.md F6): the 4096-entry id-table
 # maximum out of the reader, and `framing` goes red on frame_entries_4097 alone.
 .PHONY: conformance-negative-control-dart-framing
-conformance-negative-control-dart-framing: build/conformance-harness
+conformance-negative-control-dart-framing: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control framing "$(DART)"
 
 # THE SHARED-NODE LABEL'S (M14): _writePtr writes every node in place, so the
 # &node label is gone and `json-write` goes red on graph_shared alone.
 .PHONY: conformance-negative-control-dart-share
-conformance-negative-control-dart-share: build/conformance-harness
+conformance-negative-control-dart-share: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control share "$(DART)"
 
 # PER-CASE ABSENT (I4): the driver's `<case>.absent` writes renamed away, so
@@ -1814,7 +1814,7 @@ conformance-negative-control-dart-absent: build/conformance-harness build/confor
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block
-conformance-negative-control-dart-block: build/conformance-harness
+conformance-negative-control-dart-block: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control block "$(DART)"
 
 test-dart: conformance-negative-control-dart-block
@@ -1868,16 +1868,18 @@ tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is
 # regenerated from that compiler and the driver rebuilt on the copy, and the
 # fuzzer must go red on the report comparison, at seed 1 with no random pass.
-tables-dart-wire-fuzz-negative-control: build/conformance-harness
+tables-dart-wire-fuzz-negative-control: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control wire "$(DART)"
 
 test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 
-# THE DRIVER'S STDIN QUEUE is linear: test/conformance/dart/chunk_queue.dart
-# keeps chunks and a read offset instead of removing each frame from the front
-# of one growing list (quadratic with 256 large mutants queued, against the
-# harness's 30 s per-mutant limit). The unit test counts bytes copied, with no
-# clock, and its control runs the same test against the old reader.
+# THE DRIVER'S STDIN QUEUE is linear: ChunkQueue in test/conformance/dart/
+# main.dart (the block between its BEGIN/END ChunkQueue markers, which
+# chunk-queue-check slices out) keeps chunks and a read offset instead of
+# removing each frame from the front of one growing list (quadratic with 256
+# large mutants queued, against the harness's 30 s per-mutant limit). The unit
+# test counts bytes copied, with no clock, and its control runs the same test
+# against the old reader.
 .PHONY: dart-chunk-queue-test dart-chunk-queue-negative-control
 dart-chunk-queue-test:
 	sh test/conformance/dart/chunk-queue-check test "$(DART)"

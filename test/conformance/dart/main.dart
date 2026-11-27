@@ -1011,7 +1011,7 @@ void _f2w_shapes_FixedBounds(shapes_fixed.FixedBounds f, shapes.FixedBounds w) {
     r.b = f.recs[i].b;
     return r;
   });
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   w.pick.small = f.pick.small;
   w.pick.ratio = f.pick.ratio;
   w.pick.on = f.pick.on;
@@ -1083,9 +1083,9 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.boundedArr = List<int>.generate(f.boundedArrCount, (i) => f.boundedArr[i]);
   w.obsoleteMode = f.obsoleteMode;
   w.v1Marker = f.v1Marker;
-  w.nestedChain.armTag = f.nestedChain.type;
+  w.nestedChain.armTag = f.nestedChain.type as int;
   if (f.nestedChain.type == 1) {
-    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type;
+    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type as int;
     if (f.nestedChain.wrap.inner.type == 1) {
       w.nestedChain.wrap.inner.leaf.code = f.nestedChain.wrap.inner.leaf.code;
       w.nestedChain.wrap.inner.leaf.bonus = f.nestedChain.wrap.inner.leaf.bonus;
@@ -1165,7 +1165,7 @@ void _f2w_valuedefaults_FixedDefaults(tblvaluedefaults_fixed.FixedDefaults f, tb
   for (var i = 0; i < 3; i++) {
     _f2w_valuedefaults_Item(f.keyed[i], w.keyed[i]);
   }
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     _f2w_valuedefaults_Item(f.pick.item, w.pick.item);
   } else if (f.pick.type == 2) {
@@ -1221,7 +1221,7 @@ void _f2w_cooktorture_TortureFixedWref(cooktorture_fixed.TortureFixedWref f, coo
   w.rawBytes = latin1.decode(f.rawBytes.sublist(0, f.rawBytesLength));
   w.chanEnum = (f.chanEnum as dynamic);
   w.bitsVal = f.bitsVal;
-  w.uVal.armTag = f.uVal.type;
+  w.uVal.armTag = f.uVal.type as int;
   w.uVal.uI8 = f.uVal.uI8;
   w.uVal.uU8 = f.uVal.uU8;
   w.uVal.uI16 = f.uVal.uI16;
@@ -1260,7 +1260,7 @@ void _f2w_varevo1_EvoMsg(tblvarevo1_fixed.EvoMsg f, tblvarevo1.EvoMsg w) {
   w.seq = f.seq;
   w.tier = f.tier;
   w.label = _f2wUtf8(f.label, f.labelLength);
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.status.count = f.payload.status.count;
   }
@@ -1289,7 +1289,7 @@ void _w2f_varevo3_EvoMsg(tblvarevo3.EvoMsg w, tblvarevo3_fixed.EvoMsg f) {
 void _f2w_varevo3_EvoMsg(tblvarevo3_fixed.EvoMsg f, tblvarevo3.EvoMsg w) {
   w.caption = _f2wUtf8(f.caption, f.captionLength);
   w.midFlag = f.midFlag;
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.telemetry.count = f.payload.telemetry.count;
     w.payload.telemetry.subTag = _f2wUtf8(f.payload.telemetry.subTag, f.payload.telemetry.subTagLength);
@@ -1316,7 +1316,7 @@ void _w2f_packetunions_Shape(tblpacketunions.Shape w, packetunions_packet.Shape 
 }
 
 void _f2w_packetunions_Shape(packetunions_packet.Shape f, tblpacketunions.Shape w) {
-  w.armTag = f.type;
+  w.armTag = f.type as int;
   if (f.type == 1) {
     w.ring.radius = f.ring.radius;
   } else if (f.type == 2) {
@@ -1806,7 +1806,7 @@ void _w2f_examples_MinArmFix(tabledemo.MinArmFix w, tabledemo_fixed.MinArmFix f)
   }
 }
 void _f2w_examples_MinArmFix(tabledemo_fixed.MinArmFix f, tabledemo.MinArmFix w) {
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     w.pick.few = List<int>.generate(f.pick.fewCount, (i) => f.pick.few[i]);
   } else if (f.pick.type == 2) {
@@ -6517,13 +6517,35 @@ class _ByteSource {
     }
   }
 
-  Future<Uint8List> read(int n) async {
+  Future<void> _fill(int n) async {
     while (_q.length < n && !_done) {
       final c = Completer<void>();
       _waiters.add(c);
       await c.future;
     }
+  }
+
+  // EXACTLY n bytes. The stream ending first is a truncated frame, never a
+  // short one: a body cut at EOF must not reach the codec as if it were whole
+  // (test/conformance/harness/wireeof.go).
+  Future<Uint8List> read(int n) async {
+    await _fill(n);
+    if (_q.length < n) {
+      throw StateError('the stream ended inside a frame: $n bytes wanted, ${_q.length} left');
+    }
     return _q.take(n);
+  }
+
+  // The next mutant's index, or null when the harness closed the stream
+  // between frames. One to three index bytes at EOF are a truncated frame and
+  // throw: only a stream that ends on a frame boundary is a clean close.
+  Future<int?> readIndex() async {
+    await _fill(4);
+    if (_q.length == 0) {
+      return null;
+    }
+    final b = await read(4);
+    return ByteData.sublistView(b).getUint32(0, Endian.little);
   }
 }
 
@@ -7047,11 +7069,10 @@ Future<void> wireFuzz() async {
   stdout.add(available);
   await stdout.flush();
   while (true) {
-    final idxBytes = await src.read(4);
-    if (idxBytes.length < 4) {
-      break; // the harness closed the stream
+    final index = await src.readIndex();
+    if (index == null) {
+      break; // the harness closed the stream between frames
     }
-    final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
     final message = messages[index];

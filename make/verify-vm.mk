@@ -418,15 +418,15 @@ _verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squ
 _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz --leg squirrel \
-		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" \
+		--driver "test/conformance/squirrel/wirefuzz-driver" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
 		--failed build/verify/fuzz-squirrel-fixed.bin
 	./build/conformance-harness-vm wire-fuzz --leg squirrel --builder \
-		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
+		--driver "test/conformance/squirrel/wirefuzz-driver builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
 		--failed build/verify/fuzz-squirrel-builder.bin
 	./build/conformance-harness-vm wire-fuzz --leg squirrel --builder --retain \
-		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
+		--driver "test/conformance/squirrel/wirefuzz-driver builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
 		--failed build/verify/fuzz-squirrel-retain.bin
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \

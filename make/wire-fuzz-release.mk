@@ -93,7 +93,7 @@ WFR_DEPS_rust    = build/conformance-rust-all
 WFR_DRIVER_rust  = build/conformance-rust-all
 
 WFR_DEPS_squirrel = toolchain-squirrel build/conformance-squirrel
-WFR_DRIVER_squirrel = $(SQ) test/conformance/squirrel/wirefuzz.nut
+WFR_DRIVER_squirrel = test/conformance/squirrel/wirefuzz-driver
 
 WFR_DEPS_unity    = toolchain-unity build/conformance-unity/.stamp
 WFR_DRIVER_unity  = test/conformance/unity/driver wire-fuzz
@@ -112,6 +112,37 @@ tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
 	@./build/wirefuzzrelease table -leg $(1) -dir $$(WIRE_FUZZ_RELEASE_DIR) -arms "$$(WIRE_FUZZ_RELEASE_ARMS)" -seeds "$$(WIRE_FUZZ_RELEASE_SEEDS)" -n $$(WIRE_FUZZ_RELEASE_N)
 endef
 $(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),$(eval $(call wfr_leg,$(l))))
+
+# THE STREAM ENDS ONLY BETWEEN FRAMES, on every leg's driver above
+# (test/conformance/harness/wireeof.go). The harness sends the leg's roster,
+# then each truncation its one case table holds (1 to 3 index bytes at EOF, a
+# cut length, a cut body) and the clean close, and requires a loud failure
+# with no reply for every cut and exit 0 only for the close. Same driver, same
+# environment and profile as the release runs; one target a leg, in the leg's
+# test-<leg>, and tables-wire-eof for all of them. A leg with no driver has
+# nothing to ask, and its target says so.
+define wfr_eof
+.PHONY: tables-wire-eof-$(1)
+tables-wire-eof-$(1): build/conformance-harness $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
+	$$(if $$(strip $$(WFR_DRIVER_$(1))),env $$(WFR_ENV_$(1)) ./build/conformance-harness wire-eof $$(WFR_FLAGS_$(1)) --driver "$$(strip $$(WFR_DRIVER_$(1)))",@echo "wire-eof: $(1) has no wire-fuzz driver")
+test-$(1): tables-wire-eof-$(1)
+endef
+$(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),$(eval $(call wfr_eof,$(l))))
+
+# The two Card-only drivers (make/rust.mk cards-rust-wire-fuzz, make/java.mk
+# cards-java-wire-fuzz) read the same stream and answer the same cases, over
+# the Card manifest their gates use.
+WIRE_EOF_CARDS = --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz
+.PHONY: tables-wire-eof-rust-card tables-wire-eof-java-card
+tables-wire-eof-rust-card: build/conformance-harness build/conformance-rust-card
+	./build/conformance-harness wire-eof $(WIRE_EOF_CARDS) --driver 'build/conformance-rust-card wire-fuzz'
+tables-wire-eof-java-card: build/conformance-harness build/cards-java-wire-fuzz/.stamp
+	./build/conformance-harness wire-eof $(WIRE_EOF_CARDS) --driver "$(CURDIR)/build/cards-java-wire-fuzz/driver"
+test-rust: tables-wire-eof-rust-card
+test-java: tables-wire-eof-java-card
+
+.PHONY: tables-wire-eof
+tables-wire-eof: $(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),tables-wire-eof-$(l)) tables-wire-eof-rust-card tables-wire-eof-java-card
 
 # THE GATE'S JUDGEMENT (tools/wirefuzzrelease): one run into one row, and a
 # leg's roster of rows, read by name, into its verdict.
@@ -152,7 +183,7 @@ wire-fuzz-release-targets:
 # the sabotaged units, and the gate's own run, plain arm, at the gate's seeds
 # and count, required to go RED on the report.
 .PHONY: tables-wire-fuzz-release-negative-control
-tables-wire-fuzz-release-negative-control: build/conformance-harness build/wirefuzzrelease
+tables-wire-fuzz-release-negative-control: build/conformance-harness build/wirefuzzrelease build/conformance-dart
 	sh test/conformance/dart/negative-control mapheader "$(DART)"
 	@rm -rf build/wire-fuzz-release-nc
 	@# each seed's run waited on by its pid, never a bare wait (F-068)

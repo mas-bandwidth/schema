@@ -892,6 +892,8 @@ make tables-wire-fuzz-retain               the same mutants through the RETAININ
 make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
 ./build/conformance-harness wire-fuzz --leg <leg> --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
+./build/conformance-harness wire-eof --driver <cmd>   the stream cut at EOF: every truncation refuses
+make tables-wire-eof                       wire-eof over every leg's driver (tables-wire-eof-<leg>)
 ```
 
 **The stream, little-endian throughout.** The working directory is the
@@ -902,7 +904,7 @@ driver is.
 |---|---|---|
 | in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM, `u8` RETAIN | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
-| in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
+| in | per mutant: `u32` roster index, `u32` length, the bytes | until the harness closes the stream, which it does only between frames: EOF before an index's first byte ends the run (exit 0); EOF inside a frame (1 to 3 index bytes, a cut length, a cut body) refuses, with a non-zero exit, the cut named on stderr and no reply (docs/SPEC-TABLES.md §4.2) |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
 The reply header remains 47 bytes for transport compatibility. Its semantic

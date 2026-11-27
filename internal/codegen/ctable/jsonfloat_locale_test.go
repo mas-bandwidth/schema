@@ -181,7 +181,7 @@ func TestCJsonNegativeZeroAnyLength(t *testing.T) {
 static const char * tokens[] = {
     "-0.0",
     "-0.LONGZEROS",
-    "-0.LONGZEROS" "e7",
+    "-0.LONGZEROSe7",
     "-0e5"
 };
 

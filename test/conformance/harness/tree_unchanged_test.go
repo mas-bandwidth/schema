@@ -29,6 +29,11 @@ func TestMain(m *testing.M) {
 	if os.Getenv("SCHEMA_HARNESS_FAKE_WIRE_LEG") != "" {
 		os.Exit(fakeWireLeg(os.Args[1:]))
 	}
+	// THE TEST BINARY AS A REFUSING WIRE-FUZZ LEG
+	// (wirefuzz_verdict_loop_test.go): it answers on its pipes and exits.
+	if os.Getenv(refusingLegEnv) != "" {
+		refusingWireLeg()
+	}
 	root, err := treeRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
