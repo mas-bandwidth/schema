@@ -1189,3 +1189,25 @@ refusal-verdict-only), so the case is the leg's unit test.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
+
+### Counted-array slots after a fixed refusal
+
+SPEC-TABLES.md §6.5 (THE CALLER'S VALUES AFTER A REFUSAL): after a refused
+fixed batch read, every row the call was handed holds every field a fresh
+value holds, a counted array's element slots past its count included. The
+Java leg reset a refused-into row by landing the defaults image through its
+scatter, which walks the live count and left a table element's slots past it
+holding the caller's values (a caller's `rows[0].id = 55` survived a refusal
+whose reset count is `0`). The regression row is `java/W4`
+(`test/conformance/java/rows/W4.java`): `blockdemo.PaddedFrame` read from a
+file whose dead slack is `0xFF` refuses `wire_damaged`, and the handed row,
+whose `rows[0].id` was `55`, holds its declared defaults; it is red before
+the fix and green after it. The emitter is pinned by
+`TestScatterCountedArrayResetsObjectSlack` (`internal/codegen/javatable`).
+
+**The shared case is owed.** The `read-into` surface judges a refused-into
+value by its `ToJson` text, and the text writes a counted array's live
+elements only, so no shared case can see a slot past the count yet. The
+case is open until a surface reads element slots past the count; the C#,
+JavaScript and Dart legs answer the refusal correctly by direct probe
+(2026-11-24).

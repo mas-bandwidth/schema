@@ -72,11 +72,24 @@ static partial class Program
             "the held kind 31 under a zero identity refuses the whole load");
         // an enum reference past the id table is damage even in a field this
         // reader does not declare (docs/SPEC-TABLES.md §6.5)
-        byte[] enumPast = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,127,4,4,42,0,0,0,0 },
-            "zero", "future-void", "future-enum", "a");
+        // the id table these fixtures name, in first-use order with every entry
+        // used (docs/SPEC-TABLES.md §3)
+        string[] future = { "zero", "future-void", "future-enum", "future-variant", "a" };
+        byte[] enumPast = Fixture(new byte[] { 1,32,0,2,32,0,3,30,127,5,4,42,0,0,0,0 }, future);
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(cfg, enumPast, report) && report.Damaged && cfg.A != 42,
             "an unknown enum reference past the id table refuses the whole load");
+        // kind 32 is written with L = 0 and a nonzero L is damage (§3, the kind table)
+        byte[] voidPayload = Fixture(new byte[] { 1,32,0,2,32,2,99,100,3,30,4,5,4,42,0,0,0,0 }, future);
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(cfg, voidPayload, report) && report.Damaged && cfg.A != 42,
+            "a kind-32 field with a nonzero L refuses the whole load");
+        // kind 31 is held by name: a reader meets it anywhere only as damage,
+        // an unknown field included (§3, "31 IS HELD BY NAME AND NEVER WRITTEN")
+        byte[] heldKind = Fixture(new byte[] { 1,32,0,2,31,2,99,100,3,30,4,5,4,42,0,0,0,0 }, future);
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(cfg, heldKind, report) && report.Damaged && cfg.A != 42,
+            "a held kind 31 on an unknown field refuses the whole load");
 
         V1.TableTypeInfo cfgType = V1.Schema.CfgTableType();
         Check(V1.Schema.TableWire.FindField(cfgType, cfgType.Fields[0].Id) == cfgType.Fields[0],
