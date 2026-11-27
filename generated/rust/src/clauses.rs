@@ -24,38 +24,38 @@ pub const W13_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w13(stream: &mut WriteStream<'_>, value: &W13) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 12, "items_count out of range [0, 12]");
+pub fn write_w13(schema_stream: &mut WriteStream<'_>, schema_value: &W13) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 12, "items_count out of range [0, 12]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 8191, "items[schema_i] out of range [0, 8191]");
         {
-            let mut offset_value = value.items[i] as u32;
-            stream.serialize_bits(&mut offset_value, 13)?;
+            let mut schema_offset_value = schema_value.items[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 13)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w13(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
-    read_w13_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w13(schema_stream: &mut ReadStream<'_>, schema_value: &mut W13) -> Result {
+    read_w13_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w13_body(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 12)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w13_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W13) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 12)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 8191)?;
-            value.items[i] = range_value as u16;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 8191)?;
+            schema_value.items[schema_i] = schema_range_value as u16;
         }
     }
     Ok(())
@@ -77,38 +77,38 @@ pub const W17_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w17(stream: &mut WriteStream<'_>, value: &W17) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 9, "items_count out of range [0, 9]");
+pub fn write_w17(schema_stream: &mut WriteStream<'_>, schema_value: &W17) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 9, "items_count out of range [0, 9]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 131071, "items[i] out of range [0, 131071]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 131071, "items[schema_i] out of range [0, 131071]");
         {
-            let mut offset_value = value.items[i];
-            stream.serialize_bits(&mut offset_value, 17)?;
+            let mut schema_offset_value = schema_value.items[schema_i];
+            schema_stream.serialize_bits(&mut schema_offset_value, 17)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w17(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
-    read_w17_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w17(schema_stream: &mut ReadStream<'_>, schema_value: &mut W17) -> Result {
+    read_w17_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w17_body(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 9)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w17_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W17) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 9)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 131071)?;
-            value.items[i] = range_value as u32;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 131071)?;
+            schema_value.items[schema_i] = schema_range_value as u32;
         }
     }
     Ok(())
@@ -130,38 +130,38 @@ pub const W26_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w26(stream: &mut WriteStream<'_>, value: &W26) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 6, "items_count out of range [0, 6]");
+pub fn write_w26(schema_stream: &mut WriteStream<'_>, schema_value: &W26) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 6, "items_count out of range [0, 6]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 67108863, "items[i] out of range [0, 67108863]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 67108863, "items[schema_i] out of range [0, 67108863]");
         {
-            let mut offset_value = value.items[i];
-            stream.serialize_bits(&mut offset_value, 26)?;
+            let mut schema_offset_value = schema_value.items[schema_i];
+            schema_stream.serialize_bits(&mut schema_offset_value, 26)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w26(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
-    read_w26_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w26(schema_stream: &mut ReadStream<'_>, schema_value: &mut W26) -> Result {
+    read_w26_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w26_body(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 6)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w26_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W26) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 6)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 67108863)?;
-            value.items[i] = range_value as u32;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 67108863)?;
+            schema_value.items[schema_i] = schema_range_value as u32;
         }
     }
     Ok(())
@@ -183,38 +183,38 @@ pub const W1_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w1(stream: &mut WriteStream<'_>, value: &W1) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 20, "items_count out of range [0, 20]");
+pub fn write_w1(schema_stream: &mut WriteStream<'_>, schema_value: &W1) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 20, "items_count out of range [0, 20]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 5)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 1, "items[i] out of range [0, 1]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 1, "items[schema_i] out of range [0, 1]");
         {
-            let mut offset_value = value.items[i] as u32;
-            stream.serialize_bits(&mut offset_value, 1)?;
+            let mut schema_offset_value = schema_value.items[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 1)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w1(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
-    read_w1_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w1(schema_stream: &mut ReadStream<'_>, schema_value: &mut W1) -> Result {
+    read_w1_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w1_body(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 20)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w1_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W1) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 20)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 1)?;
-            value.items[i] = range_value as u8;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 1)?;
+            schema_value.items[schema_i] = schema_range_value as u8;
         }
     }
     Ok(())
@@ -236,38 +236,38 @@ pub const W52_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w52(stream: &mut WriteStream<'_>, value: &W52) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
+pub fn write_w52(schema_stream: &mut WriteStream<'_>, schema_value: &W52) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 3, "items_count out of range [0, 3]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 4503599627370495, "items[i] out of range [0, 4503599627370495]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 4503599627370495, "items[schema_i] out of range [0, 4503599627370495]");
         {
-            let mut offset_value = value.items[i];
-            stream.serialize_bits64(&mut offset_value, 52)?;
+            let mut schema_offset_value = schema_value.items[schema_i];
+            schema_stream.serialize_bits64(&mut schema_offset_value, 52)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w52(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
-    read_w52_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w52(schema_stream: &mut ReadStream<'_>, schema_value: &mut W52) -> Result {
+    read_w52_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w52_body(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w52_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W52) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 3)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i64 = 0;
-            stream.serialize_int64(&mut range_value, 0, 4503599627370495)?;
-            value.items[i] = range_value as u64;
+            let mut schema_range_value: i64 = 0;
+            schema_stream.serialize_int64(&mut schema_range_value, 0, 4503599627370495)?;
+            schema_value.items[schema_i] = schema_range_value as u64;
         }
     }
     Ok(())
@@ -289,38 +289,38 @@ pub const W50_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_w50(stream: &mut WriteStream<'_>, value: &W50) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
+pub fn write_w50(schema_stream: &mut WriteStream<'_>, schema_value: &W50) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 3, "items_count out of range [0, 3]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 1125899906842623, "items[i] out of range [0, 1125899906842623]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 1125899906842623, "items[schema_i] out of range [0, 1125899906842623]");
         {
-            let mut offset_value = value.items[i];
-            stream.serialize_bits64(&mut offset_value, 50)?;
+            let mut schema_offset_value = schema_value.items[schema_i];
+            schema_stream.serialize_bits64(&mut schema_offset_value, 50)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_w50(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
-    read_w50_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_w50(schema_stream: &mut ReadStream<'_>, schema_value: &mut W50) -> Result {
+    read_w50_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_w50_body(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_w50_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut W50) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 3)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i64 = 0;
-            stream.serialize_int64(&mut range_value, 0, 1125899906842623)?;
-            value.items[i] = range_value as u64;
+            let mut schema_range_value: i64 = 0;
+            schema_stream.serialize_int64(&mut schema_range_value, 0, 1125899906842623)?;
+            schema_value.items[schema_i] = schema_range_value as u64;
         }
     }
     Ok(())
@@ -341,32 +341,32 @@ pub const F13_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_f13(stream: &mut WriteStream<'_>, value: &F13) -> Result {
-    for i in 0..7 {
-        debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
+pub fn write_f13(schema_stream: &mut WriteStream<'_>, schema_value: &F13) -> Result {
+    for schema_i in 0..7 {
+        debug_assert!(schema_value.items[schema_i] <= 8191, "items[schema_i] out of range [0, 8191]");
         {
-            let mut offset_value = value.items[i] as u32;
-            stream.serialize_bits(&mut offset_value, 13)?;
+            let mut schema_offset_value = schema_value.items[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 13)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_f13(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
-    read_f13_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_f13(schema_stream: &mut ReadStream<'_>, schema_value: &mut F13) -> Result {
+    read_f13_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_f13_body(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
-    for i in 0..7 {
+pub(crate) fn read_f13_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut F13) -> Result {
+    for schema_i in 0..7 {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 8191)?;
-            value.items[i] = range_value as u16;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 8191)?;
+            schema_value.items[schema_i] = schema_range_value as u16;
         }
     }
     Ok(())
@@ -387,33 +387,33 @@ pub const TRI3_MAX_BITS: u64 = 3;
 pub const TRI3_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_tri3(stream: &mut WriteStream<'_>, value: &Tri3) -> Result {
-    debug_assert!(value.a < 1 << 1, "a above the bits(1) wire width");
-    debug_assert!(value.b < 1 << 2, "b above the bits(2) wire width");
-    let f0: u64 = u64::from(value.a);
-    let f1: u64 = u64::from(value.b);
+pub fn write_tri3(schema_stream: &mut WriteStream<'_>, schema_value: &Tri3) -> Result {
+    debug_assert!(schema_value.a < 1 << 1, "a above the bits(1) wire width");
+    debug_assert!(schema_value.b < 1 << 2, "b above the bits(2) wire width");
+    let schema_f0: u64 = u64::from(schema_value.a);
+    let schema_f1: u64 = u64::from(schema_value.b);
     // word 0, 3 bits: a[0..1], b[0..2]
-    stream.serialize_bits(&mut ((f0 | (f1 << 1)) as u32), 3)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 1)) as u32), 3)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_tri3(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
-    read_tri3_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_tri3(schema_stream: &mut ReadStream<'_>, schema_value: &mut Tri3) -> Result {
+    read_tri3_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_tri3_body(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_tri3_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Tri3) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 3 bits: a[0..1], b[0..2]
-    stream.serialize_bits(&mut c, 3)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1;
-    value.a = v0 as u32;
-    let v1: u64 = (c0 >> 1) & 0x3;
-    value.b = v1 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 3)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1;
+    schema_value.a = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 1) & 0x3;
+    schema_value.b = schema_v1 as u32;
     Ok(())
 }
 
@@ -433,31 +433,31 @@ pub const ARR_TRI3_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_arr_tri3(stream: &mut WriteStream<'_>, value: &ArrTri3) -> Result {
-    debug_assert!(value.items_count >= 0 && value.items_count <= 10, "items_count out of range [0, 10]");
+pub fn write_arr_tri3(schema_stream: &mut WriteStream<'_>, schema_value: &ArrTri3) -> Result {
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 10, "items_count out of range [0, 10]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        write_tri3(stream, &value.items[i])?;
+    for schema_i in 0..schema_value.items_count as usize {
+        write_tri3(schema_stream, &schema_value.items[schema_i])?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arr_tri3(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result {
-    read_arr_tri3_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arr_tri3(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrTri3) -> Result {
+    read_arr_tri3_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arr_tri3_body(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result {
-    stream.serialize_int(&mut value.items_count, 0, 10)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
-        read_tri3_body(stream, &mut value.items[i])?;
+pub(crate) fn read_arr_tri3_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrTri3) -> Result {
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 10)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
+        read_tri3_body(schema_stream, &mut schema_value.items[schema_i])?;
     }
     Ok(())
 }
@@ -477,33 +477,33 @@ pub const ELEVEN_MAX_BITS: u64 = 11;
 pub const ELEVEN_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_eleven(stream: &mut WriteStream<'_>, value: &Eleven) -> Result {
-    debug_assert!(value.a < 1 << 3, "a above the bits(3) wire width");
-    debug_assert!(value.b < 1 << 8, "b above the bits(8) wire width");
-    let f0: u64 = u64::from(value.a);
-    let f1: u64 = u64::from(value.b);
+pub fn write_eleven(schema_stream: &mut WriteStream<'_>, schema_value: &Eleven) -> Result {
+    debug_assert!(schema_value.a < 1 << 3, "a above the bits(3) wire width");
+    debug_assert!(schema_value.b < 1 << 8, "b above the bits(8) wire width");
+    let schema_f0: u64 = u64::from(schema_value.a);
+    let schema_f1: u64 = u64::from(schema_value.b);
     // word 0, 11 bits: a[0..3], b[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 3)) as u32), 11)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 3)) as u32), 11)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_eleven(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
-    read_eleven_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_eleven(schema_stream: &mut ReadStream<'_>, schema_value: &mut Eleven) -> Result {
+    read_eleven_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_eleven_body(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_eleven_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Eleven) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 11 bits: a[0..3], b[0..8]
-    stream.serialize_bits(&mut c, 11)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x7;
-    value.a = v0 as u32;
-    let v1: u64 = (c0 >> 3) & 0xff;
-    value.b = v1 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 11)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7;
+    schema_value.a = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 3) & 0xff;
+    schema_value.b = schema_v1 as u32;
     Ok(())
 }
 
@@ -522,25 +522,25 @@ pub const ARR_ELEVEN_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_arr_eleven(stream: &mut WriteStream<'_>, value: &ArrEleven) -> Result {
-    for i in 0..9 {
-        write_eleven(stream, &value.items[i])?;
+pub fn write_arr_eleven(schema_stream: &mut WriteStream<'_>, schema_value: &ArrEleven) -> Result {
+    for schema_i in 0..9 {
+        write_eleven(schema_stream, &schema_value.items[schema_i])?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arr_eleven(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Result {
-    read_arr_eleven_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arr_eleven(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrEleven) -> Result {
+    read_arr_eleven_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arr_eleven_body(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Result {
-    for i in 0..9 {
-        read_eleven_body(stream, &mut value.items[i])?;
+pub(crate) fn read_arr_eleven_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrEleven) -> Result {
+    for schema_i in 0..9 {
+        read_eleven_body(schema_stream, &mut schema_value.items[schema_i])?;
     }
     Ok(())
 }
@@ -557,21 +557,21 @@ pub const EMPTY_A_MAX_BITS: u64 = 0;
 pub const EMPTY_A_MAX_BYTES: usize = 0;
 
 #[inline(always)]
-pub fn write_empty_a(stream: &mut WriteStream<'_>, value: &EmptyA) -> Result {
-    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
+pub fn write_empty_a(schema_stream: &mut WriteStream<'_>, schema_value: &EmptyA) -> Result {
+    let _ = (schema_stream, schema_value); // empty body — presence is the payload (SPEC §4.6)
     Ok(())
 }
 
 #[inline]
-pub fn read_empty_a(stream: &mut ReadStream<'_>, value: &mut EmptyA) -> Result {
-    read_empty_a_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_empty_a(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyA) -> Result {
+    read_empty_a_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_empty_a_body(stream: &mut ReadStream<'_>, value: &mut EmptyA) -> Result {
-    let _ = (stream, value);
+pub(crate) fn read_empty_a_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyA) -> Result {
+    let _ = (schema_stream, schema_value);
     Ok(())
 }
 
@@ -587,21 +587,21 @@ pub const EMPTY_B_MAX_BITS: u64 = 0;
 pub const EMPTY_B_MAX_BYTES: usize = 0;
 
 #[inline(always)]
-pub fn write_empty_b(stream: &mut WriteStream<'_>, value: &EmptyB) -> Result {
-    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
+pub fn write_empty_b(schema_stream: &mut WriteStream<'_>, schema_value: &EmptyB) -> Result {
+    let _ = (schema_stream, schema_value); // empty body — presence is the payload (SPEC §4.6)
     Ok(())
 }
 
 #[inline]
-pub fn read_empty_b(stream: &mut ReadStream<'_>, value: &mut EmptyB) -> Result {
-    read_empty_b_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_empty_b(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyB) -> Result {
+    read_empty_b_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_empty_b_body(stream: &mut ReadStream<'_>, value: &mut EmptyB) -> Result {
-    let _ = (stream, value);
+pub(crate) fn read_empty_b_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyB) -> Result {
+    let _ = (schema_stream, schema_value);
     Ok(())
 }
 
@@ -623,14 +623,14 @@ impl EmptyUnionType {
 }
 
 impl core::fmt::Display for EmptyUnionType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `EmptyUnionType` value, out-of-set included.
-pub fn enum_name_empty_union_type(value: EmptyUnionType) -> &'static str {
-    match value.0 {
+pub fn enum_name_empty_union_type(schema_value: EmptyUnionType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "A",
         2 => "B",
@@ -654,49 +654,49 @@ pub enum EmptyUnion {
 pub const EMPTY_UNION_MAX_BITS: u64 = 2;
 pub const EMPTY_UNION_MAX_BYTES: usize = 8;
 
-pub fn write_empty_union(stream: &mut WriteStream<'_>, value: &EmptyUnion) -> Result {
-    match value {
+pub fn write_empty_union(schema_stream: &mut WriteStream<'_>, schema_value: &EmptyUnion) -> Result {
+    match schema_value {
         EmptyUnion::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        EmptyUnion::A(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_empty_a(stream, arm)
+        EmptyUnion::A(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_empty_a(schema_stream, schema_arm)
         }
-        EmptyUnion::B(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_empty_b(stream, arm)
+        EmptyUnion::B(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_empty_b(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_empty_union(stream: &mut ReadStream<'_>, value: &mut EmptyUnion) -> Result {
-    read_empty_union_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_empty_union(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyUnion) -> Result {
+    read_empty_union_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_empty_union_body(stream: &mut ReadStream<'_>, value: &mut EmptyUnion) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_empty_union_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut EmptyUnion) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = EmptyA::default();
-            read_empty_a_body(stream, &mut arm)?;
-            *value = EmptyUnion::A(arm);
+            let mut schema_arm = EmptyA::default();
+            read_empty_a_body(schema_stream, &mut schema_arm)?;
+            *schema_value = EmptyUnion::A(schema_arm);
         }
         2 => {
-            let mut arm = EmptyB::default();
-            read_empty_b_body(stream, &mut arm)?;
-            *value = EmptyUnion::B(arm);
+            let mut schema_arm = EmptyB::default();
+            read_empty_b_body(schema_stream, &mut schema_arm)?;
+            *schema_value = EmptyUnion::B(schema_arm);
         }
-        _ => *value = EmptyUnion::None,
+        _ => *schema_value = EmptyUnion::None,
     }
     Ok(())
 }
@@ -717,33 +717,33 @@ pub const HOLDS_EMPTY_UNION_MAX_BITS: u64 = 14;
 pub const HOLDS_EMPTY_UNION_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_holds_empty_union(stream: &mut WriteStream<'_>, value: &HoldsEmptyUnion) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_holds_empty_union(schema_stream: &mut WriteStream<'_>, schema_value: &HoldsEmptyUnion) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    write_empty_union(stream, &value.u)?;
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    write_empty_union(schema_stream, &schema_value.u)?;
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_holds_empty_union(stream: &mut ReadStream<'_>, value: &mut HoldsEmptyUnion) -> Result {
-    read_holds_empty_union_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_holds_empty_union(schema_stream: &mut ReadStream<'_>, schema_value: &mut HoldsEmptyUnion) -> Result {
+    read_holds_empty_union_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_holds_empty_union_body(stream: &mut ReadStream<'_>, value: &mut HoldsEmptyUnion) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    read_empty_union_body(stream, &mut value.u)?;
-    stream.serialize_bits(&mut value.tail, 7)?;
+pub(crate) fn read_holds_empty_union_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut HoldsEmptyUnion) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    read_empty_union_body(schema_stream, &mut schema_value.u)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -766,58 +766,58 @@ pub const STRS_MAX_BITS: u64 = 158;
 pub const STRS_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_strs(stream: &mut WriteStream<'_>, value: &Strs) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_strs(schema_stream: &mut WriteStream<'_>, schema_value: &Strs) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    debug_assert!(value.s_length >= 0 && value.s_length <= 8, "s_length out of range [0, 8]");
-    debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
-    debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
+    debug_assert!(schema_value.s_length >= 0 && schema_value.s_length <= 8, "s_length out of range [0, 8]");
+    debug_assert!(!schema_value.s[..schema_value.s_length as usize].contains(&0), "s holds a zero byte");
+    debug_assert!(std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
     {
-        let mut offset_value = value.s_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.s_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.b_length >= 0 && value.b_length <= 8, "b_length out of range [0, 8]");
+    schema_stream.write_bytes(&schema_value.s[..schema_value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.b_length >= 0 && schema_value.b_length <= 8, "b_length out of range [0, 8]");
     {
-        let mut offset_value = value.b_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.b_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.b[..value.b_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.tail < 1 << 3, "tail above the bits(3) wire width");
+    schema_stream.write_bytes(&schema_value.b[..schema_value.b_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.tail < 1 << 3, "tail above the bits(3) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 3)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 3)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_strs(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
-    read_strs_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_strs(schema_stream: &mut ReadStream<'_>, schema_value: &mut Strs) -> Result {
+    read_strs_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_strs_body(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    stream.serialize_int(&mut value.s_length, 0, 8)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
-    if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+pub(crate) fn read_strs_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Strs) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    schema_stream.serialize_int(&mut schema_value.s_length, 0, 8)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.s[..schema_value.s_length as usize])?;
+    if std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_err() {
         return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
     }
-    for i in 0..value.s_length as usize {
-        if value.s[i] == 0 {
+    for schema_i in 0..schema_value.s_length as usize {
+        if schema_value.s[schema_i] == 0 {
             return Err(Error::Validation);
         }
     }
-    stream.serialize_int(&mut value.b_length, 0, 8)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.b[..value.b_length as usize])?;
-    stream.serialize_bits(&mut value.tail, 3)?;
+    schema_stream.serialize_int(&mut schema_value.b_length, 0, 8)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.b[..schema_value.b_length as usize])?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 3)?;
     Ok(())
 }
 
@@ -839,44 +839,44 @@ pub const ARR_NESTED_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_arr_nested(stream: &mut WriteStream<'_>, value: &ArrNested) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_arr_nested(schema_stream: &mut WriteStream<'_>, schema_value: &ArrNested) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    debug_assert!(value.items_count >= 0 && value.items_count <= 4, "items_count out of range [0, 4]");
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 4, "items_count out of range [0, 4]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        write_eleven(stream, &value.items[i])?;
+    for schema_i in 0..schema_value.items_count as usize {
+        write_eleven(schema_stream, &schema_value.items[schema_i])?;
     }
-    debug_assert!(value.tail < 1 << 3, "tail above the bits(3) wire width");
+    debug_assert!(schema_value.tail < 1 << 3, "tail above the bits(3) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 3)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 3)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arr_nested(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Result {
-    read_arr_nested_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arr_nested(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrNested) -> Result {
+    read_arr_nested_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arr_nested_body(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    stream.serialize_int(&mut value.items_count, 0, 4)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
-        read_eleven_body(stream, &mut value.items[i])?;
+pub(crate) fn read_arr_nested_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrNested) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 4)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
+        read_eleven_body(schema_stream, &mut schema_value.items[schema_i])?;
     }
-    stream.serialize_bits(&mut value.tail, 3)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 3)?;
     Ok(())
 }
 
@@ -894,25 +894,25 @@ pub const SOLE_MAX_BITS: u64 = 13;
 pub const SOLE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_sole(stream: &mut WriteStream<'_>, value: &Sole) -> Result {
-    debug_assert!(value.only < 1 << 13, "only above the bits(13) wire width");
+pub fn write_sole(schema_stream: &mut WriteStream<'_>, schema_value: &Sole) -> Result {
+    debug_assert!(schema_value.only < 1 << 13, "only above the bits(13) wire width");
     {
-        let mut raw_value = value.only;
-        stream.serialize_bits(&mut raw_value, 13)?;
+        let mut schema_raw_value = schema_value.only;
+        schema_stream.serialize_bits(&mut schema_raw_value, 13)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_sole(stream: &mut ReadStream<'_>, value: &mut Sole) -> Result {
-    read_sole_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_sole(schema_stream: &mut ReadStream<'_>, schema_value: &mut Sole) -> Result {
+    read_sole_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_sole_body(stream: &mut ReadStream<'_>, value: &mut Sole) -> Result {
-    stream.serialize_bits(&mut value.only, 13)?;
+pub(crate) fn read_sole_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Sole) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.only, 13)?;
     Ok(())
 }
 

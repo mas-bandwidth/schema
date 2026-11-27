@@ -38,7 +38,7 @@ fixed table F
 	const ends = `>= f32::from_bits(0xbe99999a) && %s <= f32::from_bits(0x3dcccccd)), "%s out of range");`
 	leaf := `debug_assert!(!v.r.is_finite() || (v.r ` + strings.Replace(strings.Replace(ends, "%s", "v.r", 1), "%s", "r", 1)
 	elem := `debug_assert!(!(*e).is_finite() || ((*e) ` + strings.Replace(strings.Replace(ends, "%s", "(*e)", 1), "%s", "xs", 1)
-	row := `debug_assert!(!value.xs[i].is_finite() || (value.xs[i] ` + strings.Replace(strings.Replace(ends, "%s", "value.xs[i]", 1), "%s", "xs", 1)
+	row := `debug_assert!(!schema_value.xs[schema_i].is_finite() || (schema_value.xs[schema_i] ` + strings.Replace(strings.Replace(ends, "%s", "schema_value.xs[schema_i]", 1), "%s", "xs", 1)
 	for _, pin := range []struct {
 		what, src, text string
 		want            int

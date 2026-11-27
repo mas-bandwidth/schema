@@ -36,9 +36,9 @@ use crate::*;
 /// FixedTable's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn fixed_table_fixed_write_body(b: &mut [u8], value: &FixedTableRow) {
-    let at = 0;
-    bench_mixed_fixed_write_body(&mut b[at..at + 1236], &value.value);
+pub fn fixed_table_fixed_write_body(schema_b: &mut [u8], schema_value: &FixedTableRow) {
+    let schema_at = 0;
+    bench_mixed_fixed_write_body(&mut schema_b[schema_at..schema_at + 1236], &schema_value.value);
 }
 
 /// FixedTable: one record image landed in the value, field by field.
@@ -46,20 +46,20 @@ pub fn fixed_table_fixed_write_body(b: &mut [u8], value: &FixedTableRow) {
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn fixed_table_fixed_scatter(schema_b: &[u8], schema_value: &mut FixedTableRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        bench_mixed_fixed_scatter(&b[at..at + 1236], &mut value.value, report);
+        let schema_at = 0;
+        bench_mixed_fixed_scatter(&schema_b[schema_at..schema_at + 1236], &mut schema_value.value, schema_report);
     }
 }
 
 /// FixedTable: true when a DEAD byte of this record image is not zero.
-pub fn fixed_table_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn fixed_table_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     {
-        let at = 0;
-        if bench_mixed_fixed_dead(&b[at..at + 1236]) {
+        let schema_at = 0;
+        if bench_mixed_fixed_dead(&schema_b[schema_at..schema_at + 1236]) {
             return true;
         }
     }
@@ -69,17 +69,17 @@ pub fn fixed_table_fixed_dead(b: &[u8]) -> bool {
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    bench_mixed_fixed_clamp_body(&mut value.value, oor, damaged);
+pub fn fixed_table_fixed_clamp_body(schema_value: &mut FixedTableRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    bench_mixed_fixed_clamp_body(&mut schema_value.value, schema_oor, schema_damaged);
 }
 
 /// FixedTable's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a
 /// NaN or an infinity, named <Owner>.<field>, or "" when every float is finite.
-pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
-    let why = bench_mixed_fixed_finite_body(&value.value);
-    if !why.is_empty() {
-        return why;
+pub fn fixed_table_fixed_finite_body(schema_value: &FixedTableRow) -> &'static str {
+    let schema_why = bench_mixed_fixed_finite_body(&schema_value.value);
+    if !schema_why.is_empty() {
+        return schema_why;
     }
     ""
 }
@@ -311,26 +311,26 @@ pub const FIXED_TABLE_FIXED_OWN: usize = 0;
 /// forms) — the form byte, seven RESERVED ZERO bytes, the LAYOUT HASH at 8
 /// and the body at 16 — then the layout behind its u32 length, then the
 /// records back to back to the end of it (§3.4).
-pub const fn fixed_table_fixed_measure(count: usize) -> usize {
-    TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len() + count * FIXED_TABLE_FIXED_RECORD_BYTES
+pub const fn fixed_table_fixed_measure(schema_count: usize) -> usize {
+    TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len() + schema_count * FIXED_TABLE_FIXED_RECORD_BYTES
 }
 
 /// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or
 /// None when the buffer is smaller than fixed_table_fixed_measure says or a float
 /// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3).
-pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
+pub fn fixed_table_fixed_save(schema_values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
     // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write
     // contract is a debug assert, as this leg's other write checks are.
     debug_assert!(
-        !values.is_empty(),
+        !schema_values.is_empty(),
         "a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)"
     );
-    let need = fixed_table_fixed_measure(values.len());
-    if buffer.len() < need {
+    let schema_need = fixed_table_fixed_measure(schema_values.len());
+    if buffer.len() < schema_need {
         return None;
     }
     // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.
-    if values.iter().any(|value| !fixed_table_fixed_finite_body(value).is_empty()) {
+    if schema_values.iter().any(|schema_value| !fixed_table_fixed_finite_body(schema_value).is_empty()) {
         return None;
     }
     buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header
@@ -339,17 +339,17 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
         .copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes()); // the header names the layout ONCE
     buffer[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
         .copy_from_slice(&(FIXED_TABLE_FIXED_BLOCK.len() as u32).to_le_bytes());
-    let mut at = TABLE_FIXED_HEADER_BYTES + 4;
-    buffer[at..at + FIXED_TABLE_FIXED_BLOCK.len()].copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
-    at += FIXED_TABLE_FIXED_BLOCK.len();
-    for value in values {
-        buffer[at..at + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
-        let body = &mut buffer[at + 8..at + FIXED_TABLE_FIXED_RECORD_BYTES];
-        body.fill(0); // the template's zeros, and every byte of declared slack with them
-        fixed_table_fixed_write_body(body, value);
-        at += FIXED_TABLE_FIXED_RECORD_BYTES;
+    let mut schema_at = TABLE_FIXED_HEADER_BYTES + 4;
+    buffer[schema_at..schema_at + FIXED_TABLE_FIXED_BLOCK.len()].copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
+    schema_at += FIXED_TABLE_FIXED_BLOCK.len();
+    for schema_value in schema_values {
+        buffer[schema_at..schema_at + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
+        let schema_body = &mut buffer[schema_at + 8..schema_at + FIXED_TABLE_FIXED_RECORD_BYTES];
+        schema_body.fill(0); // the template's zeros, and every byte of declared slack with them
+        fixed_table_fixed_write_body(schema_body, schema_value);
+        schema_at += FIXED_TABLE_FIXED_RECORD_BYTES;
     }
-    Some(need)
+    Some(schema_need)
 }
 
 /// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
@@ -374,32 +374,32 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// RULING R4: EVERY refusal, damage or named, before any record lands or
 /// after, leaves every row handed in at its declared default.
 pub fn fixed_table_fixed_load(
-    values: &mut [FixedTableRow],
+    schema_values: &mut [FixedTableRow],
     data: &[u8],
-    plan: &mut [TableFixedEntry],
-    remap: &mut [u16],
-    report: &mut TableFixedReport,
+    schema_plan: &mut [TableFixedEntry],
+    schema_remap: &mut [u16],
+    schema_report: &mut TableFixedReport,
 ) -> Option<usize> {
-    *report = TableFixedReport::default();
-    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
-    if read.is_none() {
-        for value in values.iter_mut() {
-            fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+    *schema_report = TableFixedReport::default();
+    let schema_read = fixed_table_fixed_load_records(schema_values, data, schema_plan, schema_remap, schema_report);
+    if schema_read.is_none() {
+        for schema_value in schema_values.iter_mut() {
+            fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, schema_value, &mut TableFixedReport::default());
         }
         return None;
     }
-    read
+    schema_read
 }
 
 fn fixed_table_fixed_load_records(
-    values: &mut [FixedTableRow],
+    schema_values: &mut [FixedTableRow],
     data: &[u8],
-    plan: &mut [TableFixedEntry],
-    remap: &mut [u16],
-    report: &mut TableFixedReport,
+    schema_plan: &mut [TableFixedEntry],
+    schema_remap: &mut [u16],
+    schema_report: &mut TableFixedReport,
 ) -> Option<usize> {
     if data.is_empty() {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -409,36 +409,36 @@ fn fixed_table_fixed_load_records(
     // is TEN bytes and a form-2 batch THREE, so a reader that measured first
     // would answer `malformed` for every real file of the two forms it names.
     if data[0] != TABLE_FIXED_FORM {
-        return report.refuse(match data[0] {
+        return schema_report.refuse(match data[0] {
             1 => TableFixedReason::PreviousForm,      // the VARIABLE form, which is older
             2 => TableFixedReason::MessageFormAsFile, // a batch where a FILE was expected
             _ => TableFixedReason::NewerForm,         // a byte no form defines
         });
     }
     if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
-    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {
-        report.damaged = true;
+    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&schema_b| schema_b != 0) {
+        schema_report.damaged = true;
         return None;
     }
-    let block_bytes = u32::from_le_bytes(
+    let schema_block_bytes = u32::from_le_bytes(
         data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
             .try_into()
             .expect("four bytes"),
     ) as usize;
-    if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {
-        return report.refuse(TableFixedReason::LayoutMalformed);
+    if schema_block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {
+        return schema_report.refuse(TableFixedReason::LayoutMalformed);
     }
-    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];
+    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + schema_block_bytes];
     let hash = u64::from_le_bytes(
         data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
             .try_into()
             .expect("eight bytes"),
     ); // the header's hash; digest is not on the wire
-    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];
+    let schema_rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + schema_block_bytes..];
 
     // SELECT BY HASH, AND NEVER PARSE A STRANGER (§5.3 steps 5 to 8). A
     // fixed table reads BACKWARD and never forward: the hash the header
@@ -446,50 +446,50 @@ fn fixed_table_fixed_load_records(
     // so the number cannot be re-derived from a file — and it is looked up in
     // the lineage the BUILD laid down. A hash no entry holds is layout_unknown
     // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.
-    let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
+    let Some(schema_found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|schema_k| schema_k.hash == hash) else {
         // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
-        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);
+        return schema_report.refuse_layout(TableFixedReason::LayoutUnknown, hash);
     };
     // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
     // fire: a comparison no value satisfies is not emitted, for the same
     // reason §5.4 does not emit a clamp that cannot fire. The moment the
     // operator retires an entry the floor moves and the test is here.
-    let known = &FIXED_TABLE_FIXED_LINEAGE[found];
+    let schema_known = &FIXED_TABLE_FIXED_LINEAGE[schema_found];
     // THE LAYOUT IS HELD TO A BYTE COMPARISON and not to §1.1's seven rules:
     // under a KNOWN hash a layout that differs is ONE name, a lie about a
     // known version (§5.3 step 7, bill §12.4).
-    if block != known.layout {
-        return report.refuse(TableFixedReason::LayoutMalformed);
+    if block != schema_known.layout {
+        return schema_report.refuse(TableFixedReason::LayoutMalformed);
     }
     // THE RECORD SIZE IS THE LOCK'S, never the file's (§5.3 step 8).
-    let record_bytes = known.record;
+    let schema_record_bytes = schema_known.record;
     // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the
     // identity plan is the only plan there is, and every other hash was
     // already refused by name above.
-    let entries: &[TableFixedEntry] = &FIXED_TABLE_FIXED_PLAN;
-    let guards: &[TableFixedGuard] = &[];
+    let schema_entries: &[TableFixedEntry] = &FIXED_TABLE_FIXED_PLAN;
+    let schema_guards: &[TableFixedGuard] = &[];
     let table: &[u16] = &[];
-    let census = (0u32, 0u32);
+    let schema_census = (0u32, 0u32);
     // THE CALLER'S PLAN SLICE IS A CAPACITY DECLARATION and is no longer
     // written through: the plans are the BUILD's (§5.9 #5). The selected
     // plan's entry count is held to it, and a plan that does not fit is
     // `plan_too_large` BY NAME — the name is the contract.
-    if entries.len() > plan.len() {
-        return report.refuse(TableFixedReason::PlanTooLarge);
+    if schema_entries.len() > schema_plan.len() {
+        return schema_report.refuse(TableFixedReason::PlanTooLarge);
     }
     // The REMAP lane is the build's too, laid beside the plan it belongs to;
     // the caller's slice stays in the signature as the capacity it always was.
-    let _ = remap;
+    let _ = schema_remap;
     // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
     // a header and a layout followed by no record is truncation, at any
     // capacity. A record size of 8 or less, or a ragged tail, is the same.
-    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
-        report.damaged = true;
+    if schema_rest.is_empty() || schema_record_bytes <= 8 || !schema_rest.len().is_multiple_of(schema_record_bytes) {
+        schema_report.damaged = true;
         return None;
     }
-    let n = rest.len() / record_bytes;
-    if n > values.len() {
-        return report.refuse(TableFixedReason::BatchTooLarge);
+    let schema_n = schema_rest.len() / schema_record_bytes;
+    if schema_n > schema_values.len() {
+        return schema_report.refuse(TableFixedReason::BatchTooLarge);
     }
     // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
     // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte
@@ -497,9 +497,9 @@ fn fixed_table_fixed_load_records(
     // BEFORE any record lands. An absent optional's payload, a counted array's
     // slots past its count, a text's or bytes' units past its length, and an
     // inactive union arm are the four dead regions.
-    for k in 0..n {
-        if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
-            report.damaged = true;
+    for schema_k in 0..schema_n {
+        if fixed_table_fixed_dead(&schema_rest[schema_k * schema_record_bytes + 8..(schema_k + 1) * schema_record_bytes]) {
+            schema_report.damaged = true;
             return None;
         }
     }
@@ -507,28 +507,28 @@ fn fixed_table_fixed_load_records(
     // `Copy` over the whole body, so the hole list is empty and the loop below
     // is a no-op. A compiled plan that leaves a field out has that field in
     // the list, and the declared default is what it keeps. Same loop either way.
-    let mut cover = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
-    let mut hole_buf = [TableFixedHole::default(); FIXED_TABLE_FIXED_BODY_BYTES];
-    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
-    let holes = &hole_buf[..hole_n];
-    let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
-    let widened_before = report.widened;
-    for k in 0..n {
-        let record = &rest[k * record_bytes..(k + 1) * record_bytes];
+    let mut schema_cover = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let mut schema_hole_buf = [TableFixedHole::default(); FIXED_TABLE_FIXED_BODY_BYTES];
+    let schema_hole_n = table_fixed_holes(schema_entries, &mut schema_cover, &mut schema_hole_buf);
+    let schema_holes = &schema_hole_buf[..schema_hole_n];
+    let mut schema_image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let schema_widened_before = schema_report.widened;
+    for schema_k in 0..schema_n {
+        let record = &schema_rest[schema_k * schema_record_bytes..(schema_k + 1) * schema_record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
-            report.widened = widened_before;
-            return report.refuse(TableFixedReason::NoBlock);
+            schema_report.widened = schema_widened_before;
+            return schema_report.refuse(TableFixedReason::NoBlock);
         }
-        for h in holes {
-            let o = h.off as usize;
-            let z = h.size as usize;
-            image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
+        for schema_h in schema_holes {
+            let schema_o = schema_h.off as usize;
+            let schema_z = schema_h.size as usize;
+            schema_image[schema_o..schema_o + schema_z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[schema_o..schema_o + schema_z]);
         }
-        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
-        fixed_table_fixed_scatter(&image, &mut values[k], report);
+        table_fixed_run(schema_entries, schema_guards, table, &record[8..], &mut schema_image, schema_report);
+        fixed_table_fixed_scatter(&schema_image, &mut schema_values[schema_k], schema_report);
         // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than
         // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.
-        if report.damaged {
+        if schema_report.damaged {
             return None;
         }
         // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
@@ -536,31 +536,31 @@ fn fixed_table_fixed_load_records(
         // and a NaN or an infinity refuses the whole batch as
         // non_finite_float, naming the field. Nothing of the batch is kept:
         // the caller resets every row handed in (R4).
-        let why = fixed_table_fixed_finite_body(&values[k]);
-        if !why.is_empty() {
-            report.widened = widened_before;
-            return report.refuse_non_finite(why);
+        let schema_why = fixed_table_fixed_finite_body(&schema_values[schema_k]);
+        if !schema_why.is_empty() {
+            schema_report.widened = schema_widened_before;
+            return schema_report.refuse_non_finite(schema_why);
         }
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
         // storage the scatter just wrote: the same pass for either plan,
         // and only over what a read can have written (§3.4).
         {
-            let mut oor = 0i32;
-            let mut damaged = 0i32;
-            fixed_table_fixed_clamp_body(&mut values[k], &mut oor, &mut damaged);
+            let mut schema_oor = 0i32;
+            let mut schema_damaged = 0i32;
+            fixed_table_fixed_clamp_body(&mut schema_values[schema_k], &mut schema_oor, &mut schema_damaged);
             // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,
             // fix 11; §5.8 row 8): it is the packet reader's verdict, this form
             // having no `L` to continue past. REFUSE is total, so the refusal
             // is taken before any counter is added.
-            if damaged != 0 {
-                report.widened = widened_before;
-                return report.refuse(TableFixedReason::TextIllFormed);
+            if schema_damaged != 0 {
+                schema_report.widened = schema_widened_before;
+                return schema_report.refuse(TableFixedReason::TextIllFormed);
             }
-            report.held += oor as u32;
+            schema_report.held += schema_oor as u32;
         }
-        if report.held != 0 {
-            report.widened = widened_before;
-            return report.refuse(TableFixedReason::OutOfRange);
+        if schema_report.held != 0 {
+            schema_report.widened = schema_widened_before;
+            return schema_report.refuse(TableFixedReason::OutOfRange);
         }
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
@@ -568,8 +568,8 @@ fn fixed_table_fixed_load_records(
     // numbers, fixed when the plan was built — once per endpoint, never per record
     // (§5.4) — and a refusal that came after would have moved a counter, where
     // REFUSE IS TOTAL.
-    report.unknown += census.0;
-    let _ = census.1; // the compile census's kind changes stay on the plan, never a read counter
-    Some(n)
+    schema_report.unknown += schema_census.0;
+    let _ = schema_census.1; // the compile census's kind changes stay on the plan, never a read counter
+    Some(schema_n)
 }
 

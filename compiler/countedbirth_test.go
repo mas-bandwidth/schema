@@ -130,7 +130,7 @@ var assertsInDebug = map[string][]string{
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v·.WindowCount >= 2 and v·.WindowCount <= 8"},
-	"rust":    {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+	"rust":    {`debug_assert!(schema_value.window_count >= 2 && schema_value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
 // packetWriterOwed is each target whose type surface is emitted but whose

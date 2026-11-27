@@ -158,7 +158,7 @@ func t05E8(t *testing.T) {
 		"package probe\n\nfixed table Lineage\n{\n    x int32 = 0\n    y int32 = 0\n    z int32 = 0\n    w int32 = 77\n}\n")
 	t04Has(t, text, "_FIXED_DEFAULTS: [u8;",
 		"E8 an appended field's declared default is the prefill image")
-	t04Has(t, text, "image[o..o + z].copy_from_slice(&",
+	t04Has(t, text, "schema_image[schema_o..schema_o + schema_z].copy_from_slice(&",
 		"E8 the hole an appended field leaves keeps its declared default")
 	t04Has(t, string(fixedRuntimeBody), "if !named && census {",
 		"E8 a field the reader NAMES is not an event; only an unnameable one censuses")
@@ -200,7 +200,7 @@ func t05R19(t *testing.T) {
 	if copyArm == "" {
 		t.Fatal("R19: the Copy arm is not in the runtime")
 	}
-	for _, counter := range []string{"report.held", "report.widened", "report.unknown", "report.kind_changed"} {
+	for _, counter := range []string{"report.held", "report.widened", "schema_report.unknown", "report.kind_changed"} {
 		if strings.Contains(copyArm, counter) {
 			t.Errorf("R19: a `copy` entry moves %s (§5.4):\n%s", counter, copyArm)
 		}
@@ -211,9 +211,9 @@ func t05R19(t *testing.T) {
 	if load == "" {
 		t.Fatal("R19: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "report.unknown += census.0;",
+	t04Has(t, load, "schema_report.unknown += schema_census.0;",
 		"R19 the census lands once per endpoint and not per record")
-	t04Has(t, load, "let _ = census.1;",
+	t04Has(t, load, "let _ = schema_census.1;",
 		"R19 the kind census stays on the plan and never lands on a read (strict-only)")
 	if strings.Contains(load, "kind_changed +=") {
 		t.Error("R19: the load lands the compile census's kind changes on the report")
@@ -267,7 +267,7 @@ func t05R16(t *testing.T) {
 	if load == "" {
 		t.Fatal("R16: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "report.unknown += census.0;",
+	t04Has(t, load, "schema_report.unknown += schema_census.0;",
 		"R16 the compile census lands once, after the record loop and not per record (ALGORITHM §5.9 #6)")
 	// widened: once per entry per record, and a folded run is ONE — the
 	// coalescing fold merges COPY entries only, so a widened run is never folded.
@@ -316,12 +316,12 @@ func t05R16(t *testing.T) {
 	// through: an enum ordinal past the declared extent and a union tag past
 	// the arm count both close at the emitted bound.
 	enumMod := t05Module(t, t05Enum(5))
-	t04Has(t, enumMod, "if raw > 5 {",
+	t04Has(t, enumMod, "if schema_raw > 5 {",
 		"R16 the identity plan closes a forged enum ordinal's range at the scatter")
 	t04Has(t, enumMod, "report.held += 1;",
 		"R16 the identity plan counts the forged enum ordinal clamped")
 	unionMod := t05Module(t, t05Union(2))
-	t04Has(t, unionMod, "if tag_raw > 2 {",
+	t04Has(t, unionMod, "if schema_tag_raw > 2 {",
 		"R16 the identity plan closes a forged union tag's range at the scatter")
 	t04Has(t, unionMod, "report.held += 1;",
 		"R16 the identity plan counts the forged union tag clamped")
@@ -329,7 +329,7 @@ func t05R16(t *testing.T) {
 	// own — the one forged-ordinal count above is the BOUNDS PASS's number and
 	// the law says it is counted once, on both plans.
 	copyArm := t05Arm(runtime, "TableFixedOp::Copy => {")
-	for _, counter := range []string{"report.held", "report.widened", "report.unknown", "report.kind_changed"} {
+	for _, counter := range []string{"report.held", "report.widened", "schema_report.unknown", "report.kind_changed"} {
 		if strings.Contains(copyArm, counter) {
 			t.Errorf("R16: a `copy` entry moves %s:\n%s", counter, copyArm)
 		}
@@ -357,19 +357,19 @@ func t05R18(t *testing.T) {
 	// AN ENUM ORDINAL: 255 variants fill the byte and emit no comparison;
 	// 254 do not.
 	enum255 := t05Module(t, t05Enum(255))
-	if strings.Contains(enum255, "if raw >") {
+	if strings.Contains(enum255, "if schema_raw >") {
 		t.Error("R18: a 255-variant enum fills its storage byte and must emit no ordinal clamp")
 	}
 	enum254 := t05Module(t, t05Enum(254))
-	t04Has(t, enum254, "if raw > 254 {", "R18 a 254-variant enum's ordinal is a clamp that can fire")
+	t04Has(t, enum254, "if schema_raw > 254 {", "R18 a 254-variant enum's ordinal is a clamp that can fire")
 
 	// A UNION TAG: 255 arms fill the tag byte and emit no comparison; 2 do not.
 	union255 := t05Module(t, t05Union(255))
-	if strings.Contains(union255, "if tag_raw >") {
+	if strings.Contains(union255, "if schema_tag_raw >") {
 		t.Error("R18: a 255-arm union fills its tag byte and must emit no tag clamp")
 	}
 	union2 := t05Module(t, t05Union(2))
-	t04Has(t, union2, "if tag_raw > 2 {", "R18 a two-arm union's tag is a clamp that can fire")
+	t04Has(t, union2, "if schema_tag_raw > 2 {", "R18 a two-arm union's tag is a clamp that can fire")
 
 	// A RANGED SCALAR whose declared end sits on its width's limit: the end
 	// that cannot fail is dropped, and only the end that can fire remains.
@@ -377,7 +377,7 @@ func t05R18(t *testing.T) {
 	if strings.Contains(rng, "2147483647") {
 		t.Errorf("R18: the high end on int32's own limit is emitted anyway")
 	}
-	t04Has(t, rng, "value.a = value.a.max(0_i32);", "R18 the low end that can fire remains")
+	t04Has(t, rng, "schema_value.a = schema_value.a.max(0_i32);", "R18 the low end that can fire remains")
 }
 
 // ---- rust/C3 -----------------------------------------------------------------
@@ -400,7 +400,7 @@ func t05C3(t *testing.T) {
 	t04Has(t, runtime, "aux: bytes,",
 		"C3 the cap is the writer's span in BYTES (§4.1)")
 	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
-	t04Has(t, mod, "let held = raw.clamp(0, 8);",
+	t04Has(t, mod, "let schema_held = schema_raw.clamp(0, 8);",
 		"C3 the identity read clamps the length to the declared bound")
 }
 
@@ -420,7 +420,7 @@ func t05C4(t *testing.T) {
 	if load == "" {
 		t.Fatal("C4: lineage_fixed_load is not emitted")
 	}
-	at := strings.Index(load, "if damaged != 0 {")
+	at := strings.Index(load, "if schema_damaged != 0 {")
 	if at < 0 {
 		t.Fatal("C4: the emitted load does not test the content pass's `damaged`")
 	}
@@ -428,7 +428,7 @@ func t05C4(t *testing.T) {
 	if end := strings.Index(body, "\n        }"); end >= 0 {
 		body = body[:end]
 	}
-	t04Has(t, body, "return report.refuse(TableFixedReason::TextIllFormed);",
+	t04Has(t, body, "return schema_report.refuse(TableFixedReason::TextIllFormed);",
 		"C4 the content violation REFUSES BY NAME")
 	if strings.Contains(body, "report.damaged = true;") {
 		t.Errorf("C4: ill-formed text still raises the malformed flag (§5.8 row 8):\n%s", body)
@@ -454,7 +454,7 @@ func t05R24(t *testing.T) {
 	if clamp == "" {
 		t.Fatal("R24: lineage_fixed_clamp_body is not emitted")
 	}
-	t04Has(t, clamp, "table_utf8_valid(&value.s[..value.s_length.clamp(0, 8) as usize])",
+	t04Has(t, clamp, "table_utf8_valid(&schema_value.s[..schema_value.s_length.clamp(0, 8) as usize])",
 		"R24 the content rule is over the USED units and never the declared capacity")
 	if strings.Contains(clamp, "[..9]") {
 		t.Error("R24: the content rule reads the declared buffer, not the used length")

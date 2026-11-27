@@ -1,0 +1,291 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+// Messages.schema — the MESSAGE corpus (docs/SPEC-TABLES.md §2.6): a union whose
+// arms are tables, which is what makes a tool message set evolve by name. A
+// message may carry a nested table, a collection, or a union of tables of its
+// own, and this unit holds the form at THREE DEPTHS — ToolBody in the root,
+// EditBody inside a transaction's edits, Origin inside an insert — so every
+// walk (wire, text, cook) descends a table arm that holds a table arm. The
+// ARRAY OF UNIONS (§2.6, §3) rides at the same three depths: history is a
+// counted batch of messages in the root, pending a fixed pair of edit bodies
+// inside a transaction, origins a counted array inside an insert. The
+// OPTIONAL ARRAY (§2.3) rides at the same three depths too, and in BOTH
+// spellings over every element class: trace is a counted optional array of
+// tables in the root and marks a fixed optional array of enums beside it,
+// checkpoints a fixed optional array of scalars inside a transaction and
+// snapshots a fixed optional array of tables beside it, modes a counted
+// optional array of enums inside an insert.
+//
+// GENERAL ARMS ride at those same three depths (§2.6): an arm is a FIELD
+// LINE, so ToolBody carries a flags arm, a fixed-array arm and a NESTED UNION
+// arm; EditBody a bounded scalar arm, a counted-array arm, a bytes arm and an
+// enum arm; and Origin a scalar arm and a string arm — which puts a scalar arm
+// in every element of the arrays of unions above. ToolBody also carries a
+// PAYLOAD-FREE arm, `ack`: a bare name, no storage, the arm id with L = 0 on
+// the wire and { "ack": null } in the text (SPEC §4.8).
+//
+// Every table here is FIXED-SIZE: a union of fixed table arms leaves its
+// holder fixed, and the zero-cost gate holds over this unit as it does over
+// tables/examples.
+
+const MaxPath = 64
+
+enum Mode { Read, Write }
+
+flags Capabilities { Trace, Verbose }
+
+// a type beside the tables: a type arm and a table arm are one framing
+type Cursor
+{
+    line   uint32
+    column uint32
+}
+
+type Ping
+{
+    nonce uint32
+}
+
+// depth three: the origin of an insert
+fixed table User
+{
+    name string(16)
+}
+
+fixed table Script
+{
+    path string(MaxPath)
+    line uint32
+}
+
+union Origin
+{
+    user   User
+    script Script
+    pid    uint32     | min = 0, max = 1000
+    note   string(24)
+}
+
+// depth two: an edit's body
+fixed table Selection
+{
+    start Cursor
+    stop  Cursor | was = "end"
+}
+
+fixed table InsertText
+{
+    at      Cursor
+    text    string(32)
+    origin  Origin
+    origins [..2]Origin
+    modes   ?[..2]Mode
+}
+
+fixed table RemoveText
+{
+    span Selection
+}
+
+union EditBody
+{
+    insert InsertText
+    remove RemoveText
+    tally  int32       | min = 0, max = 100, was = "count"
+    marks  [..3]uint16
+    blob   bytes(4)
+    mode   Mode
+}
+
+fixed table Edit
+{
+    revision uint32
+    body     EditBody
+}
+
+// depth one: the message set
+fixed table OpenDocument
+{
+    path   string(MaxPath)
+    mode   Mode = Read
+    cursor Cursor
+}
+
+fixed table SaveDocument
+{
+    path  string(MaxPath)
+    force bool
+}
+
+fixed table Transaction
+{
+    reason      string(16)
+    edits       [..3]Edit
+    pending     [2]EditBody
+    checkpoints ?[2]uint32
+    snapshots   ?[2]Selection
+}
+
+union ToolBody
+{
+    open     OpenDocument
+    save     SaveDocument
+    transact Transaction
+    ping     Ping
+    caps     Capabilities
+    spans    [2]int32
+    origin   Origin
+    ack
+}
+
+fixed table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+    history  [..2]ToolBody
+    trace    ?[..3]Script
+    marks    ?[2]Mode
+}
+
+// Variable-form twin for the nested union envelope boundary probes.
+table ToolEnvelope
+{
+    sequence uint32
+    body     ToolBody
+}
+
+enum arm_entry169
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry20
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry21
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry31
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry52
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry56
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry6
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry8
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry83
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry9
+{ Zfirst, Zsecond, Zthird }
+
+enum at
+{ Zfirst, Zsecond, Zthird }
+
+enum attribution_length
+{ Zfirst, Zsecond, Zthird }
+
+enum b
+{ Zfirst, Zsecond, Zthird }
+
+enum before
+{ Zfirst, Zsecond, Zthird }
+
+enum began
+{ Zfirst, Zsecond, Zthird }
+
+enum biased
+{ Zfirst, Zsecond, Zthird }
+
+enum bit
+{ Zfirst, Zsecond, Zthird }
+
+enum block_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum body
+{ Zfirst, Zsecond, Zthird }
+
+enum borrow
+{ Zfirst, Zsecond, Zthird }
+
+enum bottom
+{ Zfirst, Zsecond, Zthird }
+
+enum bseen
+{ Zfirst, Zsecond, Zthird }
+
+enum buf
+{ Zfirst, Zsecond, Zthird }
+
+enum capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum census
+{ Zfirst, Zsecond, Zthird }
+
+enum chunk
+{ Zfirst, Zsecond, Zthird }
+
+enum cnt
+{ Zfirst, Zsecond, Zthird }
+
+enum cok
+{ Zfirst, Zsecond, Zthird }
+
+enum count
+{ Zfirst, Zsecond, Zthird }
+
+enum counts
+{ Zfirst, Zsecond, Zthird }
+
+enum cover
+{ Zfirst, Zsecond, Zthird }
+
+enum damaged
+{ Zfirst, Zsecond, Zthird }
+
+enum data_length
+{ Zfirst, Zsecond, Zthird }
+
+enum data_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum delta
+{ Zfirst, Zsecond, Zthird }
+
+enum depth
+{ Zfirst, Zsecond, Zthird }
+
+enum dest
+{ Zfirst, Zsecond, Zthird }
+
+enum dflt
+{ Zfirst, Zsecond, Zthird }
+
+enum diff
+{ Zfirst, Zsecond, Zthird }
+
+enum dom
+{ Zfirst, Zsecond, Zthird }

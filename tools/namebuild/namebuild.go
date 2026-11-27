@@ -298,7 +298,10 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 				return err
 			}
 		}
-		toml := "[package]\nname = \"probecrate\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[dependencies]\nserialize = { package = \"serialize-official\", path = \"" + env.SerializeRS + "\" }\n"
+		// The block and cook modules sit behind Cargo features the generated
+		// lib.rs names and a consumer gets by default; a crate without them
+		// would build those modules out and never check their names.
+		toml := "[package]\nname = \"probecrate\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"block\", \"cook\"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = \"serialize-official\", path = \"" + env.SerializeRS + "\" }\n"
 		if err := put(dir, "Cargo.toml", toml); err != nil {
 			return err
 		}

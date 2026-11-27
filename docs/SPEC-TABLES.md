@@ -543,8 +543,9 @@ lives.** C++ and Go read and write a table field of a schema `type`, `enum` or
 storage spells `string(N)` as `[u8; N]` with a used length, where the variable
 form holds a `String`, a `Vec` or an `Option<Rc<..>>`, so the table layer
 declares its own type under the same schema name. Two rules keep every name
-reachable. A TABLE ENUM, with its `<name>_json_name` and
-`<name>_from_json_name`, is emitted ONCE per crate, in `table_enums.rs`, and
+reachable. A TABLE ENUM, with its associated `<Name>::json_name` and
+`<Name>::from_json_name` (never free functions spelled from its name, which two
+enum names could share), is emitted ONCE per crate, in `table_enums.rs`, and
 every table module that names it imports it; there is never one copy per file.
 And where a packet type and a table type share a schema name, THE PACKET TYPE
 KEEPS THE CRATE-ROOT NAME and the table type lives at
