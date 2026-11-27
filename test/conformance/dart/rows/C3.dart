@@ -1,32 +1,31 @@
-// test/conformance/dart/rows/C3.dart - the dart/C3 cell, TEXT LENGTH CLAMP.
+// test/conformance/dart/rows/C3.dart - the dart/C3 cell, TEXT LENGTH PAST ITS
+// BOUND REFUSES.
 //
-// THE LAW (docs/FIXED-FORM-ALGORITHM.md:333, the `text` scatter row):
+// THE LAW (docs/FIXED-FORM-ALGORITHM.md §4.5, the `text` scatter row):
 //
-//   unit := (meta == wide) ? 2 : 1
-//   cap  := size / unit
-//   v    := SLE(4, record+src) clamped into [0, cap], COUNT clamped if it fired.
+//   v := SLE(4, record+src); if v < 0 or v > size then REFUSE
+//   length_over_bound — before any destination byte is written.
 //
-// A `string(N)` text field's length word is a code-unit count and the clamp's
-// cap is the field's OWN declared payload capacity; a hostile length that
-// overshoots it lands the cap and counts ONE clamp, and a negative length
-// lands 0 and counts ONE clamp. An in-range length clamps nothing.
+// A `string(N)` text field's length word is a byte count and its bound is the
+// field's OWN declared payload capacity, carried by the plan (the WRITER's,
+// bill §12.5). Today's law is STRICT (§4.5: "Nothing is clamped"; the retired
+// clamp-to-the-cap-and-count answer is gone): a length that overshoots the
+// cap, or a negative one, refuses the whole load as length_over_bound by name,
+// the load answers -1, and the row handed in is left at its declared defaults
+// (docs/SPEC-TABLES.md §6.5). An in-range length, the cap itself included,
+// lands as written.
 //
 // THE PRODUCTION PATH under test:
 //   PaddedFixed.paddedRowFixedLoad
-//     -> tableFixedRun, TableFixedOp.text (the identity plan's label entry
-//        op=2 src=14 dst=14 size=15 aux=18 meta=1: cap = 15/1 = 15 units)
-//     -> paddedRowFixedDecode, which re-reads the already-clamped image.
+//     -> tableFixedRun, TableFixedOp.text (the identity plan's label entry,
+//        cap 15 bytes)
+//     -> paddedRowFixedDecode.
 // PaddedRow.label is string(15) (tables/block/Padded.schema), so the cap is 15.
 //
-// THE VECTOR is written by the unit's own fixed-form writer (a valid record,
-// labelLength = 3), then the length word is patched at its constant offset:
-//
-//   file: form byte@0, hash@8, u32 layout length@16, layout@20 .. 313
-//   (paddedRowFixedHeaderBytes = 313), then record 0: hash@313, body@321.
-//   body: tag@0, value@1, flag@9, id@10, label length@body+14, payload@body+18.
+// THE VECTOR is written by the unit's own fixed-form writer (a valid record),
+// then the length word is patched at its constant offset:
 //
 //   length word offset = paddedRowFixedHeaderBytes + 8 (record hash) + 14
-//                      = 313 + 8 + 14 = 335
 //
 // Run from the repository root: dart run test/conformance/dart/rows/C3.dart
 // Exit 0 green / exit 1 red, one printed line per assertion.
@@ -35,7 +34,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../../../build/tables-generated-dart/block/BlockdemoFixed.dart'
-    show PaddedRow, TableFixedReport;
+    show PaddedRow, TableFixedRefusal, TableFixedReport;
 import '../../../../build/tables-generated-dart/block/PaddedFixed.dart'
     show
         paddedRowFixedLoad,
@@ -54,11 +53,24 @@ void check(String what, bool ok) {
   }
 }
 
+/// A row handed in DIRTY, so "left at its declared defaults" is measured.
+PaddedRow dirty() {
+  final row = PaddedRow();
+  row.value = 2.5;
+  row.flag = true;
+  row.id = 99;
+  row.label.setRange(0, 4, 'wxyz'.codeUnits);
+  row.labelLength = 4;
+  return row;
+}
+
 /// One in-range record through the unit's own writer, the length word at
 /// body+14 patched to [word] (little-endian) before the read, so the reader
-/// meets a hostile length over the WRITER's own layout bytes.
-(PaddedRow, TableFixedReport) readPatched(int word, List<int> labelBytes) {
+/// meets a hostile length over the WRITER's own layout bytes. Answers the
+/// load's count, the row read into, and the report.
+(int, PaddedRow, TableFixedReport) readPatched(int word, List<int> labelBytes) {
   final value = PaddedRow();
+  value.id = 7;
   value.label.setRange(0, labelBytes.length, labelBytes);
   value.labelLength = labelBytes.length;
   final bytes = Uint8List(paddedRowFixedMeasure(1));
@@ -73,7 +85,7 @@ void check(String what, bool ok) {
   bytes[at + 2] = (word >> 16) & 0xff;
   bytes[at + 3] = (word >> 24) & 0xff;
 
-  final row = PaddedRow();
+  final row = dirty();
   final plan = paddedRowFixedNewPlan();
   final report = TableFixedReport();
   final n = paddedRowFixedLoad(
@@ -84,36 +96,84 @@ void check(String what, bool ok) {
     plan,
     report,
   );
-  if (n != 1) {
-    throw StateError(
-      'paddedRowFixedLoad returned $n: refused=${report.refused}',
-    );
+  return (n, row, report);
+}
+
+bool atDefaults(PaddedRow row) {
+  final fresh = PaddedRow();
+  for (var i = 0; i < 15; i++) {
+    if (row.label[i] != fresh.label[i]) {
+      return false;
+    }
   }
-  return (row, report);
+  return row.labelLength == fresh.labelLength &&
+      row.id == fresh.id &&
+      row.flag == fresh.flag &&
+      row.value == fresh.value;
 }
 
 void main() {
-  // A length word past the cap (2^31 - 1, a value a hostile writer can place)
-  // must clamp to the field's own cap of 15 units and count ONE clamp.
-  final (capped, cappedReport) = readPatched(0x7fffffff, [0x61, 0x62, 0x63]);
-  check('an overshoot length clamps to the cap 15', capped.labelLength == 15);
-  check('an overshoot length counts ONE clamp', cappedReport.clamped == 1);
-  check('an overshoot length reads the cap bytes', capped.label[2] == 0x63);
+  final abc = [0x61, 0x62, 0x63];
+  final fifteen = List<int>.filled(15, 0x71);
 
-  // A negative length word must clamp to 0 and count ONE clamp.
-  final (empty, emptyReport) = readPatched(0xffffffff, [0x61, 0x62, 0x63]);
-  check('a negative length clamps to 0', empty.labelLength == 0);
-  check('a negative length counts ONE clamp', emptyReport.clamped == 1);
+  // A length word past the cap — one past it (16), and 2^31 - 1, a value a
+  // hostile writer can place — and a negative one, each REFUSE
+  // length_over_bound and land nothing.
+  for (final (what, word) in <(String, int)>[
+    ('one past the cap (16)', 16),
+    ('2^31 - 1', 0x7fffffff),
+    ('negative (-1)', 0xffffffff),
+  ]) {
+    final (n, row, report) = readPatched(word, abc);
+    check('a length of $what refuses the load (got $n)', n == -1);
+    check(
+      'a length of $what refuses length_over_bound by name '
+      '(got ${TableFixedRefusal.name(report.refused)})',
+      report.refused == TableFixedRefusal.lengthOverBound,
+    );
+    check(
+      'a length of $what lands nothing: the row is at its declared defaults '
+      '(labelLength=${row.labelLength} id=${row.id} flag=${row.flag})',
+      atDefaults(row),
+    );
+    check(
+      'a length of $what moves no counter '
+      '(unknown=${report.unknown} widened=${report.widened})',
+      report.unknown == 0 && report.widened == 0,
+    );
+  }
 
-  // An in-range length must clamp nothing and land the length as written.
-  final (inRange, inRangeReport) = readPatched(3, [0x61, 0x62, 0x63]);
-  check('an in-range length lands unchanged', inRange.labelLength == 3);
-  check('an in-range length counts NO clamp', inRangeReport.clamped == 0);
-  check('an in-range length reads its payload', inRange.label[2] == 0x63);
+  // An in-range length lands unchanged and refuses nothing.
+  {
+    final (n, row, report) = readPatched(3, abc);
+    check('an in-range length reads (got $n)', n == 1);
+    check(
+      'an in-range length refuses nothing '
+      '(got ${TableFixedRefusal.name(report.refused)})',
+      report.refused == TableFixedRefusal.none,
+    );
+    check('an in-range length lands unchanged', row.labelLength == 3);
+    check('an in-range length reads its payload', row.label[2] == 0x63);
+    check('the field beside it lands from the wire', row.id == 7);
+  }
+
+  // The cap itself is in range: a length of exactly 15 lands whole.
+  {
+    final (n, row, report) = readPatched(15, fifteen);
+    check(
+      'a length AT the cap (15) reads and refuses nothing (got $n, '
+      '${TableFixedRefusal.name(report.refused)})',
+      n == 1 && report.refused == TableFixedRefusal.none,
+    );
+    check(
+      'a length AT the cap lands 15 and its last byte',
+      row.labelLength == 15 && row.label[14] == 0x71,
+    );
+  }
 
   if (failures != 0) {
     exitCode = 1;
     return;
   }
-  print('C3 text length clamp: GREEN');
+  print('C3 text length past its bound refuses: GREEN');
 }

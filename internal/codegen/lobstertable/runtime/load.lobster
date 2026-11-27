@@ -134,12 +134,17 @@ class Slot:
 // RetainedField is ONE unknown field a retaining load kept, with every
 // reference replaced by the id it names (docs/SPEC-TABLES.md §6.6, RETENTION
 // FORM). It belongs to the body occurrence that carried it and dies with it.
+// `load` is the number of the retaining load that kept it (Retain.load): the
+// field lives in the record, but it is the caller's store that holds it, and a
+// save writes it only while that store still holds that load (§6.6, A REFUSED
+// LOADRETAIN).
 class RetainedField:
     id:int
     kind:int
     payload:string
     cost:int
     placed:bool = false
+    load:int = 0
 
 class Record:
     d:TableDescriptor

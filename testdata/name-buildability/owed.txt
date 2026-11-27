@@ -4,21 +4,3 @@
 # An exact set: a failure not listed here fails the nightly, and a listed job
 # that builds fails it too (stale), so each line goes when its fix lands.
 # Found by the generator-internal-name sweep (#4947).
-
-# Rust: an enum is a tuple struct, and no let, parameter, for or match binding may shadow a tuple struct (E0530)
-rust n_internal_14 owed: enums c, c0, c1, c2: generated let bindings of those names cannot shadow the tuple structs
-rust n_internal_21 owed: enum e: a generated function parameter e cannot shadow the tuple struct
-rust n_internal_26 owed: enums f, f0, f1: generated let bindings and parameters of those names cannot shadow the tuple structs
-rust n_internal_32 owed: enum i: a generated for binding i cannot shadow the tuple struct
-rust n_internal_58 owed: enum raw_value: a generated let binding raw_value cannot shadow the tuple struct
-rust n_internal_75 owed: enums v0, v1: generated let bindings of those names cannot shadow the tuple structs
-rust n_internal_76 owed: enum value: a generated function parameter value cannot shadow the tuple struct
-rust n_internal_83 owed: enum float_value: a generated let binding float_value cannot shadow the tuple struct
-rust n_internal_91 owed: enum arm: a generated match binding arm cannot shadow the tuple struct
-# Rust: module and derived-name clashes, and an edition keyword
-rust n_internal_19 owed: enums days and daysFrom: both derive days_from_json_name (E0428); schema check does not see derived names
-rust n_internal_43 owed: enums mismatch and mismatchFrom: both derive mismatch_from_json_name (E0428); schema check does not see derived names
-rust n_internal_30 owed: enum gen: a reserved keyword in Rust 2024; schema check does not reserve gen for Rust
-rust n_internal_49 owed: enum other: the crate's module other (Other.schema) and the enum other are one name (E0255)
-rust n_internal_53 owed: enum probe: the crate's module probe (Probe.schema) and the enum probe are one name (E0255)
-rust n_internal_71 owed: enum tables: the crate's module tables (the table runtime) and the enum tables are one name (E0255)

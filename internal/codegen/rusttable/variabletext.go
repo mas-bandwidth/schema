@@ -1125,33 +1125,39 @@ impl<'a> Jr<'a> {
 // emitEnumText emits one enum's JSON name maps: variant -> schema name for the
 // writer, schema name -> variant for the reader (docs/SPEC-TABLES.md §16.2, the
 // enum row's "the variant NAME").
+//
+// Both are ASSOCIATED functions of the enum (`E::json_name(v)`,
+// `E::from_json_name(s)`), never free functions spelled from the enum's name:
+// a free `<snake>_from_json_name` for enum `days` is the same symbol as
+// `<snake>_json_name` for enum `daysFrom`, so two user names would collide in
+// a name the generator invented (SPEC §4.6). Under the type the derivation is
+// injective by construction.
 func emitEnumText(b *strings.Builder, e *ir.Enum) {
-	write := fn(e.Name, "json_name")
-	fmt.Fprintf(b, "#[allow(dead_code)]\n")
-	fmt.Fprintf(b, "pub fn %s(v: %s) -> &'static str {\n", write, e.Name)
-	fmt.Fprintf(b, "    match v {\n")
-	fmt.Fprintf(b, "        %s::None => \"None\",\n", e.Name)
+	fmt.Fprintf(b, "impl %s {\n", e.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code)]\n")
+	fmt.Fprintf(b, "    pub fn json_name(self) -> &'static str {\n")
+	fmt.Fprintf(b, "        match self {\n")
+	fmt.Fprintf(b, "            %s::None => \"None\",\n", e.Name)
 	for i, v := range e.Variants {
 		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
 			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
 			// a write-side check, so a debug assert in this language (SPEC.md §5.1)
-			fmt.Fprintf(b, "        %s::%s => { debug_assert!(false, \"a deprecated variant is never written to JSON (docs/SPEC-TABLES.md §2.15)\"); %q }\n", e.Name, rustVariant(v), v)
+			fmt.Fprintf(b, "            %s::%s => { debug_assert!(false, \"a deprecated variant is never written to JSON (docs/SPEC-TABLES.md §2.15)\"); %q }\n", e.Name, rustVariant(v), v)
 			continue
 		}
-		fmt.Fprintf(b, "        %s::%s => %q,\n", e.Name, rustVariant(v), v)
+		fmt.Fprintf(b, "            %s::%s => %q,\n", e.Name, rustVariant(v), v)
 	}
-	fmt.Fprintf(b, "    }\n}\n\n")
+	fmt.Fprintf(b, "        }\n    }\n\n")
 
-	read := fn(e.Name, "from_json_name")
-	fmt.Fprintf(b, "#[allow(dead_code)]\n")
-	fmt.Fprintf(b, "pub fn %s(s: &str) -> Option<%s> {\n", read, e.Name)
-	fmt.Fprintf(b, "    match s {\n")
-	fmt.Fprintf(b, "        \"None\" => Some(%s::None),\n", e.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code)]\n")
+	fmt.Fprintf(b, "    pub fn from_json_name(s: &str) -> Option<Self> {\n")
+	fmt.Fprintf(b, "        match s {\n")
+	fmt.Fprintf(b, "            \"None\" => Some(%s::None),\n", e.Name)
 	for _, v := range e.Variants {
-		fmt.Fprintf(b, "        %q => Some(%s::%s),\n", v, e.Name, rustVariant(v))
+		fmt.Fprintf(b, "            %q => Some(%s::%s),\n", v, e.Name, rustVariant(v))
 	}
-	fmt.Fprintf(b, "        _ => None,\n")
-	fmt.Fprintf(b, "    }\n}\n\n")
+	fmt.Fprintf(b, "            _ => None,\n")
+	fmt.Fprintf(b, "        }\n    }\n}\n\n")
 }
 
 // emitTextCount emits <name>_json_count: the writer's FIRST pass (§16.7), which
@@ -1410,7 +1416,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			// checks are debug asserts only
 			fmt.Fprintf(b, "%sdebug_assert!(!matches!(%s, %s), %q);\n", ind, unparen(x), pat, "invalid_value: "+f.Name+" holds a deprecated variant")
 		}
-		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), unparen(x))
+		fmt.Fprintf(b, "%sjson_escape(%s::json_name(%s), &mut w.out);\n", ind, f.Type.Name, unparen(x))
 	default:
 		if fl := isFlags(f); fl != nil {
 			// a FLAGS MASK is the array of its set bits' names, in bit order
@@ -1934,7 +1940,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		e := f.Type.Ref.(*ir.Enum)
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
 		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_variant_name() {\n", in)
-		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
+		fmt.Fprintf(b, "%s        %s = match %s::from_json_name(&s) {\n", in, dst, e.Name)
 		if pat := deprecatedPattern(e); pat != "" {
 			// a deprecated variant keeps its name and reads as the field's
 			// declared default, never unknown (docs/SPEC-TABLES.md §2.15)

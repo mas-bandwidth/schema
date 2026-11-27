@@ -15,10 +15,18 @@
 # behind the header and the production reader matches lineage on — for
 # GunnerConfig (tables/examples/Keyed.schema), a fixed table whose fields
 # (float32, bool) state no range, no bits(N), no fixed(I,F) and no flags, so
-# its DEFINITIONS DIGEST is EMPTY and the law reduces to
-#   hash == fnv1a64(<<count::little-32>> ++ entries)
-# which makes the count's inclusion observable in both directions:
-# with the count the equation holds, without it it cannot.
+# its DEFINITIONS DIGEST is the prospective-v2 identity prefix ALONE
+# (docs/FIXED-FORM-ALGORITHM.md §5.2, "PROSPECTIVE V2 DEFINITIONS DIGEST":
+# every non-nil fixed root begins its digest with the 26 bytes
+# "\0schema-fixed-definitions\x02", even when there are no rows), and the law
+# reduces to
+#   hash == fnv1a64(<<count::little-32>> ++ entries ++ prefix)
+# which tables/examples/schema.lock records for this root as
+# `lineage wire=0xd79e087c3613c2fd ... digest=0073...7302`. That makes the
+# count's inclusion observable in both directions: with the count the
+# equation holds, without it it cannot. (The row was written before WireLaw 3,
+# when this digest was empty; the legacy layout-only key 0x113a539593602242
+# is no longer the root's own wire hash.)
 # Cell (test/tables/V1.schema) carries a range, so its digest is NOT empty;
 # its hash is asserted only against the count-less walk, which the law makes
 # wrong for every digest content.
@@ -50,6 +58,11 @@ defmodule W12 do
   def fnv(bin, h \\ 0xCBF29CE484222325)
   def fnv(<<>>, h), do: h
   def fnv(<<b, rest::binary>>, h), do: fnv(rest, bxor(h, b) * 0x100000001B3 &&& 0xFFFFFFFFFFFFFFFF)
+
+  # The prospective-v2 identity prefix, spelled from §5.2: a zero byte,
+  # "schema-fixed-definitions", then version byte 2. GunnerConfig has no
+  # digest rows, so this is its whole definitions digest.
+  @v2_prefix <<0, "schema-fixed-definitions", 2>>
 
   # The layout AS WRITTEN: a u32 count in front, entries behind it.
   def split(layout) do
@@ -101,16 +114,16 @@ defmodule W12 do
     {count, entries} = split(layout)
 
     cond do
-      fnv(<<count::little-unsigned-32, entries::binary>>) == hash ->
+      fnv(<<count::little-unsigned-32, entries::binary, @v2_prefix::binary>>) == hash ->
         line(true,
           "2 #{mod}.#{table}: hash 0x#{Integer.to_string(hash, 16)} == " <>
-            "fnv1a64(<<count=#{count}::little-32>> ++ entries) — the 4-byte count is in the hash"
+            "fnv1a64(<<count=#{count}::little-32>> ++ entries ++ v2 prefix) — the 4-byte count is in the hash"
         )
 
       true ->
         line(false,
           "2 #{mod}.#{table}: hash 0x#{Integer.to_string(hash, 16)} != " <>
-            "fnv1a64(<<count=#{count}::little-32>> ++ entries) — the 4-byte count is NOT in the hash"
+            "fnv1a64(<<count=#{count}::little-32>> ++ entries ++ v2 prefix) — the 4-byte count is NOT in the hash"
         )
     end
   end
@@ -123,7 +136,9 @@ defmodule W12 do
     hash = apply(mod, :"#{table}_fixed_hash", [])
     {_count, entries} = split(apply(mod, :"#{table}_fixed_layout", []))
 
-    if fnv(entries) != hash do
+    # Neither the count-less walk alone nor the count-less walk with the v2
+    # prefix (GunnerConfig's whole digest) may be the minted hash.
+    if fnv(entries) != hash and fnv(<<entries::binary, @v2_prefix::binary>>) != hash do
       line(true,
         "#{n} #{mod}.#{table}: fnv1a64(entries alone) 0x#{Integer.to_string(fnv(entries), 16)} " <>
           "!= hash — the count-less walk is not the wire hash"
@@ -147,7 +162,7 @@ defmodule W12 do
     minted = Tabledemo.KeyedFixed.gunner_config_fixed_hash()
     layout = Tabledemo.KeyedFixed.gunner_config_fixed_layout()
     {count, entries} = split(layout)
-    derived = fnv(<<count::little-unsigned-32, entries::binary>>)
+    derived = fnv(<<count::little-unsigned-32, entries::binary, @v2_prefix::binary>>)
     <<record_hash::little-unsigned-64, _::binary>> = Tabledemo.KeyedFixed.gunner_config_fixed_record(value)
 
     cond do

@@ -2,31 +2,42 @@
 // name, once, idempotently" (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3).
 //
 // The law: a lineage entry marked RETIRED moves the floor (1 + the highest
-// retired index). A file whose hash matches an entry BELOW the floor is
-// refused with layout_unsupported — nothing is decoded, no counter moves,
-// and the answer is the same on every call (idempotent).
+// retired index, §5.2). A file whose header hash matches an entry BELOW the
+// floor is refused by name, `layout_unsupported` — upgrade the client — and a
+// hash no lineage entry holds is `layout_newer` — ship the reader (§5.3 steps
+// 5 and 6). Either refusal reports the FILE'S hash as layoutHash (§5.9 #15),
+// decodes nothing and moves no counter (§5.9 #6), and leaves every row the
+// caller handed in at its declared defaults (docs/SPEC-TABLES.md §6.5). The
+// answer is the same on every call (idempotent).
 //
-// This test reaches the generated Dart runtime (build/tables-generated-dart/)
-// the same way the conformance driver does, and exercises the production
-// path: tableFixedSelect + the floor check that every FixedLoad performs
-// (e.g. build/tables-generated-dart/examples/TablesFixed.dart:701-710,
-// emitted by internal/codegen/darttable/fixedmodule.go:517-527).
-//
-// The known list is constructed inline with one retired entry (index 0) and
-// one current entry (index 1), giving floor = 1. A byte vector carrying the
-// hash of the retired entry is fed through tableFixedSelect, and the floor
-// check (pick < floor) is asserted. Calling twice proves idempotency.
+// THE REAL RETIRED LINEAGE, NOT A SIMULATION. test/tables/fixedevo/schema.lock
+// retires EvoRoot's lineage[0] ("v0 retired to exercise floor refusal in
+// conformance"), so the generated reader under
+// build/tables-generated-dart-scalars/fixedevo/ (built by
+// build/tables-generated-dart/.stamp, make/dart.mk) carries
+// evoRootFixedFloor = 1. This row writes a well-formed form-3 file under the
+// retired entry's own hash and layout bytes and feeds it to the production
+// evoRootFixedLoad, twice.
 //
 // Run: dart run test/conformance/dart/rows/R32.dart
 // Exit 0 = green, exit 1 = red, one printed line per assertion.
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../../../build/tables-generated-dart/examples/TabledemoFixed.dart'
+import '../../../../build/tables-generated-dart-scalars/fixedevo/FixedEvoFixed.dart'
     show
-        TableFixedKnownLayout,
+        evoRootFixedFloor,
+        evoRootFixedHash,
+        evoRootFixedKnown,
+        evoRootFixedLoad;
+import '../../../../build/tables-generated-dart-scalars/fixedevo/TblfixedevoFixed.dart'
+    show
+        EvoRoot,
+        TableFixedLimits,
+        TableFixedPlan,
         TableFixedRefusal,
         TableFixedReport,
+        tableFixedForm,
         tableFixedSelect;
 
 int _passes = 0;
@@ -43,120 +54,115 @@ void check(bool ok, String what) {
   }
 }
 
-// The layout bytes a known entry carries. These are arbitrary bytes —
-// the floor check fires before the byte comparison, so the content
-// does not matter for the retired-path assertion (§5.3 step 6 comes
-// after step 5's select + floor).
-final Uint8List retiredLayout = Uint8List(16);
-final int retiredLayoutBytes = retiredLayout.length;
+// A well-formed form-3 file under `hash` with `layout` as its layout bytes
+// and one record of `recordBytes` (the record's own leading hash = `hash`,
+// the body zero): header (form byte, seven reserved zeros, hash), the
+// four-byte layout length, the layout, the records.
+Uint8List form3File(int hash, Uint8List layout, int layoutBytes, int recordBytes) {
+  final at = TableFixedLimits.layoutAt + layoutBytes;
+  final bytes = Uint8List(at + recordBytes);
+  final view = ByteData.sublistView(bytes);
+  bytes[0] = tableFixedForm;
+  view.setUint64(TableFixedLimits.hashAt, hash, Endian.little);
+  view.setUint32(TableFixedLimits.headerBytes, layoutBytes, Endian.little);
+  bytes.setRange(TableFixedLimits.layoutAt, at, layout);
+  view.setUint64(at, hash, Endian.little);
+  return bytes;
+}
 
-// The wire hash of the retired entry. The law says the wire hash is
-// HASH(layout bytes, definitions digest); what matters is that the
-// file carries THIS hash and the known list holds the same one at
-// index 0, so tableFixedSelect returns 0.
-final int retiredHash = 0xA1A2A3A4A5A6A7A8;
+// One load of `file` into a row moved off its declared defaults
+// (v1Marker 11, defScalar -777), so a load that lands anything or leaves the
+// caller's row as handed in is seen.
+({int result, TableFixedReport report, EvoRoot row}) load(Uint8List file) {
+  final row = EvoRoot()
+    ..v1Marker = 99
+    ..defScalar = 5
+    ..iWiden = 7;
+  final report = TableFixedReport();
+  final plan = TableFixedPlan(4096, 1 << 16, 4096);
+  final result = evoRootFixedLoad(<EvoRoot>[row], 1, file, file.length, plan, report);
+  return (result: result, report: report, row: row);
+}
 
-// The current (non-retired) layout and hash.
-final Uint8List currentLayout = Uint8List.fromList(List.filled(16, 0xFF));
-final int currentLayoutBytes = currentLayout.length;
-final int currentHash = 0xB1B2B3B4B5B6B7B8;
+bool atDefaults(EvoRoot r) =>
+    r.v1Marker == 11 && r.defScalar == -777 && r.iWiden == 0;
 
-// A constructed known list: entry 0 is RETIRED, entry 1 is current.
-// Floor = 1 (1 + the highest retired index, which is 0).
-// This is what the generated code produces when a lock has one retired
-// entry — e.g. fixedmodule.go:365-378 emits the same array shape with
-// the floor constant beside it.
-final int floor = 1;
-final List<TableFixedKnownLayout> knownWithRetired = <TableFixedKnownLayout>[
-  TableFixedKnownLayout(
-    retiredHash,
-    retiredLayout,
-    retiredLayoutBytes,
-    retiredLayoutBytes + 8, // recordBytes = 8 hash header + body
-  ),
-  TableFixedKnownLayout(
-    currentHash,
-    currentLayout,
-    currentLayoutBytes,
-    currentLayoutBytes + 8,
-  ),
-];
+bool noCounterMoved(TableFixedReport r) =>
+    r.unknown == 0 && r.widened == 0 && r.hash == 0 && r.nonFiniteFloat.isEmpty;
 
 void main() {
-  // ---- assertion 1: the retired hash is found at index 0 ----
-  final pickRetired = tableFixedSelect(knownWithRetired, retiredHash);
+  // ---- the lock's floor: entry 0 is retired, so the floor is 1 ----
+  check(evoRootFixedFloor == 1,
+      'the generated reader carries the lock\'s floor 1 (got $evoRootFixedFloor)');
+  check(evoRootFixedKnown.length >= 2,
+      'the lineage holds the retired entry and at least one live one '
+      '(got ${evoRootFixedKnown.length})');
+  final retired = evoRootFixedKnown[0];
+  final retiredHash = retired.hash;
+  check(tableFixedSelect(evoRootFixedKnown, retiredHash) == 0,
+      'the retired hash selects lineage index 0, below the floor');
+  check(retiredHash != evoRootFixedHash,
+      'the retired hash is not the identity hash');
+
+  // ---- the retired file, through the production load, twice ----
+  final file = form3File(
+      retiredHash, retired.layout, retired.layoutBytes, retired.recordBytes);
+  final first = load(file);
   check(
-    pickRetired == 0,
-    'the retired hash resolves to index 0 (got $pickRetired)',
+    first.result == -1 &&
+        first.report.refused == TableFixedRefusal.layoutUnsupported,
+    'a file under the retired hash is refused layout_unsupported '
+        '(result=${first.result} refused=${TableFixedRefusal.name(first.report.refused)})',
+  );
+  check(
+    first.report.layoutHash == retiredHash,
+    'the refusal reports the file\'s hash as layoutHash '
+        '(0x${first.report.layoutHash.toRadixString(16)} want 0x${retiredHash.toRadixString(16)})',
+  );
+  check(noCounterMoved(first.report),
+      'nothing decoded, no counter moved (unknown=${first.report.unknown} '
+      'widened=${first.report.widened} hash=${first.report.hash})');
+  check(atDefaults(first.row),
+      'the row handed in is back at its declared defaults (v1Marker='
+      '${first.row.v1Marker} defScalar=${first.row.defScalar} iWiden=${first.row.iWiden})');
+
+  final second = load(file);
+  check(
+    second.result == first.result &&
+        second.report.refused == first.report.refused &&
+        second.report.layoutHash == first.report.layoutHash &&
+        noCounterMoved(second.report) &&
+        atDefaults(second.row),
+    'idempotent: the second load of the same file gives the identical refusal '
+        '(refused=${TableFixedRefusal.name(second.report.refused)})',
   );
 
-  // ---- assertion 2: the index is below the floor, so the refusal is
-  //      layout_unsupported (the two lines every FixedLoad executes:
-  //      TablesFixed.dart:707-710, emitted by fixedmodule.go:524-527) ----
-  check(
-    pickRetired < floor,
-    'index 0 is below the floor ($floor): a retired version is refused',
-  );
-
-  // ---- assertion 3: the current hash is at index 1, at or above the
-  //      floor, so it would pass the floor check ----
-  final pickCurrent = tableFixedSelect(knownWithRetired, currentHash);
-  check(
-    pickCurrent == 1 && pickCurrent >= floor,
-    'the current hash resolves to index 1, at or above the floor',
-  );
-
-  // ---- assertion 4: idempotency — the same call twice gives the same
-  //      answer, with no state change between them ----
-  final pickAgain = tableFixedSelect(knownWithRetired, retiredHash);
-  check(
-    pickAgain == pickRetired,
-    'idempotent: second select of retired hash gives same index '
-        '($pickAgain == $pickRetired)',
-  );
-
-  // ---- assertion 5: a report set the way FixedLoad sets it for the
-  //      retired case carries only the refusal code and the file hash
-  //      (refused by name, once — TablesFixed.dart:708-709) ----
-  {
-    final report = TableFixedReport();
-    // Simulate exactly what FixedLoad does at the floor check:
-    //   report.layoutHash = hash;
-    //   report.refused = TableFixedRefusal.layoutUnsupported;
-    //   return -1;
-    report.layoutHash = retiredHash;
-    report.refused = TableFixedRefusal.layoutUnsupported;
-    check(
-      report.refused == TableFixedRefusal.layoutUnsupported &&
-          report.layoutHash == retiredHash &&
-          !report.malformed &&
-          report.unknown == 0 &&
-          report.kindMismatch == 0 &&
-          report.clamped == 0 &&
-          report.widened == 0 &&
-          report.duplicate == 0,
-      'refused by name: report carries only layoutUnsupported and the '
-          'file hash — nothing decoded, no counter moved',
-    );
+  // ---- the other name: a hash outside the lineage is layout_unknown ----
+  var stranger = 0x5A5A5A5A5A5A5A5A;
+  while (tableFixedSelect(evoRootFixedKnown, stranger) >= 0) {
+    stranger++;
   }
+  final newer = load(
+      form3File(stranger, retired.layout, retired.layoutBytes, retired.recordBytes));
+  check(
+    newer.result == -1 &&
+        newer.report.refused == TableFixedRefusal.layoutUnknown &&
+        newer.report.layoutHash == stranger &&
+        atDefaults(newer.row),
+    'a hash no lineage entry holds is layout_unknown, not layout_unsupported '
+        '(refused=${TableFixedRefusal.name(newer.report.refused)})',
+  );
 
-  // ---- assertion 6: idempotent refusal — resetting the report and
-  //      setting the same fields again produces an identical result ----
-  {
-    final report = TableFixedReport();
-    report.layoutHash = retiredHash;
-    report.refused = TableFixedRefusal.layoutUnsupported;
-    final firstRefused = report.refused;
-    final firstHash = report.layoutHash;
-
-    report.reset();
-    report.layoutHash = retiredHash;
-    report.refused = TableFixedRefusal.layoutUnsupported;
-    check(
-      report.refused == firstRefused && report.layoutHash == firstHash,
-      'idempotent: second refusal produces the identical report',
-    );
-  }
+  // ---- a live lineage entry at or above the floor is NOT refused unsupported ----
+  final live = evoRootFixedKnown[evoRootFixedFloor];
+  final liveLoad = load(
+      form3File(live.hash, live.layout, live.layoutBytes, live.recordBytes));
+  check(
+    liveLoad.report.refused != TableFixedRefusal.layoutUnsupported &&
+        liveLoad.report.refused != TableFixedRefusal.layoutUnknown,
+    'lineage index $evoRootFixedFloor (at the floor) is not refused as a layout '
+        '(result=${liveLoad.result} refused=${TableFixedRefusal.name(liveLoad.report.refused)})',
+  );
 
   // ---- summary ----
   if (_fails == 0) {

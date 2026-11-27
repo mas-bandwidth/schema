@@ -79,9 +79,6 @@ enum table_scalar_read
 enum table_shape
 { Zfirst, Zsecond, Zthird }
 
-enum tables
-{ Zfirst, Zsecond, Zthird }
-
 enum tag
 { Zfirst, Zsecond, Zthird }
 
@@ -367,7 +364,6 @@ table NameFields1
 union NameArms2
 {
     table_shape Inner
-    tables Inner
     tag Inner
     tagAt Inner
     tagW Inner
@@ -382,8 +378,6 @@ table NameTypes2
 {
     one0  table_shape
     many0 [..4]table_shape
-    one1  tables
-    many1 [..4]tables
     one2  tag
     many2 [..4]tag
     one3  tagAt
@@ -405,7 +399,6 @@ table NameTypes2
 table NameFields2
 {
     table_shape uint32
-    tables uint32
     tag uint32
     tagAt uint32
     tagW uint32

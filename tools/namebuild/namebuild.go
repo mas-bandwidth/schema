@@ -298,7 +298,10 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 				return err
 			}
 		}
-		toml := "[package]\nname = \"probecrate\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[dependencies]\nserialize = { package = \"serialize-official\", path = \"" + env.SerializeRS + "\" }\n"
+		// The block and cook modules sit behind Cargo features the generated
+		// lib.rs names and a consumer gets by default; a crate without them
+		// would build those modules out and never check their names.
+		toml := "[package]\nname = \"probecrate\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"block\", \"cook\"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = \"serialize-official\", path = \"" + env.SerializeRS + "\" }\n"
 		if err := put(dir, "Cargo.toml", toml); err != nil {
 			return err
 		}
@@ -321,16 +324,20 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 	case "java":
 		var sb strings.Builder
 		p, o := c.Pkg, "Other"
+		fmt.Fprintf(&sb, "import %s.%s;\n\n", p, o)
 		fmt.Fprintf(&sb, "public final class ZzMain {\n  public static void main(String[] args) {\n")
-		fmt.Fprintf(&sb, "    %s.%s.Holder h = new %s.%s.Holder();\n", p, o, p, o)
-		fmt.Fprintf(&sb, "    %s.%s.initHolder(h);\n", p, o)
-		fmt.Fprintf(&sb, "    byte[] d = new byte[%s.%s.HOLDER_MAX_BYTES];\n", p, o)
-		fmt.Fprintf(&sb, "    if (%s.%s.writeHolder(h, d) <= 0) throw new AssertionError(\"FAILED: write\");\n", p, o)
+		fmt.Fprintf(&sb, "    %s.Holder h = new %s.Holder();\n", o, o)
+		fmt.Fprintf(&sb, "    %s.initHolder(h);\n", o)
+		fmt.Fprintf(&sb, "    byte[] d = new byte[%s.HOLDER_MAX_BYTES];\n", o)
+		fmt.Fprintf(&sb, "    if (%s.writeHolder(h, d) <= 0) throw new AssertionError(\"FAILED: write\");\n", o)
 		sb.WriteString("    System.out.println(\"ok\");\n  }\n}\n")
 		if err := put(dir, "ZzMain.java", sb.String()); err != nil {
 			return err
 		}
-		args := []string{"--release", "17", "-Xlint:all", "-Werror", "-d", "classes"}
+		if err := os.MkdirAll(filepath.Join(dir, "nosrc"), 0o755); err != nil {
+			return err
+		}
+		args := []string{"--release", "17", "-Xlint:all", "-Werror", "-sourcepath", "nosrc", "-d", "classes"}
 		args = append(args, names(glob(dir, "*.java"))...)
 		if err := step(env.Tool("JAVAC", "javac"), args...); err != nil {
 			return err

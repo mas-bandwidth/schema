@@ -184,9 +184,6 @@ enum priorDeep
 enum priorWidened
 { Zfirst, Zsecond, Zthird }
 
-enum probe
-{ Zfirst, Zsecond, Zthird }
-
 enum probe_distinct_inner
 { Zfirst, Zsecond, Zthird }
 
@@ -534,7 +531,6 @@ union NameArms5
     priorCtx Inner
     priorDeep Inner
     priorWidened Inner
-    probe Inner
     probe_distinct_inner Inner
     probe_distinct_measure Inner
     probe_entries Inner
@@ -554,8 +550,6 @@ table NameTypes5
     many4 [..4]priorDeep
     one5  priorWidened
     many5 [..4]priorWidened
-    one6  probe
-    many6 [..4]probe
     one7  probe_distinct_inner
     many7 [..4]probe_distinct_inner
     one8  probe_distinct_measure
@@ -572,7 +566,6 @@ table NameFields5
     priorCtx uint32
     priorDeep uint32
     priorWidened uint32
-    probe uint32
     probe_distinct_inner uint32
     probe_distinct_measure uint32
     probe_entries uint32

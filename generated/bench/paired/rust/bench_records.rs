@@ -79,8 +79,8 @@ impl MixedEventRow {
 
     /// Selects `hit`: the ARM AND THE TAG MOVE TOGETHER, which is the only
     /// way the tag moves at all, so the two can never disagree.
-    pub fn set_hit(&mut self, value: MixedHitEventRow) {
-        self.arms.hit = value; // a WRITE of a union field, which is safe
+    pub fn set_hit(&mut self, schema_value: MixedHitEventRow) {
+        self.arms.hit = schema_value; // a WRITE of a union field, which is safe
         self.tag = 1;
     }
 
@@ -97,8 +97,8 @@ impl MixedEventRow {
 
     /// Selects `chat`: the ARM AND THE TAG MOVE TOGETHER, which is the only
     /// way the tag moves at all, so the two can never disagree.
-    pub fn set_chat(&mut self, value: MixedChatEventRow) {
-        self.arms.chat = value; // a WRITE of a union field, which is safe
+    pub fn set_chat(&mut self, schema_value: MixedChatEventRow) {
+        self.arms.chat = schema_value; // a WRITE of a union field, which is safe
         self.tag = 2;
     }
 
@@ -115,8 +115,8 @@ impl MixedEventRow {
 
     /// Selects `pickup`: the ARM AND THE TAG MOVE TOGETHER, which is the only
     /// way the tag moves at all, so the two can never disagree.
-    pub fn set_pickup(&mut self, value: MixedPickupEventRow) {
-        self.arms.pickup = value; // a WRITE of a union field, which is safe
+    pub fn set_pickup(&mut self, schema_value: MixedPickupEventRow) {
+        self.arms.pickup = schema_value; // a WRITE of a union field, which is safe
         self.tag = 3;
     }
 
@@ -286,11 +286,11 @@ impl Default for BenchMixedRow {
     fn default() -> Self {
         // a cooked record's zero form is a value of the type: zero is valid
         // for every scalar, and false is a valid bool
-        let mut value: Self = unsafe { core::mem::zeroed() };
+        let mut schema_value: Self = unsafe { core::mem::zeroed() };
         // a counted [Min..N] array is born at Min, here or in a nested
         // record (docs/SPEC.md §4.2)
-        value.entities_count = 1;
-        value
+        schema_value.entities_count = 1;
+        schema_value
     }
 }
 

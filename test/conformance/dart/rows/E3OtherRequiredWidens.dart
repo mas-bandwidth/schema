@@ -22,6 +22,7 @@ import 'dart:typed_data';
 
 import '../../../../build/tables-generated-dart/pointers/GraphdemoFixed.dart'
     show
+        TableFixedLane,
         TableFixedOp,
         TableFixedReport,
         tableFixedNoGuard,
@@ -37,9 +38,13 @@ void main() {
     }
   }
 
-  // A single-entry plan is nine int32 lanes. We use it to isolate each widen
-  // case from the compiler, so the test is about the runtime's interpretation
-  // of the plan and nothing else.
+  // A single-entry plan is TableFixedLane.lanes int32 lanes, each written by
+  // its NAMED lane (the generated runtime's TableFixedLane), so the row
+  // follows the plan's shape rather than a hand count of it. (This row once
+  // hard-coded nine lanes; the plan grew the guard-chain lanes `guards` and
+  // `guardCount`, §4.1, and the nine-lane plan indexed past its end.) We use
+  // it to isolate each widen case from the compiler, so the test is about the
+  // runtime's interpretation of the plan and nothing else.
   Int32List plan(
     int op,
     int src,
@@ -47,17 +52,19 @@ void main() {
     int size,
     int meta,
   ) {
-    return Int32List.fromList(<int>[
-      op, // op
-      src, // src offset in the source record
-      dst, // dst offset in the image
-      size, // source size in bytes
-      0, // aux
-      tableFixedNoGuard, // guard
-      0, // arg
-      meta, // meta: wide width | (signed ? 0x100 : 0)
-      1, // argW
-    ]);
+    final p = Int32List(TableFixedLane.lanes);
+    p[TableFixedLane.op] = op;
+    p[TableFixedLane.src] = src; // src offset in the source record
+    p[TableFixedLane.dst] = dst; // dst offset in the image
+    p[TableFixedLane.size] = size; // source size in bytes
+    p[TableFixedLane.aux] = 0;
+    p[TableFixedLane.guard] = tableFixedNoGuard;
+    p[TableFixedLane.arg] = 0;
+    p[TableFixedLane.meta] = meta; // wide width | (signed ? 0x100 : 0)
+    p[TableFixedLane.argW] = 1;
+    p[TableFixedLane.guards] = 0; // no guard chain
+    p[TableFixedLane.guardCount] = 0;
+    return p;
   }
 
   // Run one widen entry over a source buffer that starts at offset 0.
