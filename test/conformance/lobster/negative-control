@@ -90,9 +90,18 @@ write-refusal)
     ;;
 write-refusal-fixed)
     # the emitter's checked body no longer refuses a non-finite float: the
-    # finite test is emitted behind `false and`
+    # finite test is emitted behind `false and`. One expression per width:
+    # `\|` is a GNU sed extension that BSD sed (macOS) reads as a literal, so
+    # an alternation here patched nothing on the macOS fleet.
     source=internal/codegen/lobstertable/fixedevolve.go
-    sed -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f\(32\|64\)(%s):/if false and not schema_rt.finite_f\1(%s):/' "$source" > "$out/runtime.lobster"
+    sed -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f32(%s):/if false and not schema_rt.finite_f32(%s):/' \
+        -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f64(%s):/if false and not schema_rt.finite_f64(%s):/' "$source" > "$out/runtime.lobster"
+    # both widths, or the control tests half the rule
+    n=$(grep -c 'if false and not schema_rt\.finite_f' "$out/runtime.lobster" || true)
+    if [ "$n" != 2 ]; then
+        echo "NEGATIVE CONTROL: the $mode sabotage patched $n finite checks in $source, want exactly 2 (f32, f64)" >&2
+        exit 1
+    fi
     ;;
 write-refusal-message)
     # the message writer's scalar admission check is taken out

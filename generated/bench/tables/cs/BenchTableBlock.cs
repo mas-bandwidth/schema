@@ -411,7 +411,7 @@ namespace Benchtable
     //
     // The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,
     // or memory the producer handed across. Nothing here allocates.
-    public unsafe readonly struct TableEntityBlock
+    public unsafe readonly partial struct TableEntityBlock
     {
         // Begin settles the layout before workers fill disjoint rows. It touches
         // the prologue and triples only; use Clear on storage when byte stability matters.
@@ -427,27 +427,6 @@ namespace Benchtable
         }
 
         public static bool Begin(out TableEntityBlock block, TableEntityBlockStorage storage, in TableEntityCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
-        public static bool Begin(out TableEntityBlock block, IntPtr pointer, long capacity, TableEntity value, out TableBlockRefusal refusal)
-        {
-            block = default; refusal = default;
-            if (value == null) { return false; }
-            if (value.EntityId > 4095) { return false; }
-            if (value.PosX < -16383 || value.PosX > 16383) { return false; }
-            if (value.PosY < -16383 || value.PosY > 16383) { return false; }
-            if (value.PosZ < -16383 || value.PosZ > 16383) { return false; }
-            if (value.Yaw > 511) { return false; }
-            if (value.Pitch > 511) { return false; }
-            if (value.VelX < -2048 || value.VelX > 2047) { return false; }
-            if (value.VelY < -2048 || value.VelY > 2047) { return false; }
-            if (value.VelZ < -2048 || value.VelZ > 2047) { return false; }
-            if (value.Health < 0 || value.Health > 1000) { return false; }
-            if ((ulong)value.Weapon > 15UL) { return false; }
-            if (((ulong)value.Damage & ~0xffUL) != 0) { return false; }
-            var counts = new TableEntityCounts();
-            return Begin(out block, pointer, capacity, in counts, out refusal);
-        }
-
-        public static bool Begin(out TableEntityBlock block, TableEntityBlockStorage storage, TableEntity value, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, value, out refusal); }
         public ref TableEntityBlockProjection WritableProjection { get { return ref *(TableEntityBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;
@@ -562,7 +541,7 @@ namespace Benchtable
     //
     // The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,
     // or memory the producer handed across. Nothing here allocates.
-    public unsafe readonly struct TableStatBlock
+    public unsafe readonly partial struct TableStatBlock
     {
         // Begin settles the layout before workers fill disjoint rows. It touches
         // the prologue and triples only; use Clear on storage when byte stability matters.
@@ -578,17 +557,6 @@ namespace Benchtable
         }
 
         public static bool Begin(out TableStatBlock block, TableStatBlockStorage storage, in TableStatCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
-        public static bool Begin(out TableStatBlock block, IntPtr pointer, long capacity, TableStat value, out TableBlockRefusal refusal)
-        {
-            block = default; refusal = default;
-            if (value == null) { return false; }
-            if (value.StatId > 255) { return false; }
-            if (value.Delta < -512 || value.Delta > 511) { return false; }
-            var counts = new TableStatCounts();
-            return Begin(out block, pointer, capacity, in counts, out refusal);
-        }
-
-        public static bool Begin(out TableStatBlock block, TableStatBlockStorage storage, TableStat value, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, value, out refusal); }
         public ref TableStatBlockProjection WritableProjection { get { return ref *(TableStatBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;
