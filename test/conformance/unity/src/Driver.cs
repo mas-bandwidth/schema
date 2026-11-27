@@ -43,6 +43,14 @@ namespace SchemaUnityConformance
         public object Value;
     }
 
+    internal sealed class RetainSequenceOutcome
+    {
+        public bool Loaded;
+        public bool SecondRefused;
+        public byte[] Before;
+        public byte[] After;
+    }
+
     internal interface ICodec
     {
         string Unit { get; }
@@ -80,6 +88,7 @@ namespace SchemaUnityConformance
         long MessageSave(object value, byte[] buffer);
 
         RetainOutcome RunRetain(byte[] wire, bool shortBytes, int idCapacity);
+        RetainSequenceOutcome RunRetainRefusal(byte[] first, byte[] second);
 
         // Fresh is the root's declared-default value (a write-refusal wire of `-`).
         object Fresh();
@@ -619,8 +628,94 @@ namespace SchemaUnityConformance
 
             public object Fresh() { return MakeFresh(); }
 
+            // A `retain` row (test/conformance/README.md, "The `retain` form"):
+            // the retaining load (<Root>LoadRetain, SPEC-TABLES §6.6) into ONE
+            // report the driver PRE-FILLED (every field of the report struct
+            // set to a non-default value), then the damaged load and the
+            // lawful load again into that report. After each lawful load the
+            // report must equal, field by field, the report the same load
+            // leaves in a FRESH report (§6.5: every read zeroes a supplied
+            // report in full, the retain family included). Each load has its
+            // own fresh value and retention store.
+            //
+            // A `region` row ("The `region` form") is the same protocol through
+            // the PLAIN <Root>Load: the Unity backend has no region read, so it
+            // is the value Load (ref value, bytes, ref report), each load into
+            // its own fresh value.
+            private byte[] ReadIntoZeroed(byte[] lawful, byte[] damaged, bool retain)
+            {
+                if (retain && loadRetain == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadRetain"); }
+                if (!retain && varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); }
+                bool Load(byte[] wire, ref TRep report)
+                {
+                    T value = MakeFresh();
+                    return retain ? loadRetain(ref value, wire, MakeRetain(1 << 20, 1 << 17), ref report) : varLoad(ref value, wire, ref report);
+                }
+                FieldInfo[] fields = typeof(TRep).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                TRep fresh = default;
+                if (!Load(lawful, ref fresh) || (bool)fRefused.GetValue(fresh) || (fDamaged != null && (bool)fDamaged.GetValue(fresh)))
+                { throw new InvalidOperationException("ri_retain: the lawful retaining load refused into a fresh report"); }
+                object boxedFresh = fresh;
+                string Zeroed(TRep r)
+                {
+                    object boxed = r;
+                    var kept = new List<string>();
+                    foreach (FieldInfo fi in fields)
+                    {
+                        if (!Equals(fi.GetValue(boxed), fi.GetValue(boxedFresh))) { kept.Add(fi.Name + "=" + fi.GetValue(boxed) + " want " + fi.GetValue(boxedFresh)); }
+                    }
+                    return kept.Count == 0 ? "zeroed" : "kept " + string.Join(", ", kept);
+                }
+                object fill = default(TRep);
+                foreach (FieldInfo fi in fields)
+                {
+                    Type t = fi.FieldType;
+                    if (t == typeof(int)) { fi.SetValue(fill, 7); }
+                    else if (t == typeof(long)) { fi.SetValue(fill, 7L); }
+                    else if (t == typeof(ulong)) { fi.SetValue(fill, 7UL); }
+                    else if (t == typeof(bool)) { fi.SetValue(fill, true); }
+                    else if (t == typeof(string)) { fi.SetValue(fill, "stale"); }
+                    else { throw new InvalidOperationException("ri_retain: the driver cannot pre-fill report field " + fi.Name + " of " + t.Name); }
+                }
+                TRep report = (TRep)fill;
+                var answer = new MemoryStream();
+                void Line(string text) { byte[] b = Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
+                void Step(byte[] bytes)
+                {
+                    string line;
+                    try
+                    {
+                        bool ok = Load(bytes, ref report);
+                        object boxed = report;
+                        bool refused = (bool)fRefused.GetValue(boxed) || (fDamaged != null && (bool)fDamaged.GetValue(boxed));
+                        line = ok && !refused ? "read" : "refused";
+                    }
+                    catch (Exception e) { line = "threw " + e.GetType().Name; }
+                    Line(line);
+                }
+                Step(lawful);
+                Line(Zeroed(report));
+                Step(damaged);
+                Step(lawful);
+                Line(Zeroed(report));
+                return answer.ToArray();
+            }
+
             public byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement)
             {
+                if (form == "retain") { return ReadIntoZeroed(lawful, damaged, true); }
+                if (form == "region") { return ReadIntoZeroed(lawful, damaged, false); }
+                if (form == "retain-fixed")
+                {
+                    // NO SUCH METHOD: the Unity generator emits <Root>LoadRetain
+                    // only for a variable-class root
+                    // (internal/codegen/unitytable/surfaces.go:49-51, `if variable
+                    // { emitRetainSurfaces(...) }`), so the fixed-class
+                    // tblsurf.Narrow has no LoadRetain to hand a report to
+                    // (SPEC-TABLES §6.6 refuses it at compile time).
+                    if (loadRetain != null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has a LoadRetain; the retain-fixed row owes its call"); }
+                    return Encoding.ASCII.GetBytes("unrepresentable\n");
+                }
                 switch (form)
                 {
                     case "variable": if (varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); } break;
@@ -676,6 +771,44 @@ namespace SchemaUnityConformance
                 return answer.ToArray();
             }
 
+
+            // THE RETAIN-REFUSAL SEQUENCE (test/conformance/README.md): ONE
+            // store through LoadRetain of the first wire, SaveRetain,
+            // LoadRetain of the refused wire into the same store (a value of
+            // its own, so the first stays whole), and SaveRetain of the first
+            // value again.
+            public RetainSequenceOutcome RunRetainRefusal(byte[] first, byte[] second)
+            {
+                var res = new RetainSequenceOutcome();
+                if (loadRetain == null) { return res; }
+                TRet store = MakeRetain(1 << 20, 1 << 17);
+                T val = MakeFresh();
+                TRep loadRep = default;
+                var loadDrv = new DriverReport();
+                bool ok = loadRetain(ref val, first, store, ref loadRep);
+                CopyReport(loadRep, loadDrv);
+                res.Loaded = ok && !loadDrv.Refused && !loadDrv.Malformed;
+                if (!res.Loaded) { return res; }
+                res.Before = SaveThrough(ref val, store);
+                T other = MakeFresh();
+                TRep refusedRep = default;
+                var refusedDrv = new DriverReport();
+                bool secondOk = loadRetain(ref other, second, store, ref refusedRep);
+                CopyReport(refusedRep, refusedDrv);
+                res.SecondRefused = !secondOk || refusedDrv.Refused || refusedDrv.Malformed;
+                res.After = SaveThrough(ref val, store);
+                return res;
+            }
+
+            private byte[] SaveThrough(ref T val, TRet store)
+            {
+                long size = measureRetainRef != null ? measureRetainRef(ref val, store) : measureRetainVal(val, store);
+                if (size < 0) { return null; }
+                byte[] outBuf = new byte[checked((int)size)];
+                TRep saveRep = default;
+                long written = saveRetainRef != null ? saveRetainRef(ref val, store, outBuf, ref saveRep) : saveRetainVal(val, store, outBuf, ref saveRep);
+                return written == size ? outBuf : null;
+            }
             public RetainOutcome RunRetain(byte[] wire, bool shortBytes, int idCapacity)
             {
                 var res = new RetainOutcome();
@@ -1170,6 +1303,40 @@ namespace SchemaUnityConformance
             return 0;
         }
 
+
+        // THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): the verdicts
+        // and what the second save did in <case>, the first save in
+        // <case>.before, the second in <case>.wire.
+        private static int SurfaceRetainRefusal(string outDir)
+        {
+            Directory.CreateDirectory(outDir);
+            foreach (string[] f in Kind("retain-refusal"))
+            {
+                ICodec codec = FindCodec(f[2], f[3]);
+                if (codec == null || !codec.HasRetain)
+                {
+                    SpillAbsent(outDir, f[1]);
+                    continue;
+                }
+                RetainSequenceOutcome ans = codec.RunRetainRefusal(File.ReadAllBytes(f[4]), File.ReadAllBytes(f[5]));
+                if (!ans.Loaded)
+                {
+                    File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
+                    continue;
+                }
+                if (ans.Before == null)
+                {
+                    Console.Error.WriteLine("retain-refusal first save failed: " + f[1]);
+                    return 1;
+                }
+                File.WriteAllBytes(Path.Combine(outDir, f[1] + ".before"), ans.Before);
+                string answer = "read\n" + (ans.SecondRefused ? "refused\n" : "read\n");
+                if (ans.After == null) { answer += "save-refused\n"; }
+                else { File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), ans.After); answer += "saved\n"; }
+                File.WriteAllText(Path.Combine(outDir, f[1]), answer);
+            }
+            return 0;
+        }
         private static int SurfaceRetain(string outDir, bool savedOnly)
         {
             Directory.CreateDirectory(outDir);
@@ -1222,6 +1389,8 @@ namespace SchemaUnityConformance
         private static int SurfaceJsonRead(string outDir)
         {
             Directory.CreateDirectory(outDir);
+            string jsonDir = Environment.GetEnvironmentVariable("SCHEMA_CONFORMANCE_JSON_INPUT_DIR");
+            if (string.IsNullOrEmpty(jsonDir)) { jsonDir = Path.Combine("testdata", "conformance", "tables", "json"); }
             foreach (string[] f in Kind("instance"))
             {
                 if (NoText(f)) { continue; }
@@ -1231,7 +1400,7 @@ namespace SchemaUnityConformance
                     SpillAbsent(outDir, f[1]);
                     continue;
                 }
-                string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+                string path = Path.Combine(jsonDir, f[1] + ".json");
                 var rep = new DriverReport();
                 object value = codec.FromJson(File.ReadAllBytes(path), rep);
                 if (StrictRefused(value, rep))
@@ -1399,13 +1568,13 @@ namespace SchemaUnityConformance
         }
 
         private const string AllSurfaces =
-            "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\n" +
+            "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\n" +
             "json-read\njson-write\njson-hostile\n" +
             "cook\ncook-write\ncook-foreign\n" +
             "block\nblock-foreign\nblock-dump\n" +
             "forgery\ncook-forgery\n" +
             "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" +
-            "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n";
+            "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n";
 
         private static int Main(string[] args)
         {
@@ -1443,6 +1612,7 @@ namespace SchemaUnityConformance
                 case "framing": return SurfaceFraming(outDir);
                 case "retain": return SurfaceRetain(outDir, false);
                 case "retain-save": return SurfaceRetain(outDir, true);
+                case "retain-refusal": return SurfaceRetainRefusal(outDir);
                 case "json-read": return SurfaceJsonRead(outDir);
                 case "json-write": return SurfaceJsonWrite(outDir);
                 case "json-hostile": return SurfaceJsonHostile(outDir);
@@ -1460,6 +1630,7 @@ namespace SchemaUnityConformance
                 case "write-refusal-cook":
                 case "write-refusal-block":
                 case "write-refusal-json":
+                case "write-refusal-shape":
                     return SurfaceWriteRefusal(outDir, surface);
                 case "announce": return SurfaceAnnounce(outDir);
                 case "read-into": return SurfaceReadInto(outDir);

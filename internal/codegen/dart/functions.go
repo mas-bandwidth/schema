@@ -17,9 +17,10 @@ package dart
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitSignature writes a function signature, wrapped in the formatter's
@@ -919,10 +920,19 @@ func (g *gen) emitReadFloat32Bits(name, ind string) {
 	g.pf("%s%s = Schema.f32[0];\n", ind, name)
 }
 
-// f32lit renders the float32 rounding of v as a Dart double literal (exact —
-// f32 is a subset of f64).
+// f32lit renders the float32 rounding of v as a Dart double literal whose
+// value IS that float32 (f32 is a subset of f64): the shortest decimal of the
+// float64 value. The float32's own shortest decimal is not that: "3.3" names
+// float32(3.3) only to a float32 parser, and Dart parses it to the double 3.3,
+// so the folded decode subtracted the declaration's min and not its float32
+// and read 2,535 of the 11,001 steps of [-3.3, 7.7] @ 0.001 one bit off
+// (SPEC §4.6, "The decode is normative"; test/verify-bitphase cfdecode.go).
 func f32lit(v float64) string {
-	return formatFloat32(float64(float32(v)))
+	s := strconv.FormatFloat(float64(float32(v)), 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }
 
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization
@@ -1257,12 +1267,12 @@ func (g *gen) armTag(u *ir.Union, vr ir.UnionVariant) string {
 // arm's items — the struct-inlining move, per arm.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	// the tag validates BEFORE it rides (SPEC §4.8)
-	g.assertRange(expr+".type", big.NewInt(0), big.NewInt(u.Max), true, ind)
+	g.assertRange("("+expr+".type as int)", big.NewInt(0), big.NewInt(u.Max), true, ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.chunkAdd(maskedPiece(expr+".type", bits), bits, ind)
+	g.chunkAdd(maskedPiece("("+expr+".type as int)", bits), bits, ind)
 	g.chunkFlush(ind) // the arms diverge: the tag merges before the switch
 	// every arm starts at the entry ceiling; the join takes the highest exit
 	// (an unmatched tag writes no arm, so the entry is one of them)

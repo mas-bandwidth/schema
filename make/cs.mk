@@ -135,6 +135,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
 	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang cs --out $(2)/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
@@ -184,7 +185,7 @@ tables-cs-generate-into:
 	@mkdir -p $(OUT)
 	$(call tables_generate_cs_parallel,$(GEN),$(OUT))
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -643,11 +644,11 @@ tables-cs-leg:
 	$(MAKE) tables-cs-leg-debug
 	$(MAKE) tables-cs-leg-release
 
-tables-cs-leg-debug: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run
+tables-cs-leg-debug: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run
 
-tables-cs-leg-release: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release
+tables-cs-leg-release: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release
 
 # PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
 # unsplit leg measured 133 s per configuration in CI run 42554833739
@@ -667,16 +668,16 @@ tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- core
 tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- evolution
-tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-debug-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -- fixed
 tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- wire
 tables-cs-leg-release-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- core
 tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
-tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+tables-cs-leg-release-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release -- fixed
 
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
@@ -981,8 +982,20 @@ tables-cs-wire-fuzz-dead-bytes-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
+# THE BUILDER ARM ANSWERS EVERY ROOT OF ITS ROSTER. The driver claims a root
+# only when it holds a builder binding (BindBuilder), so a root without one is
+# answered absent by name; an absent seed here is a root the builder read was
+# never fuzzed on, and the recipe goes red naming the count instead of fuzzing
+# less. (A claimed root with no binding used to throw "builder codec did not
+# report completion" on its first mutant, a truncated shapes.Bounds.)
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
+	@mkdir -p build/wire-fuzz
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin \
+		> build/wire-fuzz/cs-builder.log 2>&1; status=$$?; cat build/wire-fuzz/cs-builder.log; test $$status -eq 0
+	@grep -qE '^wire-fuzz-builder: seed [0-9]+, [1-9][0-9]* seeds over' build/wire-fuzz/cs-builder.log || { \
+		echo "tables-cs-builder-fuzz: the builder arm printed no summary: the run proved nothing"; exit 1; }
+	@if grep -qE 'seeds absent' build/wire-fuzz/cs-builder.log; then \
+		echo "tables-cs-builder-fuzz: the builder arm left seeds absent (a root with no builder binding): $$(grep -oE '[0-9]+ (ledgered )?seeds absent' build/wire-fuzz/cs-builder.log)"; exit 1; fi
 
 tables-cs-retain-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin
@@ -1290,6 +1303,18 @@ TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
 TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
+
+.PHONY: table-write-bounds-cs
+table-write-bounds-cs: build/conformance-harness build-conformance-cs
+	@printf 'cs %s %s\n' "$(DOTNET)" "$(CS_CONFORMANCE_DLL)" > build/conformance-write-bounds-cs.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-cs.drivers \
+		--only cs --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-cs
+
+test-cs: table-write-bounds-cs
+
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
@@ -1638,6 +1663,27 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@echo 'packet end C# negative control: removing the end check turns the trailing-byte and padding verdicts red'
 
 test-cs: packet-end-cs packet-end-cs-negative-control
+
+# THE PACKET-VOID CORPUS, C# (SPEC §4.8; make/checks/packet-void.mk): the
+# driver answers every case of testdata/wire/packet-void/cases.txt through the
+# generated public write and one-packet read, in a Debug build (the writer's
+# Debug.Assert contracts live) and a Release build; tools/casegate refuses a
+# case with no answer.
+.PHONY: packet-void-cs
+PACKET_VOID_CS := build/packet-void/cs
+
+$(PACKET_VOID_CS)/.stamp: bin/schema test/packet-void/Void.schema make/cs.mk
+	@rm -rf $(PACKET_VOID_CS)/generated
+	./bin/schema generate --lang cs --out $(PACKET_VOID_CS)/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-cs: $(PACKET_VOID_CS)/.stamp build/casegate
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Debug -o $(PACKET_VOID_CS)/debug \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/debug/packet-void.dll $(PACKET_VOID_PINS)
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Release -o $(PACKET_VOID_CS)/release \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/release/packet-void.dll $(PACKET_VOID_PINS)
 
 # THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // These are FUNCTIONAL tests: they start real processes and wait on real
@@ -67,6 +67,7 @@ func TestOrphanDiesWithTheCommand(t *testing.T) {
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 
+	// testinputs:none — runs the inline orphanScript; reads no repository file
 	err := exec.Command(bin, "--", "sh", "-c", orphanScript, "sh", pidFile).Run()
 	var ee *exec.ExitError
 	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
@@ -84,6 +85,7 @@ func TestOrphanDiesWithTheCommand(t *testing.T) {
 func TestOrphanOutlivesABareCommand(t *testing.T) {
 	slowtest.Gate(t, "sh and sleep")
 	pidFile := filepath.Join(t.TempDir(), "pid")
+	// testinputs:none — runs the inline orphanScript; reads no repository file
 	err := exec.Command("sh", "-c", orphanScript, "sh", pidFile).Run()
 	pid := readPid(t, pidFile)
 	defer syscall.Kill(pid, syscall.SIGKILL)
@@ -102,6 +104,7 @@ func TestWallStopsTheGroup(t *testing.T) {
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	start := time.Now()
+	// testinputs:none — runs an inline script; reads no repository file
 	err := exec.Command(bin, "-wall", "1s", "-grace", "1s", "--",
 		"sh", "-c", `sleep 600 & echo $! > "$1"; wait`, "sh", pidFile).Run()
 	var ee *exec.ExitError
@@ -125,6 +128,7 @@ func TestEnvWallStopsTheGroupAndNamesTheRule(t *testing.T) {
 	slowtest.Gate(t, "sh and sleep")
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
+	// testinputs:none — runs an inline script; reads no repository file
 	cmd := exec.Command(bin, "--", "sh", "-c", `sleep 600 & echo $! > "$1"; wait`, "sh", pidFile)
 	cmd.Env = append(os.Environ(), "PGROUP_WALL=1s", "PGROUP_STEP_NAME=env-wall-test", "GITHUB_JOB=")
 	out, err := cmd.CombinedOutput()

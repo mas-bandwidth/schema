@@ -160,7 +160,16 @@ defmodule Example.ArmDefaults do
   """
   @spec write_default_arm!(Example.DefaultArm.t()) :: binary()
   def write_default_arm!(value) do
+    if not is_struct(value, Example.DefaultArm) do
+      raise ArgumentError, "value is not a DefaultArm"
+    end
+
     %{entries: value_entries, marker: value_marker} = value
+
+    if not is_list(value_entries) do
+      raise ArgumentError, "value.entries is not a list"
+    end
+
     n = length(value_entries)
 
     if n > 2 do
@@ -307,10 +316,10 @@ defmodule Example.ArmDefaults do
         nil ->
           0
 
-        {:first, _} ->
+        {:first, %Example.DefaultArm{}} ->
           1
 
-        {:second, _} ->
+        {:second, %Example.DefaultArm{}} ->
           2
 
         value_other ->
@@ -324,6 +333,11 @@ defmodule Example.ArmDefaults do
       case value do
         {:first, value_first} ->
           %{entries: value_first_entries, marker: value_first_marker} = value_first
+
+          if not is_list(value_first_entries) do
+            raise ArgumentError, "value.first.entries is not a list"
+          end
+
           n = length(value_first_entries)
 
           if n > 2 do
@@ -360,6 +374,11 @@ defmodule Example.ArmDefaults do
 
         {:second, value_second} ->
           %{entries: value_second_entries, marker: value_second_marker} = value_second
+
+          if not is_list(value_second_entries) do
+            raise ArgumentError, "value.second.entries is not a list"
+          end
+
           n = length(value_second_entries)
 
           if n > 2 do
@@ -533,15 +552,19 @@ defmodule Example.ArmDefaults do
   """
   @spec write_default_choice_packet!(Example.DefaultChoicePacket.t()) :: binary()
   def write_default_choice_packet!(value) do
+    if not is_struct(value, Example.DefaultChoicePacket) do
+      raise ArgumentError, "value is not a DefaultChoicePacket"
+    end
+
     v =
       case value.choice do
         nil ->
           0
 
-        {:first, _} ->
+        {:first, %Example.DefaultArm{}} ->
           1
 
-        {:second, _} ->
+        {:second, %Example.DefaultArm{}} ->
           2
 
         value_choice_other ->
@@ -559,6 +582,10 @@ defmodule Example.ArmDefaults do
             entries: value_choice_first_entries,
             marker: value_choice_first_marker
           } = value_choice_first
+
+          if not is_list(value_choice_first_entries) do
+            raise ArgumentError, "value.choice.first.entries is not a list"
+          end
 
           n = length(value_choice_first_entries)
 
@@ -599,6 +626,10 @@ defmodule Example.ArmDefaults do
             entries: value_choice_second_entries,
             marker: value_choice_second_marker
           } = value_choice_second
+
+          if not is_list(value_choice_second_entries) do
+            raise ArgumentError, "value.choice.second.entries is not a list"
+          end
 
           n = length(value_choice_second_entries)
 
@@ -786,8 +817,22 @@ defmodule Example.ArmDefaults do
   """
   @spec write_default_bulk_arm!(Example.DefaultBulkArm.t()) :: binary()
   def write_default_bulk_arm!(value) do
+    if not is_struct(value, Example.DefaultBulkArm) do
+      raise ArgumentError, "value is not a DefaultBulkArm"
+    end
+
     %{payload: value_payload, data: value_data} = value
+
+    if not is_struct(value_payload, Example.DefaultArm) do
+      raise ArgumentError, "value.payload is not a DefaultArm"
+    end
+
     %{entries: value_payload_entries, marker: value_payload_marker} = value_payload
+
+    if not is_list(value_payload_entries) do
+      raise ArgumentError, "value.payload.entries is not a list"
+    end
+
     n = length(value_payload_entries)
 
     if n > 2 do
@@ -816,6 +861,10 @@ defmodule Example.ArmDefaults do
     v = value_payload_marker
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_binary(value_data) do
+      raise ArgumentError, "value.data is not a binary"
+    end
 
     if byte_size(value_data) > 2 do
       raise ArgumentError, "value.data longer than the declared 2-byte bound"
@@ -976,10 +1025,10 @@ defmodule Example.ArmDefaults do
         nil ->
           0
 
-        {:first, _} ->
+        {:first, %Example.DefaultBulkArm{}} ->
           1
 
-        {:second, _} ->
+        {:second, %Example.DefaultBulkArm{}} ->
           2
 
         value_other ->
@@ -994,10 +1043,18 @@ defmodule Example.ArmDefaults do
         {:first, value_first} ->
           %{payload: value_first_payload, data: value_first_data} = value_first
 
+          if not is_struct(value_first_payload, Example.DefaultArm) do
+            raise ArgumentError, "value.first.payload is not a DefaultArm"
+          end
+
           %{
             entries: value_first_payload_entries,
             marker: value_first_payload_marker
           } = value_first_payload
+
+          if not is_list(value_first_payload_entries) do
+            raise ArgumentError, "value.first.payload.entries is not a list"
+          end
 
           n = length(value_first_payload_entries)
 
@@ -1028,6 +1085,10 @@ defmodule Example.ArmDefaults do
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
 
+          if not is_binary(value_first_data) do
+            raise ArgumentError, "value.first.data is not a binary"
+          end
+
           if byte_size(value_first_data) > 2 do
             raise ArgumentError, "value.first.data longer than the declared 2-byte bound"
           end
@@ -1050,10 +1111,18 @@ defmodule Example.ArmDefaults do
         {:second, value_second} ->
           %{payload: value_second_payload, data: value_second_data} = value_second
 
+          if not is_struct(value_second_payload, Example.DefaultArm) do
+            raise ArgumentError, "value.second.payload is not a DefaultArm"
+          end
+
           %{
             entries: value_second_payload_entries,
             marker: value_second_payload_marker
           } = value_second_payload
+
+          if not is_list(value_second_payload_entries) do
+            raise ArgumentError, "value.second.payload.entries is not a list"
+          end
 
           n = length(value_second_payload_entries)
 
@@ -1083,6 +1152,10 @@ defmodule Example.ArmDefaults do
           v = value_second_payload_marker
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
+
+          if not is_binary(value_second_data) do
+            raise ArgumentError, "value.second.data is not a binary"
+          end
 
           if byte_size(value_second_data) > 2 do
             raise ArgumentError, "value.second.data longer than the declared 2-byte bound"
@@ -1281,6 +1354,10 @@ defmodule Example.ArmDefaults do
   defp wZdefault_armZentries([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZdefault_armZentries([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_struct(e1, Example.ProbeConfig) do
+      raise ArgumentError, "e is not a ProbeConfig"
+    end
+
     %{retries: e1_retries, preferred: e1_preferred} = e1
 
     if not is_integer(e1_retries) do
@@ -1301,6 +1378,11 @@ defmodule Example.ArmDefaults do
     v = Example.Weapon.to_int(e1_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
+
+    if not is_struct(e2, Example.ProbeConfig) do
+      raise ArgumentError, "e is not a ProbeConfig"
+    end
+
     %{retries: e2_retries, preferred: e2_preferred} = e2
 
     if not is_integer(e2_retries) do
@@ -1325,6 +1407,11 @@ defmodule Example.ArmDefaults do
     v = Example.Weapon.to_int(e2_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
+
+    if not is_struct(e3, Example.ProbeConfig) do
+      raise ArgumentError, "e is not a ProbeConfig"
+    end
+
     %{retries: e3_retries, preferred: e3_preferred} = e3
 
     if not is_integer(e3_retries) do
@@ -1349,6 +1436,11 @@ defmodule Example.ArmDefaults do
     v = Example.Weapon.to_int(e3_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
+
+    if not is_struct(e4, Example.ProbeConfig) do
+      raise ArgumentError, "e is not a ProbeConfig"
+    end
+
     %{retries: e4_retries, preferred: e4_preferred} = e4
 
     if not is_integer(e4_retries) do
@@ -1385,6 +1477,10 @@ defmodule Example.ArmDefaults do
   end
 
   defp wZdefault_armZentries([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.ProbeConfig) do
+      raise ArgumentError, "e is not a ProbeConfig"
+    end
+
     %{retries: e_retries, preferred: e_preferred} = e
 
     if not is_integer(e_retries) do

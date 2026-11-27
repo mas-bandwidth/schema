@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // The Elixir conformance driver reads strict and writes back: a fixed root is
@@ -32,6 +33,7 @@ func elixirConformanceBuild(t *testing.T, root string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/elixir", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-elixir")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()

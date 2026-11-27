@@ -17,7 +17,7 @@ package tabledemo
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
+	"github.com/mas-bandwidth/schema/v3/tables/goruntime"
 	"math"
 	"slices"
 	"sync"
@@ -666,16 +666,16 @@ type WideBlobRow struct {
 	SamplesCount  int32
 }
 type EffectRow struct {
-	_       [0]uint32
-	Type    EffectType
-	_       [3]byte
-	Payload [4]byte
+	_              [0]uint32
+	Type           EffectType
+	_              [3]byte
+	schema_payload [4]byte
 }
 type MinPickRow struct {
-	_       [0]uint32
-	Type    MinPickType
-	_       [3]byte
-	Payload [20]byte
+	_              [0]uint32
+	Type           MinPickType
+	_              [3]byte
+	schema_payload [20]byte
 }
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the

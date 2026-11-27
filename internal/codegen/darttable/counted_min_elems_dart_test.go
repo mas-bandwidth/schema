@@ -25,10 +25,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const dartCountedMinSchema = `package probe
@@ -166,13 +166,13 @@ func TestDartCountedMinElementsElideNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	t.Parallel()
 	want := dartCountedMinEngine(t)
-	bornScalar := regexp.MustCompile(` && !\([\w.]+\.length == 2 && [\w.]+\.every\(\(e\) => [^\n]+\)\)\) \{`)
-	bornTable := regexp.MustCompile(`var born = ([\w.]+)\.length == 2;`)
+	// the save's one birth judgement for every element kind (wirearrays.go
+	// countedRides): `var birthEs = value.es.length == 2;`
+	born := regexp.MustCompile(`var (birth\w+) = [\w.]+\.length == 2;`)
 	got := dartCountedMinRun(t, func(files map[string][]byte) {
 		planted := 0
 		for name, data := range files {
-			text := bornScalar.ReplaceAllString(string(data), ") {")
-			text = bornTable.ReplaceAllString(text, "var born = false;")
+			text := born.ReplaceAllString(string(data), "var ${1} = false;")
 			if text != string(data) {
 				files[name] = []byte(text)
 				planted++

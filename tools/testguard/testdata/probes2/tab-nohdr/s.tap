@@ -1,0 +1,4 @@
+1..1
+	ok 1 - i # SKIP no gpu
+	not ok 2 - j
+ok 1 - a

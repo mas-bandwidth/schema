@@ -99,6 +99,7 @@ static partial class Program
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
         public bool Region; // this codec carries a region read (wire-fuzz-region)
+        public bool Builder; // this codec carries a builder read (wire-fuzz-builder, BindBuilder)
         public Func<byte[], Report, object> VariableLoad; // a fixed root's variable-form read; framing only
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
@@ -186,6 +187,10 @@ static partial class Program
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
     static Report Copy(Tblvarevo3.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Writebounds.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
@@ -492,6 +497,9 @@ static partial class Program
         Row<Tblprior.Prior, Tblprior.TableReport>("tblprior", "Prior", () => new Tblprior.TableReport(), Copy,
             Tblprior.Schema.PriorLoad, Tblprior.Schema.PriorMeasure, Tblprior.Schema.PriorSave,
             Tblprior.Schema.PriorFromJson, Tblprior.Schema.PriorToJsonMeasure, Tblprior.Schema.PriorToJson),
+        Row<Writebounds.TortureVarWref, Writebounds.TableReport>("writebounds", "TortureVarWref", () => new Writebounds.TableReport(), Copy,
+            Writebounds.Schema.TortureVarWrefLoad, Writebounds.Schema.TortureVarWrefMeasure, Writebounds.Schema.TortureVarWrefSave,
+            Writebounds.Schema.TortureVarWrefFromJson, Writebounds.Schema.TortureVarWrefToJsonMeasure, Writebounds.Schema.TortureVarWrefToJson, Writebounds.Schema.TortureVarWrefLoadMeasure),
         Row<Cooktorturewide.TortureWideCook, Cooktorturewide.TableReport>("cooktorturewide", "TortureWideCook", () => new Cooktorturewide.TableReport(), Copy,
             Cooktorturewide.Schema.TortureWideCookLoad, Cooktorturewide.Schema.TortureWideCookMeasure, Cooktorturewide.Schema.TortureWideCookSave,
             Cooktorturewide.Schema.TortureWideCookFromJson, Cooktorturewide.Schema.TortureWideCookToJsonMeasure, Cooktorturewide.Schema.TortureWideCookToJson, Cooktorturewide.Schema.TortureWideCookLoadMeasure),
@@ -886,6 +894,8 @@ static partial class Program
     // proves the reader against bytes this driver did not write.
     static int SurfaceJsonRead(string outDir)
     {
+        string jsonDir = Environment.GetEnvironmentVariable("SCHEMA_CONFORMANCE_JSON_INPUT_DIR");
+        if (string.IsNullOrEmpty(jsonDir)) { jsonDir = Path.Combine("testdata", "conformance", "tables", "json"); }
         foreach (string[] f in Kind("instance"))
         {
             if (NoText(f)) { continue; }
@@ -897,7 +907,7 @@ static partial class Program
                 SpillAbsent(outDir, f[1]);
                 continue;
             }
-            string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+            string path = Path.Combine(jsonDir, f[1] + ".json");
             byte[] text = File.ReadAllBytes(path);
             Report report = new Report();
             object value = codec.FromJson(text, report);
@@ -2841,6 +2851,10 @@ static partial class Program
             string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
             byte form = input.ReadByte(), retain = input.ReadByte();
             Codec found=Find(unit,root);
+            // THE BUILDER ARM IS THE BUILDER READ'S: a root with no builder binding is
+            // answered absent, which the harness names, and never falls through to a
+            // read that cannot report the builder's completion.
+            if (builder && found != null && !found.Builder) { found = null; }
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
             // a variable root has no message form, so no form-2 binding
             if ((form == 2 || form == 5) && (retain != 0 || builder || roster[i]?.MessageLoad == null)) { roster[i] = null; }
@@ -2941,7 +2955,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2954,6 +2968,7 @@ static partial class Program
         {
             case "retain": return SurfaceRetain(outDir,false);
             case "retain-save": return SurfaceRetain(outDir,true);
+            case "retain-refusal": return SurfaceRetainRefusal(outDir);
             case "wire": return SurfaceWire(outDir);
             case "message": return SurfaceMessage(outDir, false);
             case "message-prior": return SurfaceMessage(outDir, true);
@@ -2973,7 +2988,8 @@ static partial class Program
             case "write-refusal-message":
             case "write-refusal-cook":
             case "write-refusal-block":
-            case "write-refusal-json": return SurfaceWriteRefusal(outDir, surface);
+            case "write-refusal-json":
+            case "write-refusal-shape": return SurfaceWriteRefusal(outDir, surface);
             case "announce": return SurfaceAnnounce(outDir);
             case "read-into": return SurfaceReadInto(outDir);
             case "json-write-into": return SurfaceJsonWriteInto(outDir);

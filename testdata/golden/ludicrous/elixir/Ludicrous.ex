@@ -302,6 +302,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_fixed_probe!(Ludicrous.FixedProbe.t()) :: binary()
   def write_fixed_probe!(value) do
+    if not is_struct(value, Ludicrous.FixedProbe) do
+      raise ArgumentError, "value is not a FixedProbe"
+    end
+
     %{
       angle: value_angle,
       position: value_position,
@@ -378,6 +382,10 @@ defmodule Ludicrous.Ludicrous do
     sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
+
+    if not is_list(value_samples) do
+      raise ArgumentError, "value.samples is not a list"
+    end
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
@@ -521,6 +529,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_unsigned_probe!(Ludicrous.UnsignedProbe.t()) :: binary()
   def write_unsigned_probe!(value) do
+    if not is_struct(value, Ludicrous.UnsignedProbe) do
+      raise ArgumentError, "value is not a UnsignedProbe"
+    end
+
     %{
       angle: value_angle,
       span: value_span,
@@ -602,6 +614,10 @@ defmodule Ludicrous.Ludicrous do
     sc3 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
+
+    if not is_list(value_samples) do
+      raise ArgumentError, "value.samples is not a list"
+    end
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
@@ -772,6 +788,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_wide_probe!(Ludicrous.WideProbe.t()) :: binary()
   def write_wide_probe!(value) do
+    if not is_struct(value, Ludicrous.WideProbe) do
+      raise ArgumentError, "value is not a WideProbe"
+    end
+
     %{
       entity_id: value_entity_id,
       energy: value_energy,
@@ -1059,6 +1079,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_ludicrous_state!(Ludicrous.LudicrousState.t()) :: binary()
   def write_ludicrous_state!(value) do
+    if not is_struct(value, Ludicrous.LudicrousState) do
+      raise ArgumentError, "value is not a LudicrousState"
+    end
+
     %{
       mode: value_mode,
       probe: value_probe,
@@ -1069,6 +1093,10 @@ defmodule Ludicrous.Ludicrous do
 
     v = Ludicrous.DriveMode.to_int(value_mode)
     scratch = v
+
+    if not is_struct(value_probe, Ludicrous.FixedProbe) do
+      raise ArgumentError, "value.probe is not a FixedProbe"
+    end
 
     %{
       angle: value_probe_angle,
@@ -1146,6 +1174,10 @@ defmodule Ludicrous.Ludicrous do
     sc2 = scratch
     scratch = v
 
+    if not is_list(value_probe_samples) do
+      raise ArgumentError, "value.probe.samples is not a list"
+    end
+
     if length(value_probe_samples) != 2 do
       raise ArgumentError, "value.probe.samples must hold exactly 2 elements"
     end
@@ -1159,6 +1191,10 @@ defmodule Ludicrous.Ludicrous do
 
     {data, scratch, scratch_bits} =
       wZfixed_probeZsamples(value_probe_samples, data, scratch, scratch_bits)
+
+    if not is_struct(value_wide, Ludicrous.WideProbe) do
+      raise ArgumentError, "value.wide is not a WideProbe"
+    end
 
     %{
       entity_id: value_wide_entity_id,
@@ -1323,6 +1359,11 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_list(value_keys) do
+      raise ArgumentError, "value.keys is not a list"
+    end
+
     n = length(value_keys)
 
     if n > 4 do
@@ -1347,6 +1388,10 @@ defmodule Ludicrous.Ludicrous do
 
     {data, scratch, scratch_bits} =
       wZludicrous_stateZkeys(value_keys, data, scratch, scratch_bits)
+
+    if not is_boolean(value_has_target) do
+      raise ArgumentError, "value.has_target is not a boolean"
+    end
 
     v = if value_has_target, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
@@ -1638,6 +1683,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_degenerate_probe!(Ludicrous.DegenerateProbe.t()) :: binary()
   def write_degenerate_probe!(value) do
+    if not is_struct(value, Ludicrous.DegenerateProbe) do
+      raise ArgumentError, "value is not a DegenerateProbe"
+    end
+
     %{
       locked_fixed: value_locked_fixed,
       locked_int: value_locked_int,
@@ -1772,6 +1821,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_fixed_vec!(Ludicrous.FixedVec.t()) :: binary()
   def write_fixed_vec!(value) do
+    if not is_struct(value, Ludicrous.FixedVec) do
+      raise ArgumentError, "value is not a FixedVec"
+    end
+
     %{x: value_x, y: value_y, z: value_z} = value
 
     if not is_integer(value_x) do
@@ -1948,6 +2001,10 @@ defmodule Ludicrous.Ludicrous do
   """
   @spec write_fixed_quat!(Ludicrous.FixedQuat.t()) :: binary()
   def write_fixed_quat!(value) do
+    if not is_struct(value, Ludicrous.FixedQuat) do
+      raise ArgumentError, "value is not a FixedQuat"
+    end
+
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
     if not is_integer(value_x) do

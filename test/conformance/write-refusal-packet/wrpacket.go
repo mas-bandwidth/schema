@@ -1,7 +1,7 @@
 // Package wrpacket is the shared half of the `write-refusal-packet` surface
 // (docs/SPEC.md §5.1, test/conformance/README.md): the schema, the row list,
 // the generation step and the verdict check every leg's driver shares. A leg's
-// test generates PacketWriteRefusal.schema with Generate, runs its own probe
+// test generates RefusalPacket.schema with Generate, runs its own probe
 // over rows.txt, and hands the probe's output to Check. The probe is the leg's
 // own code and speaks one line per row: "<name> refused" or "<name> wrote".
 package wrpacket
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 )
 
 // Dir is this package's directory relative to the repository root.
@@ -59,12 +59,12 @@ func Rows(t testing.TB, root string) []Row {
 	return rows
 }
 
-// Generate loads PacketWriteRefusal.schema under root, generates it for lang
+// Generate loads RefusalPacket.schema under root, generates it for lang
 // and writes the files into a fresh temporary directory, which it returns.
 func Generate(t testing.TB, root, lang string, opts compiler.Options) string {
 	t.Helper()
 	c := compiler.New()
-	u, err := c.Load([]string{filepath.Join(root, Dir, "PacketWriteRefusal.schema")})
+	u, err := c.Load([]string{filepath.Join(root, Dir, "RefusalPacket.schema")})
 	if err != nil {
 		t.Fatal(err)
 	}

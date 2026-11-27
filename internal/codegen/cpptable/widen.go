@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE WIDENING RULE (docs/SPEC-TABLES.md §4), emitted at every site this wire
@@ -319,7 +319,7 @@ func (g *tableGen) emitWidenedScalarChecked(f *ir.Field, declared int, kindExpr,
 			g.emitIfActions(ind+"        ", g.fieldIsDefault(f, "decoded_d"), onTrunc...)
 			g.pf("%s        %s = decoded_d;\n%s    }\n%s}\n", ind, lvalue, ind, ind)
 		} else {
-			g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
+			g.pf("%[1]s    else\n%[1]s    {\n%[1]s        %[2]s = (double) table_bits_to_float( widened_bits );\n%[1]s    }\n%[1]s}\n", ind, lvalue)
 		}
 		return
 	}
@@ -451,7 +451,11 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%[1]s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
-	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
+	if g.retain {
+		g.pf("%[1]s            r.report->unknown++;\n%[1]s            r.report->retain_lost++; // a slot this reader cannot name\n", ind)
+	} else {
+		g.pf("%[1]s            r.report->unknown++;\n%[1]s            // a slot this reader cannot name\n", ind)
+	}
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 	// The writer's enum order and slot elision policy are not on form 1;
 	// the strict wire walk already rejects repeated key references without

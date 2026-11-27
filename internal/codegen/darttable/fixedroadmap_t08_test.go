@@ -29,10 +29,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // t08DartBinary is THE LEG'S OWN TOOLCHAIN, the same chain dartBinary holds,
@@ -530,14 +530,14 @@ union Action {
     value int32
     done
 }
-union Signal {
+union Beacon {
     first
     last
 }
 fixed table Rec {
     lead int32
     action Action
-    signal Signal
+    signal Beacon
     tail int32
 }
 `

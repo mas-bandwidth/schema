@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum json_put_int
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_string
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_text
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_uint
+{ Zfirst, Zsecond, Zthird }
+
+enum json_quote
+{ Zfirst, Zsecond, Zthird }
+
+enum json_report
+{ Zfirst, Zsecond, Zthird }
+
+enum json_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum json_shape_takes
+{ Zfirst, Zsecond, Zthird }
+
+enum json_space
+{ Zfirst, Zsecond, Zthird }
+
+enum json_text_list
+{ Zfirst, Zsecond, Zthird }
+
+enum json_text_list_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum json_text_total_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum json_text_unbounded
+{ Zfirst, Zsecond, Zthird }
+
+enum json_token_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum json_token_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum json_unb64
+{ Zfirst, Zsecond, Zthird }
+
+enum json_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum json_variants
+{ Zfirst, Zsecond, Zthird }
+
+enum json_write_bool
+{ Zfirst, Zsecond, Zthird }
+
+enum json_write_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum json_write_float
+{ Zfirst, Zsecond, Zthird }
+
+enum json_write_str
+{ Zfirst, Zsecond, Zthird }
+
+enum json_zero_element
+{ Zfirst, Zsecond, Zthird }
+
+enum junk
+{ Zfirst, Zsecond, Zthird }
+
+enum jv_big
+{ Zfirst, Zsecond, Zthird }
+
+enum jv_big_div
+{ Zfirst, Zsecond, Zthird }
+
+enum jv_big_mul
+{ Zfirst, Zsecond, Zthird }
+
+enum jv_big_shl
+{ Zfirst, Zsecond, Zthird }
+
+enum jv_big_zero
+{ Zfirst, Zsecond, Zthird }
+
+enum k
+{ Zfirst, Zsecond, Zthird }
+
+enum k0
+{ Zfirst, Zsecond, Zthird }
+
+enum k1
+{ Zfirst, Zsecond, Zthird }
+
+enum k2
+{ Zfirst, Zsecond, Zthird }
+
+enum k_name
+{ Zfirst, Zsecond, Zthird }
+
+enum k_node
+{ Zfirst, Zsecond, Zthird }
+
+enum k_txt
+{ Zfirst, Zsecond, Zthird }
+
+enum ka
+{ Zfirst, Zsecond, Zthird }
+
+enum kahn
+{ Zfirst, Zsecond, Zthird }
+
+enum kb
+{ Zfirst, Zsecond, Zthird }
+
+enum kbit
+{ Zfirst, Zsecond, Zthird }
+
+enum kc
+{ Zfirst, Zsecond, Zthird }
+
+enum kd
+{ Zfirst, Zsecond, Zthird }
+
+enum ke
+{ Zfirst, Zsecond, Zthird }
+
+enum keep
+{ Zfirst, Zsecond, Zthird }
+
+enum keep_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum keep_shared_blobs
+{ Zfirst, Zsecond, Zthird }
+
+enum keeps
+{ Zfirst, Zsecond, Zthird }
+
+enum ken
+{ Zfirst, Zsecond, Zthird }
+
+enum kept
+{ Zfirst, Zsecond, Zthird }
+
+enum kept_len
+{ Zfirst, Zsecond, Zthird }
+
+enum key
+{ Zfirst, Zsecond, Zthird }
+
+enum keyArena
+{ Zfirst, Zsecond, Zthird }
+
+enum keyAt
+{ Zfirst, Zsecond, Zthird }
+
+enum keyCount
+{ Zfirst, Zsecond, Zthird }
+
+enum keyField
+{ Zfirst, Zsecond, Zthird }
+
+enum keyID
+{ Zfirst, Zsecond, Zthird }
+
+enum keyIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum keyKind
+{ Zfirst, Zsecond, Zthird }
+
+enum keyLen
+{ Zfirst, Zsecond, Zthird }
+
+enum keyLength
+{ Zfirst, Zsecond, Zthird }
+
+enum keyLess
+{ Zfirst, Zsecond, Zthird }
+
+enum keyOf
+{ Zfirst, Zsecond, Zthird }
+
+enum keyOff
+{ Zfirst, Zsecond, Zthird }
+
+enum keyOk
+{ Zfirst, Zsecond, Zthird }
+
+enum keyOpen
+{ Zfirst, Zsecond, Zthird }
+
+enum keyReader
+{ Zfirst, Zsecond, Zthird }
+
+enum keyRef
+{ Zfirst, Zsecond, Zthird }
+
+enum keyReport
+{ Zfirst, Zsecond, Zthird }
+
+enum keySeen
+{ Zfirst, Zsecond, Zthird }
+
+enum keySeenHigh
+{ Zfirst, Zsecond, Zthird }
+
+enum keySize
+{ Zfirst, Zsecond, Zthird }
+
+enum keyStart
+{ Zfirst, Zsecond, Zthird }
+
+enum keyText
+{ Zfirst, Zsecond, Zthird }
+
+enum keyVal
+{ Zfirst, Zsecond, Zthird }
+
+enum keyValue
+{ Zfirst, Zsecond, Zthird }
+
+enum keyWidened
+{ Zfirst, Zsecond, Zthird }
+
+enum keyWidens
+{ Zfirst, Zsecond, Zthird }
+
+enum key_buf
+{ Zfirst, Zsecond, Zthird }
+
+enum key_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum key_bytes_size
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    json_put_int Inner
+    json_put_string Inner
+    json_put_text Inner
+    json_put_uint Inner
+    json_quote Inner
+    json_report Inner
+    json_shape Inner
+    json_shape_takes Inner
+    json_space Inner
+    json_text_list Inner
+}
+
+table NameTypes0
+{
+    one0  json_put_int
+    many0 [..4]json_put_int
+    one1  json_put_string
+    many1 [..4]json_put_string
+    one2  json_put_text
+    many2 [..4]json_put_text
+    one3  json_put_uint
+    many3 [..4]json_put_uint
+    one4  json_quote
+    many4 [..4]json_quote
+    one5  json_report
+    many5 [..4]json_report
+    one6  json_shape
+    many6 [..4]json_shape
+    one7  json_shape_takes
+    many7 [..4]json_shape_takes
+    one8  json_space
+    many8 [..4]json_space
+    one9  json_text_list
+    many9 [..4]json_text_list
+}
+
+table NameFields0
+{
+    json_put_int uint32
+    json_put_string uint32
+    json_put_text uint32
+    json_put_uint uint32
+    json_quote uint32
+    json_report uint32
+    json_shape uint32
+    json_shape_takes uint32
+    json_space uint32
+    json_text_list uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    json_text_list_registry Inner
+    json_text_total_registry Inner
+    json_text_unbounded Inner
+    json_token_f32 Inner
+    json_token_f64 Inner
+    json_unb64 Inner
+    json_utf8 Inner
+    json_variants Inner
+    json_write_bool Inner
+    json_write_bytes Inner
+}
+
+table NameTypes1
+{
+    one0  json_text_list_registry
+    many0 [..4]json_text_list_registry
+    one1  json_text_total_registry
+    many1 [..4]json_text_total_registry
+    one2  json_text_unbounded
+    many2 [..4]json_text_unbounded
+    one3  json_token_f32
+    many3 [..4]json_token_f32
+    one4  json_token_f64
+    many4 [..4]json_token_f64
+    one5  json_unb64
+    many5 [..4]json_unb64
+    one6  json_utf8
+    many6 [..4]json_utf8
+    one7  json_variants
+    many7 [..4]json_variants
+    one8  json_write_bool
+    many8 [..4]json_write_bool
+    one9  json_write_bytes
+    many9 [..4]json_write_bytes
+}
+
+table NameFields1
+{
+    json_text_list_registry uint32
+    json_text_total_registry uint32
+    json_text_unbounded uint32
+    json_token_f32 uint32
+    json_token_f64 uint32
+    json_unb64 uint32
+    json_utf8 uint32
+    json_variants uint32
+    json_write_bool uint32
+    json_write_bytes uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    json_write_float Inner
+    json_write_str Inner
+    json_zero_element Inner
+    junk Inner
+    jv_big Inner
+    jv_big_div Inner
+    jv_big_mul Inner
+    jv_big_shl Inner
+    jv_big_zero Inner
+    k Inner
+}
+
+table NameTypes2
+{
+    one0  json_write_float
+    many0 [..4]json_write_float
+    one1  json_write_str
+    many1 [..4]json_write_str
+    one2  json_zero_element
+    many2 [..4]json_zero_element
+    one3  junk
+    many3 [..4]junk
+    one4  jv_big
+    many4 [..4]jv_big
+    one5  jv_big_div
+    many5 [..4]jv_big_div
+    one6  jv_big_mul
+    many6 [..4]jv_big_mul
+    one7  jv_big_shl
+    many7 [..4]jv_big_shl
+    one8  jv_big_zero
+    many8 [..4]jv_big_zero
+    one9  k
+    many9 [..4]k
+}
+
+table NameFields2
+{
+    json_write_float uint32
+    json_write_str uint32
+    json_zero_element uint32
+    junk uint32
+    jv_big uint32
+    jv_big_div uint32
+    jv_big_mul uint32
+    jv_big_shl uint32
+    jv_big_zero uint32
+    k uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    k0 Inner
+    k1 Inner
+    k2 Inner
+    k_name Inner
+    k_node Inner
+    k_txt Inner
+    ka Inner
+    kahn Inner
+    kb Inner
+    kbit Inner
+}
+
+table NameTypes3
+{
+    one0  k0
+    many0 [..4]k0
+    one1  k1
+    many1 [..4]k1
+    one2  k2
+    many2 [..4]k2
+    one3  k_name
+    many3 [..4]k_name
+    one4  k_node
+    many4 [..4]k_node
+    one5  k_txt
+    many5 [..4]k_txt
+    one6  ka
+    many6 [..4]ka
+    one7  kahn
+    many7 [..4]kahn
+    one8  kb
+    many8 [..4]kb
+    one9  kbit
+    many9 [..4]kbit
+}
+
+table NameFields3
+{
+    k0 uint32
+    k1 uint32
+    k2 uint32
+    k_name uint32
+    k_node uint32
+    k_txt uint32
+    ka uint32
+    kahn uint32
+    kb uint32
+    kbit uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    kc Inner
+    kd Inner
+    ke Inner
+    keep Inner
+    keep_elem Inner
+    keep_shared_blobs Inner
+    keeps Inner
+    ken Inner
+    kept Inner
+    kept_len Inner
+}
+
+table NameTypes4
+{
+    one0  kc
+    many0 [..4]kc
+    one1  kd
+    many1 [..4]kd
+    one2  ke
+    many2 [..4]ke
+    one3  keep
+    many3 [..4]keep
+    one4  keep_elem
+    many4 [..4]keep_elem
+    one5  keep_shared_blobs
+    many5 [..4]keep_shared_blobs
+    one6  keeps
+    many6 [..4]keeps
+    one7  ken
+    many7 [..4]ken
+    one8  kept
+    many8 [..4]kept
+    one9  kept_len
+    many9 [..4]kept_len
+}
+
+table NameFields4
+{
+    kc uint32
+    kd uint32
+    ke uint32
+    keep uint32
+    keep_elem uint32
+    keep_shared_blobs uint32
+    keeps uint32
+    ken uint32
+    kept uint32
+    kept_len uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    key Inner
+    keyArena Inner
+    keyAt Inner
+    keyCount Inner
+    keyField Inner
+    keyID Inner
+    keyIndex Inner
+    keyKind Inner
+    keyLen Inner
+    keyLength Inner
+}
+
+table NameTypes5
+{
+    one0  key
+    many0 [..4]key
+    one1  keyArena
+    many1 [..4]keyArena
+    one2  keyAt
+    many2 [..4]keyAt
+    one3  keyCount
+    many3 [..4]keyCount
+    one4  keyField
+    many4 [..4]keyField
+    one5  keyID
+    many5 [..4]keyID
+    one6  keyIndex
+    many6 [..4]keyIndex
+    one7  keyKind
+    many7 [..4]keyKind
+    one8  keyLen
+    many8 [..4]keyLen
+    one9  keyLength
+    many9 [..4]keyLength
+}
+
+table NameFields5
+{
+    key uint32
+    keyArena uint32
+    keyAt uint32
+    keyCount uint32
+    keyField uint32
+    keyID uint32
+    keyIndex uint32
+    keyKind uint32
+    keyLen uint32
+    keyLength uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    keyLess Inner
+    keyOf Inner
+    keyOff Inner
+    keyOk Inner
+    keyOpen Inner
+    keyReader Inner
+    keyRef Inner
+    keyReport Inner
+    keySeen Inner
+    keySeenHigh Inner
+}
+
+table NameTypes6
+{
+    one0  keyLess
+    many0 [..4]keyLess
+    one1  keyOf
+    many1 [..4]keyOf
+    one2  keyOff
+    many2 [..4]keyOff
+    one3  keyOk
+    many3 [..4]keyOk
+    one4  keyOpen
+    many4 [..4]keyOpen
+    one5  keyReader
+    many5 [..4]keyReader
+    one6  keyRef
+    many6 [..4]keyRef
+    one7  keyReport
+    many7 [..4]keyReport
+    one8  keySeen
+    many8 [..4]keySeen
+    one9  keySeenHigh
+    many9 [..4]keySeenHigh
+}
+
+table NameFields6
+{
+    keyLess uint32
+    keyOf uint32
+    keyOff uint32
+    keyOk uint32
+    keyOpen uint32
+    keyReader uint32
+    keyRef uint32
+    keyReport uint32
+    keySeen uint32
+    keySeenHigh uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    keySize Inner
+    keyStart Inner
+    keyText Inner
+    keyVal Inner
+    keyValue Inner
+    keyWidened Inner
+    keyWidens Inner
+    key_buf Inner
+    key_bytes Inner
+    key_bytes_size Inner
+}
+
+table NameTypes7
+{
+    one0  keySize
+    many0 [..4]keySize
+    one1  keyStart
+    many1 [..4]keyStart
+    one2  keyText
+    many2 [..4]keyText
+    one3  keyVal
+    many3 [..4]keyVal
+    one4  keyValue
+    many4 [..4]keyValue
+    one5  keyWidened
+    many5 [..4]keyWidened
+    one6  keyWidens
+    many6 [..4]keyWidens
+    one7  key_buf
+    many7 [..4]key_buf
+    one8  key_bytes
+    many8 [..4]key_bytes
+    one9  key_bytes_size
+    many9 [..4]key_bytes_size
+}
+
+table NameFields7
+{
+    keySize uint32
+    keyStart uint32
+    keyText uint32
+    keyVal uint32
+    keyValue uint32
+    keyWidened uint32
+    keyWidens uint32
+    key_buf uint32
+    key_bytes uint32
+    key_bytes_size uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

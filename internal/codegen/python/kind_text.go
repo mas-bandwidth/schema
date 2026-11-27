@@ -3,7 +3,7 @@ package python
 import (
 	"strconv"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The text kinds, string(N) and bytes(N): one wire shape, the length over

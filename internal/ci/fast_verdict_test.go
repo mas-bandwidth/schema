@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // mayCaseLabel is one `case` label of the verdict's may_skip function.
 var mayCaseLabel = regexp.MustCompile(`^\s+([a-z0-9|*-]+)\)`)
 
-// ciFastVerdictErrors holds ci-fast.yml's verdict job: main requires no status
+// ciFastVerdictErrors holds ci-fast-nightly.yml's verdict job: main requires no status
 // check (2026-11-21: no branch protection; the one ruleset naming a check is
 // disabled and targets fixed-table-form), so the fast lane's gates are read
 // only through one job that needs every other job of the file, runs whatever
@@ -26,7 +26,7 @@ func ciFastVerdictErrors(wf string) []string {
 	jobs := yamlJobs(wf)
 	v, ok := jobs["verdict"]
 	if !ok {
-		return []string{"ci-fast.yml has no verdict job: a gate red, cancelled at its cap or skipped reads only on its own row, and main requires no check"}
+		return []string{"ci-fast-nightly.yml has no verdict job: a gate red, cancelled at its cap or skipped reads only on its own row, and main requires no check"}
 	}
 	var errs []string
 	var needs, cond string
@@ -39,7 +39,7 @@ func ciFastVerdictErrors(wf string) []string {
 		}
 	}
 	if !strings.Contains(cond, "always()") || !strings.Contains(cond, "!cancelled()") {
-		errs = append(errs, "ci-fast.yml:verdict does not run always() && !cancelled(): a failed or cancelled gate skips the verdict")
+		errs = append(errs, "ci-fast-nightly.yml:verdict does not run always() && !cancelled(): a failed or cancelled gate skips the verdict")
 	}
 	needed := map[string]bool{}
 	for part := range strings.SplitSeq(strings.Trim(needs, "[]"), ",") {
@@ -48,7 +48,7 @@ func ciFastVerdictErrors(wf string) []string {
 		}
 	}
 	if !strings.Contains(v, `select(.value.result != "success")`) {
-		errs = append(errs, "ci-fast.yml:verdict does not fail on every result but success")
+		errs = append(errs, "ci-fast-nightly.yml:verdict does not fail on every result but success")
 	}
 	cases := map[string]bool{}
 	inMay := false
@@ -67,7 +67,7 @@ func ciFastVerdictErrors(wf string) []string {
 		}
 	}
 	if !cases["*"] || !strings.Contains(v, "*) return 1 ;;") {
-		errs = append(errs, "ci-fast.yml:verdict's may_skip has no `*) return 1 ;;`: an unknown job's skip would read green")
+		errs = append(errs, "ci-fast-nightly.yml:verdict's may_skip has no `*) return 1 ;;`: an unknown job's skip would read green")
 	}
 	var names []string
 	for j := range jobs {
@@ -79,7 +79,7 @@ func ciFastVerdictErrors(wf string) []string {
 			continue
 		}
 		if !needed[j] {
-			errs = append(errs, "ci-fast.yml:verdict does not need "+j+": that gate red, cancelled or skipped would not turn the verdict red")
+			errs = append(errs, "ci-fast-nightly.yml:verdict does not need "+j+": that gate red, cancelled or skipped would not turn the verdict red")
 		}
 		var jobIf string
 		for raw := range strings.SplitSeq(jobs[j], "\n") {
@@ -90,29 +90,29 @@ func ciFastVerdictErrors(wf string) []string {
 		selected := j == "fork-pull-request" || strings.Contains(jobIf, "needs.plan.outputs") || strings.Contains(jobIf, "workflow_dispatch")
 		switch {
 		case selected && !cases[j]:
-			errs = append(errs, "ci-fast.yml:verdict names no skip rule for "+j+", a job the plan or the event decides: its legitimate skip would read red")
+			errs = append(errs, "ci-fast-nightly.yml:verdict names no skip rule for "+j+", a job the plan or the event decides: its legitimate skip would read red")
 		case !selected && cases[j]:
-			errs = append(errs, "ci-fast.yml:verdict forgives a skip of "+j+", a gate that always runs")
+			errs = append(errs, "ci-fast-nightly.yml:verdict forgives a skip of "+j+", a gate that always runs")
 		}
 	}
 	for c := range cases {
 		if c != "*" && jobs[c] == "" {
-			errs = append(errs, "ci-fast.yml:verdict's may_skip names "+c+", which is no job of the file")
+			errs = append(errs, "ci-fast-nightly.yml:verdict's may_skip names "+c+", which is no job of the file")
 		}
 	}
 	slices.Sort(errs)
 	return errs
 }
 
-// TestCIFastVerdictNeedsEveryJob holds the live ci-fast.yml and replays the
+// TestCIFastVerdictNeedsEveryJob holds the live ci-fast-nightly.yml and replays the
 // committed corpus testdata/fastverdict: control.yml is accepted, and every
 // other file there (no verdict, a need missing, a skip forgiven for a gate
 // that always runs, a verdict skipped on red, no default-red case) refused.
 func TestCIFastVerdictNeedsEveryJob(t *testing.T) {
 	t.Parallel()
-	wf, ok := workflows(t, repoRoot(t))["ci-fast.yml"]
+	wf, ok := workflows(t, repoRoot(t))["ci-fast-nightly.yml"]
 	if !ok {
-		t.Fatal("missing .github/workflows/ci-fast.yml")
+		t.Fatal("missing .github/workflows/ci-fast-nightly.yml")
 	}
 	for _, e := range ciFastVerdictErrors(wf) {
 		t.Error(e)

@@ -1,7 +1,7 @@
 package tablepack_test
 
 import (
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 	"os"
 	"path/filepath"
 	"strings"

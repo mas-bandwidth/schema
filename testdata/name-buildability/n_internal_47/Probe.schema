@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum node_load_measure_parts
+{ Zfirst, Zsecond, Zthird }
+
+enum node_load_retain
+{ Zfirst, Zsecond, Zthird }
+
+enum node_number
+{ Zfirst, Zsecond, Zthird }
+
+enum node_off
+{ Zfirst, Zsecond, Zthird }
+
+enum node_record_end
+{ Zfirst, Zsecond, Zthird }
+
+enum node_records
+{ Zfirst, Zsecond, Zthird }
+
+enum node_save
+{ Zfirst, Zsecond, Zthird }
+
+enum node_save_body
+{ Zfirst, Zsecond, Zthird }
+
+enum node_save_retain
+{ Zfirst, Zsecond, Zthird }
+
+enum node_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum node_table_id
+{ Zfirst, Zsecond, Zthird }
+
+enum node_table_present
+{ Zfirst, Zsecond, Zthird }
+
+enum node_table_scan
+{ Zfirst, Zsecond, Zthird }
+
+enum nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodesGood
+{ Zfirst, Zsecond, Zthird }
+
+enum nodesPlaced
+{ Zfirst, Zsecond, Zthird }
+
+enum nodes_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum nodes_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum nonCanonical
+{ Zfirst, Zsecond, Zthird }
+
+enum nonFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum nonFiniteFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite32
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite64
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_before
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_float_reason
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_floats
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_in
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_unknown
+{ Zfirst, Zsecond, Zthird }
+
+enum non_finite_value
+{ Zfirst, Zsecond, Zthird }
+
+enum none_dst_size
+{ Zfirst, Zsecond, Zthird }
+
+enum nonzero
+{ Zfirst, Zsecond, Zthird }
+
+enum norm
+{ Zfirst, Zsecond, Zthird }
+
+enum normalized
+{ Zfirst, Zsecond, Zthird }
+
+enum notImplemented
+{ Zfirst, Zsecond, Zthird }
+
+enum noteField
+{ Zfirst, Zsecond, Zthird }
+
+enum note_content
+{ Zfirst, Zsecond, Zthird }
+
+enum note_elements
+{ Zfirst, Zsecond, Zthird }
+
+enum note_node_table
+{ Zfirst, Zsecond, Zthird }
+
+enum note_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum note_unknown_content
+{ Zfirst, Zsecond, Zthird }
+
+enum note_unknown_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum note_unknown_pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum note_use
+{ Zfirst, Zsecond, Zthird }
+
+enum nothing
+{ Zfirst, Zsecond, Zthird }
+
+enum np
+{ Zfirst, Zsecond, Zthird }
+
+enum np0
+{ Zfirst, Zsecond, Zthird }
+
+enum nq
+{ Zfirst, Zsecond, Zthird }
+
+enum nr
+{ Zfirst, Zsecond, Zthird }
+
+enum ns
+{ Zfirst, Zsecond, Zthird }
+
+enum nsig
+{ Zfirst, Zsecond, Zthird }
+
+enum nt
+{ Zfirst, Zsecond, Zthird }
+
+enum nul
+{ Zfirst, Zsecond, Zthird }
+
+enum null_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum null_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum nullableElem
+{ Zfirst, Zsecond, Zthird }
+
+enum numBits
+{ Zfirst, Zsecond, Zthird }
+
+enum numBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum numWords
+{ Zfirst, Zsecond, Zthird }
+
+enum num_constants
+{ Zfirst, Zsecond, Zthird }
+
+enum num_enums
+{ Zfirst, Zsecond, Zthird }
+
+enum num_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum num_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum num_tables
+{ Zfirst, Zsecond, Zthird }
+
+enum num_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum num_types
+{ Zfirst, Zsecond, Zthird }
+
+enum num_unions
+{ Zfirst, Zsecond, Zthird }
+
+enum num_variants
+{ Zfirst, Zsecond, Zthird }
+
+enum numberBits
+{ Zfirst, Zsecond, Zthird }
+
+enum numberError
+{ Zfirst, Zsecond, Zthird }
+
+enum numberOk
+{ Zfirst, Zsecond, Zthird }
+
+enum numberToken
+{ Zfirst, Zsecond, Zthird }
+
+enum number_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum numbered
+{ Zfirst, Zsecond, Zthird }
+
+enum numbering
+{ Zfirst, Zsecond, Zthird }
+
+enum numbers
+{ Zfirst, Zsecond, Zthird }
+
+enum numer
+{ Zfirst, Zsecond, Zthird }
+
+enum numerator
+{ Zfirst, Zsecond, Zthird }
+
+enum nv
+{ Zfirst, Zsecond, Zthird }
+
+enum nx
+{ Zfirst, Zsecond, Zthird }
+
+enum nxt
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    node_load_measure_parts Inner
+    node_load_retain Inner
+    node_number Inner
+    node_off Inner
+    node_record_end Inner
+    node_records Inner
+    node_save Inner
+    node_save_body Inner
+    node_save_retain Inner
+    node_slot Inner
+}
+
+table NameTypes0
+{
+    one0  node_load_measure_parts
+    many0 [..4]node_load_measure_parts
+    one1  node_load_retain
+    many1 [..4]node_load_retain
+    one2  node_number
+    many2 [..4]node_number
+    one3  node_off
+    many3 [..4]node_off
+    one4  node_record_end
+    many4 [..4]node_record_end
+    one5  node_records
+    many5 [..4]node_records
+    one6  node_save
+    many6 [..4]node_save
+    one7  node_save_body
+    many7 [..4]node_save_body
+    one8  node_save_retain
+    many8 [..4]node_save_retain
+    one9  node_slot
+    many9 [..4]node_slot
+}
+
+table NameFields0
+{
+    node_load_measure_parts uint32
+    node_load_retain uint32
+    node_number uint32
+    node_off uint32
+    node_record_end uint32
+    node_records uint32
+    node_save uint32
+    node_save_body uint32
+    node_save_retain uint32
+    node_slot uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    node_table_id Inner
+    node_table_present Inner
+    node_table_scan Inner
+    nodes Inner
+    nodesGood Inner
+    nodesPlaced Inner
+    nodes_fn Inner
+    nodes_frame Inner
+    nonCanonical Inner
+    nonFinite Inner
+}
+
+table NameTypes1
+{
+    one0  node_table_id
+    many0 [..4]node_table_id
+    one1  node_table_present
+    many1 [..4]node_table_present
+    one2  node_table_scan
+    many2 [..4]node_table_scan
+    one3  nodes
+    many3 [..4]nodes
+    one4  nodesGood
+    many4 [..4]nodesGood
+    one5  nodesPlaced
+    many5 [..4]nodesPlaced
+    one6  nodes_fn
+    many6 [..4]nodes_fn
+    one7  nodes_frame
+    many7 [..4]nodes_frame
+    one8  nonCanonical
+    many8 [..4]nonCanonical
+    one9  nonFinite
+    many9 [..4]nonFinite
+}
+
+table NameFields1
+{
+    node_table_id uint32
+    node_table_present uint32
+    node_table_scan uint32
+    nodes uint32
+    nodesGood uint32
+    nodesPlaced uint32
+    nodes_fn uint32
+    nodes_frame uint32
+    nonCanonical uint32
+    nonFinite uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    nonFiniteFloat Inner
+    non_finite32 Inner
+    non_finite64 Inner
+    non_finite_before Inner
+    non_finite_float_reason Inner
+    non_finite_floats Inner
+    non_finite_in Inner
+    non_finite_unknown Inner
+    non_finite_value Inner
+    none_dst_size Inner
+}
+
+table NameTypes2
+{
+    one0  nonFiniteFloat
+    many0 [..4]nonFiniteFloat
+    one1  non_finite32
+    many1 [..4]non_finite32
+    one2  non_finite64
+    many2 [..4]non_finite64
+    one3  non_finite_before
+    many3 [..4]non_finite_before
+    one4  non_finite_float_reason
+    many4 [..4]non_finite_float_reason
+    one5  non_finite_floats
+    many5 [..4]non_finite_floats
+    one6  non_finite_in
+    many6 [..4]non_finite_in
+    one7  non_finite_unknown
+    many7 [..4]non_finite_unknown
+    one8  non_finite_value
+    many8 [..4]non_finite_value
+    one9  none_dst_size
+    many9 [..4]none_dst_size
+}
+
+table NameFields2
+{
+    nonFiniteFloat uint32
+    non_finite32 uint32
+    non_finite64 uint32
+    non_finite_before uint32
+    non_finite_float_reason uint32
+    non_finite_floats uint32
+    non_finite_in uint32
+    non_finite_unknown uint32
+    non_finite_value uint32
+    none_dst_size uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    nonzero Inner
+    norm Inner
+    normalized Inner
+    notImplemented Inner
+    noteField Inner
+    note_content Inner
+    note_elements Inner
+    note_node_table Inner
+    note_payload Inner
+    note_unknown_content Inner
+}
+
+table NameTypes3
+{
+    one0  nonzero
+    many0 [..4]nonzero
+    one1  norm
+    many1 [..4]norm
+    one2  normalized
+    many2 [..4]normalized
+    one3  notImplemented
+    many3 [..4]notImplemented
+    one4  noteField
+    many4 [..4]noteField
+    one5  note_content
+    many5 [..4]note_content
+    one6  note_elements
+    many6 [..4]note_elements
+    one7  note_node_table
+    many7 [..4]note_node_table
+    one8  note_payload
+    many8 [..4]note_payload
+    one9  note_unknown_content
+    many9 [..4]note_unknown_content
+}
+
+table NameFields3
+{
+    nonzero uint32
+    norm uint32
+    normalized uint32
+    notImplemented uint32
+    noteField uint32
+    note_content uint32
+    note_elements uint32
+    note_node_table uint32
+    note_payload uint32
+    note_unknown_content uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    note_unknown_payload Inner
+    note_unknown_pointer Inner
+    note_use Inner
+    nothing Inner
+    np Inner
+    np0 Inner
+    nq Inner
+    nr Inner
+    ns Inner
+    nsig Inner
+}
+
+table NameTypes4
+{
+    one0  note_unknown_payload
+    many0 [..4]note_unknown_payload
+    one1  note_unknown_pointer
+    many1 [..4]note_unknown_pointer
+    one2  note_use
+    many2 [..4]note_use
+    one3  nothing
+    many3 [..4]nothing
+    one4  np
+    many4 [..4]np
+    one5  np0
+    many5 [..4]np0
+    one6  nq
+    many6 [..4]nq
+    one7  nr
+    many7 [..4]nr
+    one8  ns
+    many8 [..4]ns
+    one9  nsig
+    many9 [..4]nsig
+}
+
+table NameFields4
+{
+    note_unknown_payload uint32
+    note_unknown_pointer uint32
+    note_use uint32
+    nothing uint32
+    np uint32
+    np0 uint32
+    nq uint32
+    nr uint32
+    ns uint32
+    nsig uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    nt Inner
+    nul Inner
+    null_ref Inner
+    null_slot Inner
+    nullableElem Inner
+    numBits Inner
+    numBytes Inner
+    numWords Inner
+    num_constants Inner
+    num_enums Inner
+}
+
+table NameTypes5
+{
+    one0  nt
+    many0 [..4]nt
+    one1  nul
+    many1 [..4]nul
+    one2  null_ref
+    many2 [..4]null_ref
+    one3  null_slot
+    many3 [..4]null_slot
+    one4  nullableElem
+    many4 [..4]nullableElem
+    one5  numBits
+    many5 [..4]numBits
+    one6  numBytes
+    many6 [..4]numBytes
+    one7  numWords
+    many7 [..4]numWords
+    one8  num_constants
+    many8 [..4]num_constants
+    one9  num_enums
+    many9 [..4]num_enums
+}
+
+table NameFields5
+{
+    nt uint32
+    nul uint32
+    null_ref uint32
+    null_slot uint32
+    nullableElem uint32
+    numBits uint32
+    numBytes uint32
+    numWords uint32
+    num_constants uint32
+    num_enums uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    num_fields Inner
+    num_flags Inner
+    num_tables Inner
+    num_tags Inner
+    num_types Inner
+    num_unions Inner
+    num_variants Inner
+    numberBits Inner
+    numberError Inner
+    numberOk Inner
+}
+
+table NameTypes6
+{
+    one0  num_fields
+    many0 [..4]num_fields
+    one1  num_flags
+    many1 [..4]num_flags
+    one2  num_tables
+    many2 [..4]num_tables
+    one3  num_tags
+    many3 [..4]num_tags
+    one4  num_types
+    many4 [..4]num_types
+    one5  num_unions
+    many5 [..4]num_unions
+    one6  num_variants
+    many6 [..4]num_variants
+    one7  numberBits
+    many7 [..4]numberBits
+    one8  numberError
+    many8 [..4]numberError
+    one9  numberOk
+    many9 [..4]numberOk
+}
+
+table NameFields6
+{
+    num_fields uint32
+    num_flags uint32
+    num_tables uint32
+    num_tags uint32
+    num_types uint32
+    num_unions uint32
+    num_variants uint32
+    numberBits uint32
+    numberError uint32
+    numberOk uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    numberToken Inner
+    number_nodes Inner
+    numbered Inner
+    numbering Inner
+    numbers Inner
+    numer Inner
+    numerator Inner
+    nv Inner
+    nx Inner
+    nxt Inner
+}
+
+table NameTypes7
+{
+    one0  numberToken
+    many0 [..4]numberToken
+    one1  number_nodes
+    many1 [..4]number_nodes
+    one2  numbered
+    many2 [..4]numbered
+    one3  numbering
+    many3 [..4]numbering
+    one4  numbers
+    many4 [..4]numbers
+    one5  numer
+    many5 [..4]numer
+    one6  numerator
+    many6 [..4]numerator
+    one7  nv
+    many7 [..4]nv
+    one8  nx
+    many8 [..4]nx
+    one9  nxt
+    many9 [..4]nxt
+}
+
+table NameFields7
+{
+    numberToken uint32
+    number_nodes uint32
+    numbered uint32
+    numbering uint32
+    numbers uint32
+    numer uint32
+    numerator uint32
+    nv uint32
+    nx uint32
+    nxt uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

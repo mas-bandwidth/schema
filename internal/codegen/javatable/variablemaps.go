@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // On the variable wire a map is an array of its generated key/value table.
@@ -98,6 +98,7 @@ func writeJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
+	writeJsonContainerCap(b) // the map's object, an empty {} included (§16.14 W2)
 	fmt.Fprintf(b, "        { java.util.List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); if(entries==null)throw new TableJson.Refused(\"duplicate_map_key\"); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
 	keyText := "java.lang.Integer.toString(entry.key)"
 	switch {

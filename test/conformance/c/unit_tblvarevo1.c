@@ -71,3 +71,5 @@ done:
     if ( !ok ) { free( *output ); *output = NULL; free( *text ); *text = NULL; }
     return ok;
 }
+
+CONFORMANCE_RETAIN_REFUSAL(conformance_retain_refusal_varevo1,tblvarevo1,evo_doc)

@@ -1,8 +1,7 @@
 package gotable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
-	"regexp"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -103,8 +102,6 @@ func retainDepth(u *ir.Unit) int {
 	return n
 }
 
-var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadBody|MeasureBody|SaveBodyFields|SaveBody)\b`)
-
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
 		g.pf("const %sLoadRetainBuilder = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
@@ -147,18 +144,25 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	rewrites := []string{"TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
+	// THE SIDE EMITTER SPELLS THE RETAINING NAMES ITSELF (rt): its body is
+	// written as it stands, never rewritten. A text rewrite of SaveBody or
+	// TableIds reached a user's name too (an arm node_save_body's constant
+	// NameArmsTypeNodeSaveBody, a field table_ids's TableIds) and called
+	// names no one declared (SPEC.md §4.6, Generator-name safety).
 	source := side.body.String()
-	if !retainBodyName.MatchString(source) {
-		panic("retaining body family has no source codecs")
-	}
-	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-	for i := 0; i < len(rewrites); i += 2 {
-		source = tableSourceReplace(source, rewrites[i], rewrites[i+1], -1)
-	}
 	g.pf("%s", source)
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
+}
+
+// rt is the infix of the retaining family's names (TableRetainWriter,
+// <T>SaveBodyRetain) on the side emitter that writes that family, and empty
+// on every other.
+func (g *tableGen) rt() string {
+	if g.retain {
+		return "Retain"
+	}
+	return ""
 }
 
 func (g *tableGen) retainReadPath(child, parent, index string) {

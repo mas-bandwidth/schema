@@ -1624,6 +1624,7 @@ public final class BenchMixedVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "BenchMixed: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
@@ -1682,15 +1683,27 @@ public final class BenchMixedVariable {
                 : "BenchMixed.server_time";
         assert v.entities.size() >= 1 && v.entities.size() <= 8 : "BenchMixed.entities";
         for (int i = 0, n = v.entities.size(); i < n; i++) {
+            assert v.entities.get(i) != null : "BenchMixed.entities";
+        }
+        for (int i = 0, n = v.entities.size(); i < n; i++) {
             MixedEntityVariable.Value e = v.entities.get(i);
+            assert e != null : "BenchMixed.entities";
             assert MixedEntityVariable.checkWrite(e, walk);
         }
         assert v.stats.size() <= 80 : "BenchMixed.stats";
         for (int i = 0, n = v.stats.size(); i < n; i++) {
+            assert v.stats.get(i) != null : "BenchMixed.stats";
+        }
+        for (int i = 0, n = v.stats.size(); i < n; i++) {
             MixedStatVariable.Value e = v.stats.get(i);
+            assert e != null : "BenchMixed.stats";
             assert MixedStatVariable.checkWrite(e, walk);
         }
+        assert v.gameEvent != null : "BenchMixed.game_event";
         assert MixedEventVariable.checkWrite(v.gameEvent, walk);
+        for (int i = 0, n = java.lang.Math.min(v.loadout.size(), 4); i < n; i++) {
+            assert v.loadout.get(i) != null : "BenchMixed.loadout";
+        }
         for (int i = 0, n = java.lang.Math.min(v.loadout.size(), 4); i < n; i++) {
             int e = v.loadout.get(i);
             assert (e & 0xffffffffL) <= 0xffL : "BenchMixed.loadout";
@@ -2277,6 +2290,10 @@ public final class BenchMixedVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -2401,6 +2418,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "entities");
         b.append(": ");
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         if (v.entities.size() < 1 || v.entities.size() > 8) {
             throw new TableJson.Refused("count_over_bound");
         }
@@ -2425,6 +2446,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "stats");
         b.append(": ");
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         if (v.stats.size() < 0 || v.stats.size() > 80) {
             throw new TableJson.Refused("count_over_bound");
         }
@@ -2463,6 +2488,10 @@ public final class BenchMixedVariable {
         {
             java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 4; j++) padded.add(j < v.loadout.size() ? v.loadout.get(j) : 0);
+            if (depth > TableJson.In.MAX_JSON_DEPTH) {
+                throw new TableJson.Refused(
+                        "a container past the cap: the write counts every container the read does");
+            }
             if (padded.size() > 4) {
                 throw new TableJson.Refused("count_over_bound");
             }
