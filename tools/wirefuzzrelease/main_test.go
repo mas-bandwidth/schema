@@ -13,13 +13,12 @@ import (
 
 const (
 	green      = "wire-fuzz: seed 1, 126 seeds over 126 roots, 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
-	oneAbsent  = "wire-fuzz: seed 1, 125 seeds over 126 roots, 1 seeds absent (roots the leg has no codec for), 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
+	oneAbsent  = "wire-fuzz: seed 1, 125 seeds over 126 roots, 1 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv), 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
 	noMutants  = "wire-fuzz: seed 1, 126 seeds over 126 roots, 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.0 s, 0 mutants/s\n"
-	noSeeds    = "wire-fuzz: seed 1, 0 seeds over 126 roots, 126 seeds absent (roots the leg has no codec for), 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.0 s, 0 mutants/s\n"
+	oldAbsent  = "wire-fuzz: seed 1, 125 seeds over 126 roots, 1 seeds absent (roots the leg has no codec for), 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
+	noSeeds    = "wire-fuzz: seed 1, 0 seeds over 126 roots, 126 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv), 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.0 s, 0 mutants/s\n"
 	divergence = "harness: FAILED after 41 mutants: the report differs\n    corpus seed Scene (tables.Scene), pass enumerated #3, run seed 1, mutation flip\n"
 )
-
-func none() absentHold { return absentHold{count: -1} }
 
 // TestEveryLegIsHeldToItsRoster: the rule that was Python's alone is every
 // leg's. A Go run with zero mutants and a Go run with an absent seed were both
@@ -27,7 +26,7 @@ func none() absentHold { return absentHold{count: -1} }
 // inputs are red for Python, as they were.
 func TestEveryLegIsHeldToItsRoster(t *testing.T) {
 	for _, leg := range []string{"go", "python", "c", "squirrel"} {
-		if got := score(leg, "plain", "1", green, 0, 3, 100000, "", "owed.txt", none(), "absent.txt"); got != "pass (105000 mutants, 3 s)" {
+		if got := score(leg, "plain", "1", green, 0, 3, 100000, "", "owed.txt"); got != "pass (105000 mutants, 3 s)" {
 			t.Fatalf("CONTROL FAILED: %s: a whole green run scores %q", leg, got)
 		}
 		for _, tc := range []struct {
@@ -35,7 +34,7 @@ func TestEveryLegIsHeldToItsRoster(t *testing.T) {
 			status          int
 		}{
 			{"zero mutants", noMutants, "RED: empty wire-fuzz mutation count", 0},
-			{"an absent seed", oneAbsent, "RED: incomplete wire-fuzz roster: 1 seeds absent", 0},
+			{"an absence in the old words", oldAbsent, "RED: the summary speaks of absent seeds in words the gate does not read", 0},
 			{"no seed at all", noSeeds, "RED: empty wire-fuzz roster: 0 seeds over 126 roots", 0},
 			{"exit 0 and no summary", "the driver printed something else\n", "RED: exit 0 and no summary line", 0},
 			{"an empty log", "", "RED: exit 0 and no summary line", 0},
@@ -50,53 +49,54 @@ func TestEveryLegIsHeldToItsRoster(t *testing.T) {
 			{"a divergence", divergence, "RED: tables.Scene, pass enumerated #3, mutant 42: the report differs", 1},
 			{"a green summary and a red exit", green, "RED: exit 1: ", 1},
 		} {
-			if got := score(leg, "plain", "1", tc.log, tc.status, 3, 100000, "", "owed.txt", none(), "absent.txt"); !strings.HasPrefix(got, tc.want) {
+			if got := score(leg, "plain", "1", tc.log, tc.status, 3, 100000, "", "owed.txt"); !strings.HasPrefix(got, tc.want) {
 				t.Errorf("%s, %s: got %q, want %q", leg, tc.name, got, tc.want)
 			}
 		}
 	}
 }
 
-// TestAbsentSeedsAreHeldByNameAndCount: a leg with no codec for some roots
-// says so in the absent list, with the exact count; a different count, and a
-// line whose leg now answers every root, are red.
-func TestAbsentSeedsAreHeldByNameAndCount(t *testing.T) {
-	held := absentHold{count: 1, why: "no variable class"}
-	if got := score("lua", "plain", "1", oneAbsent, 0, 3, 100000, "", "owed.txt", held, "absent.txt"); got != "pass (105000 mutants, 3 s)" {
-		t.Errorf("an absent seed held by name and count: %q", got)
+// TestTheAbsenceClauseIsReadOrRed: the harness holds every absent seed by
+// name in the leg's ledger (test/conformance/harness/wirefuzz_absent.go) and
+// says how many as `N ledgered seeds absent (<ledger>)`. The gate reads that
+// clause and carries the count in the pass verdict; an absence in any other
+// words is RED, never read as none. Before #4880's round 2 the gate matched
+// `(\d+) seeds absent`, which the ledgered wording no longer matched, so it
+// read 0 and said nothing.
+func TestTheAbsenceClauseIsReadOrRed(t *testing.T) {
+	if got := score("lua", "plain", "1", oneAbsent, 0, 3, 100000, "", "owed.txt"); got != "pass (105000 mutants, 3 s, 1 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv))" {
+		t.Errorf("a ledgered absence does not ride in the pass verdict: %q", got)
 	}
-	if got := score("lua", "plain", "1", oneAbsent, 0, 3, 100000, "", "owed.txt", absentHold{count: 2, why: "w"}, "absent.txt"); !strings.Contains(got, "1 seeds absent and absent.txt holds 2") {
-		t.Errorf("another count: %q", got)
-	}
-	if got := score("lua", "plain", "1", green, 0, 3, 100000, "", "owed.txt", held, "absent.txt"); !strings.Contains(got, "no seed is absent and absent.txt still holds 1") {
-		t.Errorf("a stale line: %q", got)
-	}
-	path := filepath.Join(t.TempDir(), "absent.txt")
-	if err := os.WriteFile(path, []byte("# leg arm count why\nlua plain 3 no variable class\nlua retain none\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if h, err := heldAbsent(path, "lua", "plain"); err != nil || h.count != 3 || h.why != "no variable class" {
-		t.Errorf("a held line reads as %+v, %v", h, err)
-	}
-	if h, err := heldAbsent(path, "go", "plain"); err != nil || h.count != -1 {
-		t.Errorf("a leg with no line reads as %+v, %v", h, err)
-	}
-	if _, err := heldAbsent(path, "lua", "retain"); err == nil {
-		t.Error("a line with no count and reason was read")
+	for _, tc := range []struct{ name, log, want string }{
+		{"the old words", oldAbsent, "RED: the summary speaks of absent seeds in words the gate does not read"},
+		{"no count", strings.Replace(oneAbsent, "1 ledgered", "some ledgered", 1), "RED: the summary speaks of absent seeds in words the gate does not read"},
+		{"a zero count", strings.Replace(oneAbsent, "1 ledgered", "0 ledgered", 1), "RED: malformed wire-fuzz absent count"},
+		{"no ledger named", strings.Replace(oneAbsent, " (test/conformance/wire-absent/lua-plain.tsv)", "", 1), "RED: the summary speaks of absent seeds in words the gate does not read"},
+		{"two clauses", strings.Replace(oneAbsent, "126 roots,", "126 roots, 2 ledgered seeds absent (x.tsv),", 1), "RED: the summary has more than one absence clause"},
+		{"another mention", strings.Replace(oneAbsent, "0 divergences", "0 divergences, 3 roots absent", 1), "RED: the summary speaks of absent seeds outside its one clause"},
+		// #4880 round 5: the clause in other words is red, never no absence
+		{"other words", strings.Replace(oneAbsent, "1 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv)", "1 ledgered seeds missing (x.tsv)", 1), "RED: the summary speaks of absent seeds in words the gate does not read"},
+		// #4880 round 5: the clause cites this row's own ledger, never another leg's or arm's
+		{"another leg's ledger", strings.Replace(oneAbsent, "lua-plain.tsv", "go-plain.tsv", 1), "RED: the absence clause cites test/conformance/wire-absent/go-plain.tsv, not the lua plain row's ledger"},
+		{"another arm's ledger", strings.Replace(oneAbsent, "lua-plain.tsv", "lua-builder.tsv", 1), "RED: the absence clause cites test/conformance/wire-absent/lua-builder.tsv, not the lua plain row's ledger"},
+	} {
+		if got := score("lua", "plain", "1", tc.log, 0, 3, 100000, "", "owed.txt"); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 
 func TestOwedArms(t *testing.T) {
 	green := strings.Replace(green, "wire-fuzz:", "wire-fuzz retain:", 1)
 	noMutants := strings.Replace(noMutants, "wire-fuzz:", "wire-fuzz retain:", 1)
-	if got := score("go", "retain", "1", green, 0, 3, 100000, "the retain arm is not written", "owed.txt", none(), "absent.txt"); got != "RED: owed but green (105000 mutants): remove 'go retain' from owed.txt" {
+	if got := score("go", "retain", "1", green, 0, 3, 100000, "the retain arm is not written", "owed.txt"); got != "RED: owed but green (105000 mutants): remove 'go retain' from owed.txt" {
 		t.Errorf("owed and green: %q", got)
 	}
-	if got := score("go", "retain", "1", divergence, 1, 3, 100000, "the retain arm is not written", "owed.txt", none(), "absent.txt"); !strings.HasPrefix(got, "owed: the retain arm is not written (runs red: tables.Scene") {
+	if got := score("go", "retain", "1", divergence, 1, 3, 100000, "the retain arm is not written", "owed.txt"); !strings.HasPrefix(got, "owed: the retain arm is not written (runs red: tables.Scene") {
 		t.Errorf("owed and red: %q", got)
 	}
 	// an owed arm that proves nothing is still owed, never green
-	if got := score("go", "retain", "1", noMutants, 0, 3, 100000, "the retain arm is not written", "owed.txt", none(), "absent.txt"); !strings.HasPrefix(got, "owed: ") {
+	if got := score("go", "retain", "1", noMutants, 0, 3, 100000, "the retain arm is not written", "owed.txt"); !strings.HasPrefix(got, "owed: ") {
 		t.Errorf("owed and empty: %q", got)
 	}
 }
@@ -223,11 +223,9 @@ func TestTheTableReadsTheRosterByName(t *testing.T) {
 // TestWriteRow runs the row verb over files, as the run script does.
 func TestWriteRow(t *testing.T) {
 	dir := t.TempDir()
-	owed, absent := filepath.Join(dir, "owed.txt"), filepath.Join(dir, "absent.txt")
-	for _, p := range []string{owed, absent} {
-		if err := os.WriteFile(p, []byte("# none\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	owed := filepath.Join(dir, "owed.txt")
+	if err := os.WriteFile(owed, []byte("# none\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	row := func(name, log string, noDriver bool, status int) string {
 		t.Helper()
@@ -238,7 +236,7 @@ func TestWriteRow(t *testing.T) {
 			}
 		}
 		f := strings.Split(name, ".")
-		if err := writeRow(f[0], f[1], f[2], dir, owed, absent, noDriver, status, 2, 100000); err != nil {
+		if err := writeRow(f[0], f[1], f[2], dir, owed, noDriver, status, 2, 100000); err != nil {
 			t.Fatal(err)
 		}
 		data, err := os.ReadFile(filepath.Join(dir, name+".row"))
@@ -253,8 +251,11 @@ func TestWriteRow(t *testing.T) {
 	if got := row("go.plain.2", noMutants, false, 0); !strings.HasPrefix(got, "go\tplain\t2\tRED: empty wire-fuzz mutation count") {
 		t.Errorf("a zero-mutant row: %q", got)
 	}
-	if got := row("go.plain.3", oneAbsent, false, 0); !strings.HasPrefix(got, "go\tplain\t3\tRED: incomplete wire-fuzz roster") {
-		t.Errorf("an absent-seed row: %q", got)
+	if got := row("go.plain.3", oldAbsent, false, 0); !strings.HasPrefix(got, "go\tplain\t3\tRED: the summary speaks of absent seeds in words the gate does not read") {
+		t.Errorf("an absence in the old words: %q", got)
+	}
+	if got := row("go.retain.1", strings.NewReplacer("wire-fuzz:", "wire-fuzz retain:", "lua-plain.tsv", "go-retain.tsv").Replace(oneAbsent), false, 0); got != "go\tretain\t1\tpass (105000 mutants, 2 s, 1 ledgered seeds absent (test/conformance/wire-absent/go-retain.tsv))\n" {
+		t.Errorf("a ledgered-absence row: %q", got)
 	}
 	if got := row("zz.plain.1", "", true, -1); got != "zz\tplain\t1\tRED: the leg has no wire-fuzz driver and the owed list does not name this arm\n" {
 		t.Errorf("a leg with no driver: %q", got)
@@ -331,7 +332,7 @@ func TestRowHoldsTheRunToItsBudget(t *testing.T) {
 		{"the plain arm answered by retain", "go", "plain", "wire-fuzz retain: " + counts + tail, "RED: the summary is not the plain arm's"},
 		{"the retain arm answered by plain", "go", "retain", "wire-fuzz: " + counts + tail, "RED: the summary is not the retain arm's"},
 	} {
-		if got := score(tc.leg, tc.arm, "7", tc.log, 0, 1, 100000, "", "owed.txt", none(), "absent.txt"); !strings.HasPrefix(got, tc.want) {
+		if got := score(tc.leg, tc.arm, "7", tc.log, 0, 1, 100000, "", "owed.txt"); !strings.HasPrefix(got, tc.want) {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
 		}
 	}

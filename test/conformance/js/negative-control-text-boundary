@@ -93,6 +93,10 @@ printf 'json-hostile illformed-in-bound tabledemo RootConfig %s/inbound/text ref
 if grep '^  js / ' "$out/log" | grep -vE 'js / json-hostile: (str-illformed-at-bound|rr-comment-illformed-utf8|rr-comment-lone-surrogate):'; then
     cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
 fi
+for row in rr-comment-illformed-utf8 rr-comment-lone-surrogate; do
+    grep -q "js / json-hostile: $row: read outcome differs: got read, want refused" "$out/log" ||
+        { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: replacement decoding left $row refused" >&2; exit 1; }
+done
 grep -Eq '^json-read +pass ' "$out/log"
 grep -Eq '^json-write +pass ' "$out/log"
 echo 'JavaScript text boundary negative control: replacement decoding reads an ill-formed byte the strict boundary refuses; text read/write remain green'

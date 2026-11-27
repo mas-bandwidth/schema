@@ -581,7 +581,7 @@ cards-wire-fuzz: sibling-go
 	@$(MAKE) --no-print-directory cards-wire-fuzz-run
 
 cards-wire-fuzz-run: build/conformance-harness build/conformance-go
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg cards-go \
 		--timeout $(CARDS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-go wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-wire-fuzz.log 2>&1; \
@@ -939,7 +939,7 @@ REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go comma
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
-	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg go --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control leb
@@ -1076,7 +1076,7 @@ tables-go-builders: build/conformance-harness build/conformance-go
 	sh test/slowgate/proof tables-go-builders \
 		'TestBuilderRefusalThroughUnion' \
 		./internal/codegen/gotable -run '^TestBuilderRefusalThroughUnion$$' -count=1
-	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg go --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)
 tables-go-builders-negative-control:
 	sh test/conformance/go/ownership-negative-control builder-union
 tables-go-typed-refusals:
@@ -1103,7 +1103,7 @@ test-go: tables-go-view tables-go-view-negative-controls
 tables-go-measure-negative-controls:
 	@set -e; for mode in measure-cycle measure-count wire-damage counted-tail counted-work arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
 tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
-	./build/conformance-harness wire-fuzz --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg go --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 
 # Release certification reuses the PR checks at a second seed, a longer soak,
@@ -1157,8 +1157,8 @@ GO_RELEASE_N ?= 100000
 .PHONY: tables-go-release-fuzz tables-go-release-negative-control
 tables-go-release-fuzz: build/conformance-harness build/conformance-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
-	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
-	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	./build/conformance-harness wire-fuzz --leg go --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	./build/conformance-harness wire-fuzz --leg go --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
 tables-go-release-negative-control: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control leb-driver
@@ -1204,7 +1204,7 @@ test-go: tables-go-release-negative-control tables-go-clean-negative-control
 # `make test-go` where `go run ./bench/paired` does not. The VERSIONING half is
 # NOT held here and no longer held by TestFixedFormPlanPath, which §5.6 of
 # docs/FIXED-FORM-ALGORITHM.md retired by name (it skips itself: under the new
-# law the FX1/FX2 files come back `layout_newer`). It is held by the LINEAGE
+# law the FX1/FX2 files come back `layout_unknown`). It is held by the LINEAGE
 # harness in internal/codegen/gotable/fixedversioning_test.go, and the target
 # that runs it is `tables-go-versioning`, immediately below.
 build/schema_tables_bench_go_matched: generated/bench/paired/go/.stamp bench/tables/go/table_main.go bench/tables/go/shape_matched.go bench/paired/go/go.mod
@@ -1227,7 +1227,7 @@ test-go: tables-go-versioning
 # byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
 # and the floor, hash and lineage-merge files — and holds each row's two read
 # columns: NEW-READS-OLD lands every old value with §5.4's counters, and
-# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# OLD-REFUSES-NEW answers `layout_unknown` before any record, on the file's hash
 # alone (§5.3).
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's

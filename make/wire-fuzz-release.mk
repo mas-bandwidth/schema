@@ -18,8 +18,10 @@
 # roster, every arm at every seed, row by row BY NAME (tools/wirefuzzrelease
 # table) and is red on any RED row and on any row that is not there. A run is
 # green only when its summary proves it: at least one seed, at least one
-# mutant, no divergence, and no seed absent that
-# test/conformance/wire-fuzz-absent.txt does not hold by leg, arm and count. An arm the leg does not carry is named in
+# mutant, no divergence, and every absent seed held by name in the leg's
+# ledger under test/conformance/wire-absent/ (the harness stops on any other)
+# and read from the summary's `N ledgered seeds absent (<ledger>)` clause, an
+# absence in other words being RED. An arm the leg does not carry is named in
 # test/conformance/wire-fuzz-owed.txt with its reason; it still runs where the
 # leg has a driver, and an owed arm that has gone green is RED until its entry
 # is removed. A leg with no driver at all has both arms owed by name.

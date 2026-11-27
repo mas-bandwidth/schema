@@ -39,7 +39,7 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 
 	// The ebin is a variable so the negative control can run this same recipe
 	// over a sabotaged copy; its default is the real build.
-	const command = "ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
+	const command = "ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --leg elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
 	if !strings.Contains(run, command) {
 		t.Errorf("the %s recipe does not run %q:\n%s", target, command, recipe)
 	}

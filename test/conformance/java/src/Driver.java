@@ -990,7 +990,9 @@ public final class Driver {
     // scalardemo), test/tables/Scalars2.schema (package scalardemo2) and
     // examples-wide (package wide), so the codec is looked up
     // under the package, never under the unit key.
-    private static String variableUnitPackage(String unit) {
+    // TablesWireFuzz reads the same map, so the two drivers never disagree on a
+    // unit (W-ROSTER, docs/SPEC-CONFORMANCE.md).
+    static String variableUnitPackage(String unit) {
         switch (unit) {
             case "scalars": return "scalardemo";
             case "widelist": return "widelistdemo";

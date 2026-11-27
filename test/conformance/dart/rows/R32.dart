@@ -137,7 +137,7 @@ void main() {
         '(refused=${TableFixedRefusal.name(second.report.refused)})',
   );
 
-  // ---- the other name: a hash outside the lineage is layout_newer ----
+  // ---- the other name: a hash outside the lineage is layout_unknown ----
   var stranger = 0x5A5A5A5A5A5A5A5A;
   while (tableFixedSelect(evoRootFixedKnown, stranger) >= 0) {
     stranger++;
@@ -146,10 +146,10 @@ void main() {
       form3File(stranger, retired.layout, retired.layoutBytes, retired.recordBytes));
   check(
     newer.result == -1 &&
-        newer.report.refused == TableFixedRefusal.layoutNewer &&
+        newer.report.refused == TableFixedRefusal.layoutUnknown &&
         newer.report.layoutHash == stranger &&
         atDefaults(newer.row),
-    'a hash no lineage entry holds is layout_newer, not layout_unsupported '
+    'a hash no lineage entry holds is layout_unknown, not layout_unsupported '
         '(refused=${TableFixedRefusal.name(newer.report.refused)})',
   );
 
@@ -159,7 +159,7 @@ void main() {
       form3File(live.hash, live.layout, live.layoutBytes, live.recordBytes));
   check(
     liveLoad.report.refused != TableFixedRefusal.layoutUnsupported &&
-        liveLoad.report.refused != TableFixedRefusal.layoutNewer,
+        liveLoad.report.refused != TableFixedRefusal.layoutUnknown,
     'lineage index $evoRootFixedFloor (at the floor) is not refused as a layout '
         '(result=${liveLoad.result} refused=${TableFixedRefusal.name(liveLoad.report.refused)})',
   );

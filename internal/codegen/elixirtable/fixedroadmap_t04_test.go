@@ -191,17 +191,17 @@ func t04R10(t *testing.T) {
 // tests, retired by name": the four forward-read clamps (count across bounds,
 // range across versions, remap of an unknown variant to None, drop-and-count of
 // an unknown field) are retired — the cross-version half is now a refusal by
-// the lineage, `layout_newer`, before any record is decoded.
+// the lineage, `layout_unknown`, before any record is decoded.
 func t04R15(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "def select(known, floor, hash, layout) do", "R15 the reader matches the file's hash against the lineage")
-	t04Has(t, fixedRuntimeBody, "{:error, :layout_newer, hash}", "R15 a hash in no lineage entry is layout_newer")
-	t04Has(t, fixedRuntimeBody, "nil ->\n        {:error, :layout_newer, hash}", "R15 the refusal precedes any walk")
+	t04Has(t, fixedRuntimeBody, "{:error, :layout_unknown, hash}", "R15 a hash in no lineage entry is layout_unknown")
+	t04Has(t, fixedRuntimeBody, "nil ->\n        {:error, :layout_unknown, hash}", "R15 the refusal precedes any walk")
 	// THE FOUR FORWARD-READ CLAMPS ARE RETIRED: the cross-version half is the
 	// refusal above, so no plan entry clamps a count across a version, remaps an
 	// unknown variant to None, or drops-and-counts an unknown field FORWARD. The
 	// runtime's one count clamp is the reader's own bound within a version, and
 	// the one unknown census is the backward drop the landing rules count.
-	if strings.Contains(fixedRuntimeBody, "defp forward") || strings.Contains(fixedRuntimeBody, "layout_newer, report") {
+	if strings.Contains(fixedRuntimeBody, "defp forward") || strings.Contains(fixedRuntimeBody, "layout_unknown, report") {
 		t.Error("R15: a forward-read clamp survives the retired-runtime row")
 	}
 }

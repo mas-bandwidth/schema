@@ -17,7 +17,7 @@ ruby-wirefuzz-$(1)-$(2): build/conformance-harness build/conformance-ruby ruby-t
 	@set -eu; \
 	if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(RUBY_WIRE_FUZZ_DIR); log=$(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).log; \
-	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
+	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz --leg ruby $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(RUBY),$(RUBY_FLOOR)) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby' \
 	  --seed $(SEED) --n $(N) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).bin
 endef
@@ -28,7 +28,7 @@ ruby-wirefuzz-$(1)-$(2)-shard-$(3): build/conformance-harness build/conformance-
 	@set -eu; \
 	if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(RUBY_WIRE_FUZZ_DIR); log=$(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2)-shard-$(3).log; \
-	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
+	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz --leg ruby $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(RUBY),$(RUBY_FLOOR)) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby' \
 	  --seed $(SEED) --n $(N) --shard $(3) --shards $(words $(RUBY_WIRE_FUZZ_CI_SHARDS)) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2)-shard-$(3).bin; \
 	grep -q ', shard $(3)/$(words $(RUBY_WIRE_FUZZ_CI_SHARDS))' "$$$$log" || { echo 'wire-fuzz: wrong or missing shard identity'; exit 1; }

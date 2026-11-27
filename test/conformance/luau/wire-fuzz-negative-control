@@ -53,7 +53,7 @@ if [ "$planted" -lt 1 ]; then
 	exit 1
 fi
 
-if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
+if build/conformance-harness wire-fuzz --leg luau --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
 	--seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
 	cat "$out/log"
 	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2

@@ -844,7 +844,7 @@ tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixe
 # and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
 # PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
 # leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
-# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
+# counters, and OLD-REFUSES-NEW answers `layout_unknown` before any record, on the
 # file's hash alone (§5.3).
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
@@ -996,9 +996,9 @@ tables-java-variable-class:
 # green, which is the failure the Go and Rust legs' own controls are for.
 #
 # WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
-# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
-# that name is the entire answer — it is what tells an operator to ship a newer
-# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
+# the lock's lineage is refused BY THE NAME `layoutUnknown`, carrying the hash, and
+# that name is the entire answer: a hash this build's lineage does not hold
+# (§5.3 step 5), not a damaged file. The overlay puts `noLayout` there, the
 # name for a file with no layout at all. Every counter still reads refused, so
 # only a suite that checks the NAME can see it, and this control requires the
 # suite to go red and to say which name it wanted.
@@ -1024,10 +1024,10 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
 		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
+	@grep -q "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
 		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
-	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
+	@grep -m1 "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log
 	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
 
 # THE KEYED ACCESSOR, Java side (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5).
@@ -1849,9 +1849,9 @@ JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_h
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+	./build/conformance-harness wire-fuzz --leg java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
-	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+	./build/conformance-harness wire-fuzz --leg java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
@@ -1885,7 +1885,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 		{ echo 'NEGATIVE CONTROL: the Java canonical LEB128 sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WIRE_FUZZ_SABOTAGE)/classes \
 		$(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@if ./build/conformance-harness wire-fuzz \
+	@if ./build/conformance-harness wire-fuzz --leg java \
 			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_WIRE_FUZZ_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
@@ -2055,7 +2055,7 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_NODE_INDEX_SABOTAGE)/classes \
 		$(JAVA_NODE_INDEX_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@for arm in "" --retain; do \
-		if ./build/conformance-harness wire-fuzz $$arm \
+		if ./build/conformance-harness wire-fuzz --leg java $$arm \
 				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
 				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_table.bin --unit graphdemo --root Scene \
 				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \
@@ -2322,7 +2322,7 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			./build/conformance-harness wire-fuzz \
+			./build/conformance-harness wire-fuzz --leg cards-java \
 				--timeout $(CARDS_JAVA_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
 				>> build/cards-java-wire-fuzz.log 2>&1; \
@@ -2346,7 +2346,7 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			./build/conformance-harness wire-fuzz \
+			./build/conformance-harness wire-fuzz --leg cards-java \
 				--timeout $(CARDS_JAVA_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
 				>> build/cards-java-retain-fuzz.log 2>&1; \

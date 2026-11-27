@@ -1580,13 +1580,13 @@ tables-elixir-versioning: tables-fixedform-corpus
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
-# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_malformed`, on a file OUTSIDE the lineage, and the
+# §5's whole direction — a hash no lineage entry holds is `layout_unknown` (§5.3
+# step 5) — with `layout_malformed`, on a file OUTSIDE the lineage, and the
 # OLD-REFUSES-NEW column must go red naming it.
 .PHONY: tables-elixir-versioning-negative-control
 tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
-	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
+	@sed 's|{:error, :layout_unknown, hash}|{:error, :layout_malformed, hash}|' \
 		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
 	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -1599,7 +1599,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/elixir-versioning-nc/log; exit 1; \
 	fi
-	@grep -q 'owes layout_newer' build/elixir-versioning-nc/log || \
+	@grep -q 'owes layout_unknown' build/elixir-versioning-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/elixir-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
@@ -1610,7 +1610,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 # bytes and the file header — with no corpus file, so this target needs only
 # the compiled fixed-form beams. It is the leg's on-GENERATED-code assertion
 # that a held hash over different bytes is refused `:layout_malformed`, changes
-# nothing and is never `:layout_newer`.
+# nothing and is never `:layout_unknown`.
 .PHONY: tables-elixir-row-f12
 tables-elixir-row-f12: build/elixir-fixedform/.stamp
 	$(ELIXIR) test/conformance/elixir/rows/F12.exs
@@ -1619,7 +1619,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # its vectors from T.lineage_fixed_known/0 rather than the corpus: every byte of
 # the held layout bent in turn, the other lock entry's real layout under this
 # build's hash, and this build's layout under the older entry's hash, each
-# `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
+# `:layout_malformed`, plus the `:layout_unknown` contrast. It runs the leg's own
 # Elixir, so it is gated exactly like tables-elixir-versioning: the corpus skip
 # is a FAILURE under SCHEMA_REQUIRE_CORPUS=1.
 .PHONY: tables-elixir-t13
@@ -1833,7 +1833,7 @@ build/elixir-cards-ebin/.stamp: cards-elixir-generate test/conformance/elixir/dr
 # seed/mutant claim explicitly.
 cards-elixir-wire-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz \
+		./build/conformance-harness wire-fuzz --leg cards-elixir \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-elixir-wire-fuzz.log 2>&1; \
@@ -1852,7 +1852,7 @@ test-elixir: cards-elixir-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz \
+		./build/conformance-harness wire-fuzz --leg cards-elixir \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-elixir-retain-fuzz.log 2>&1; \
@@ -1885,7 +1885,7 @@ ELIXIR_WIRE_FUZZ_ALL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --leg elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \

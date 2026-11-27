@@ -295,10 +295,20 @@ scalarWrite = function(buf, at, f, val, order) {
   }
   if (f.shape == "enum") {
     local ordinal = 0;
-    local i = 0;
-    foreach (pair in f.variants) {
-      i++;
-      if (pair[0] == val) { ordinal = i; break; }
+    if (val != null) {
+      local i = 0;
+      ordinal = -1;
+      foreach (pair in f.variants) {
+        i++;
+        if (pair[0] == val) { ordinal = i; break; }
+      }
+      // A VALUE OUTSIDE THE VARIANT SET, OR A DEPRECATED VARIANT, IS REFUSED
+      // (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md §2.15, §7.6), never
+      // cooked as None
+      if (ordinal < 0 || f.variants[ordinal - 1][2]) {
+        if (_M.CookReason == null) _M.CookReason <- "invalid_value";
+        return false;
+      }
     }
     put(buf, at, ordinal, w, order);
     return;
@@ -478,6 +488,10 @@ _M.Cook <- function(T, save, root, value, buf, order) {
   local dataOffset = ciUp(HEADER(), lay.align);
   local total = dataOffset + lay.data + nodes.len() * 16;
   if (buf.len() < total) return false;
+  // THE WRITE RUNS INTO SCRATCH and reaches the caller's buffer only whole:
+  // a refusal anywhere in the walk leaves every byte of it untouched (§7.6)
+  local dst = buf;
+  buf = blob(total);
   for (local i = 0; i < total; i++) buf[i] = 0;
   put(buf, 0, MAGIC(), 8, order);
   put(buf, 8, BUILD_VERSION(), 8, order);
@@ -501,5 +515,6 @@ _M.Cook <- function(T, save, root, value, buf, order) {
     put(buf, dataOffset + lay.data + k * 16, lay.offsets[k], 8, order);
     put(buf, dataOffset + lay.data + k * 16 + 8, nd.id, 8, order);
   }
+  for (local i = 0; i < total; i++) dst[i] = buf[i];
   return true;
 };

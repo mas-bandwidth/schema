@@ -158,32 +158,7 @@ typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
 #ifndef CONFORMANCE_WRITEBOUNDS_ONLY
-    conformance_codecs_mapdemo,
-    conformance_codecs_listdemo,
-    conformance_codecs_armdemo,
-    conformance_codecs_tblw1,
-    conformance_codecs_tblw2,
-    conformance_codecs_messagedemo,
-    conformance_codecs_tblm1,
-    conformance_codecs_tblm2,
-    conformance_codecs_tbla1,
-    conformance_codecs_tbla2,
-    conformance_codecs_tblk1,
-    conformance_codecs_tblk2,
-    conformance_codecs_tblr1,
-    conformance_codecs_tblr2,
-    conformance_codecs_backenddemo,
-    conformance_codecs_vocabdemo,
-    conformance_codecs_vocab9demo,
-    conformance_codecs_tabledemo,
-    conformance_codecs_tblv1,
-    conformance_codecs_tblv2,
-    conformance_codecs_tblp1,
-    conformance_codecs_tblp3,
-    conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, conformance_codecs_tblprior,
-    conformance_codecs_tblsurf,
-    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions,
+    SCHEMA_CONFORMANCE_CODEC_UNITS,
 #endif
     conformance_codecs_writebounds
 };
@@ -1244,6 +1219,17 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+#endif
+#ifdef NDEBUG
+    /* C is an ASSERT LEG (docs/SPEC.md §5.1; the ruling `write-refusal`): its
+       write checks are schema_assert, and a release build carries none. A
+       driver built with NDEBUG answers no write-refusal row, so the harness
+       never credits a release build with a refusal. */
+    if ( strncmp( surface, "write-refusal", 13 ) == 0 )
+    {
+        fprintf( stderr, "driver: %s: this C driver was built with NDEBUG; an assert leg answers the write contract from its debug build only\n", surface );
+        return 1;
+    }
 #endif
     if ( strcmp( surface, "write-refusal" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }

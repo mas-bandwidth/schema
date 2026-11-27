@@ -24,6 +24,11 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HARNESS_FAKE_DRIVER"); mode != "" {
 		os.Exit(fakeDriver(mode, os.Args[1:]))
 	}
+	// THE TEST BINARY AS A FAKE WIRE LEG (wirefuzz_absent_test.go): it answers
+	// the roster and leaves.
+	if os.Getenv("SCHEMA_HARNESS_FAKE_WIRE_LEG") != "" {
+		os.Exit(fakeWireLeg(os.Args[1:]))
+	}
 	// THE TEST BINARY AS THE SYNTHETIC JSON-FUZZ LEG (jsonfuzz_test.go):
 	// `<exe> <manifest> <surface> <outdir>`; it exits on its own.
 	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") == "1" {

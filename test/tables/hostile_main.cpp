@@ -38,40 +38,26 @@
 // name reads the same rows — one corpus, one set of expectations, two gates
 // asking different things of it.
 //
+// THE ROOTS ARE THE CONFORMANCE DRIVER's ROSTER (test/conformance/cpp/codecs.h),
+// looked up by the row's (unit, root). This driver kept a hand-copied list of
+// roots until 2026-11-24, and every json-hostile row on a root the list did not
+// name went red here and nowhere else: 40 of the 316 rows on main at e5ef2e0. A
+// row whose (unit, root) the roster does not carry is a FAIL that names it,
+// never a skip, and the roster is held to the manifest on every pull request by
+// internal/ci TestCppCodecRosterCarriesEveryJsonHostileRoot.
+//
 // usage: schema_test_hostile <manifest> <bin-dir>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-#include "PackTable.h"
-#include "TablesTable.h"
-// the POINTERED unit: §16.7's rows name Scene, whose text reads into a builder
-#include "GraphTable.h"
-// the WIDE-SCALAR unit: the fixed-point family and the 128-bit integers (§3)
-#include "ScalarsTable.h"
-// the MESSAGE unit: §2.6's rows name ToolMessage, a union whose arms are tables
-#include "MessagesTable.h"
-// the STREAM unit: §2.1's array-of-pointers rows name Feed, a variable root
-#include "StreamTable.h"
-// the BYTE BUFFER unit: §2.5's rows name Catalog, whose text reads into a builder
-#include "AssetsTable.h"
-// the MAP unit: §2.8's text rows name Text, whose maps read into a builder
-#include "TextTable.h"
-// and its Depth and EdgeRow roots: the depth cap through a map and a union
-// object, and string(N) keys past 255 bytes (review 2026-11-21)
-#include "DepthTable.h"
-#include "RowsTable.h"
-// the LIST unit: §2.8's duplicate-key row names Army, a list of tables that hold maps
-#include "HoldersTable.h"
-#include "FeaturesTable.h"
+#include "codecs.h"
 
 static int failures = 0;
 static int checked = 0;
 
-using namespace tabledemo;
-
-static uint8_t * slurp( const char * path, long & size )
+static uint8_t * slurp_file( const char * path, long & size )
 {
     FILE * file = fopen( path, "rb" );
     if ( file == NULL ) { return NULL; }
@@ -109,15 +95,6 @@ static bool parse_owed( const char * text, bool & refused )
     return true;
 }
 
-// a WHOLE read: the plain name returned true and the report agrees, no damage
-// and no refusal reason. Each unit spells its own TableReport and its own `ok`,
-// and `ok` is the enum's zero in every one of them.
-template <typename R>
-static bool clean( const R & report )
-{
-    return !report.damaged && !report.refused && (int) report.refuse_reason == 0;
-}
-
 // first byte two wires differ at, or -1
 static long first_difference( const uint8_t * a, const uint8_t * b, long size )
 {
@@ -128,49 +105,56 @@ static long first_difference( const uint8_t * a, const uint8_t * b, long size )
     return -1;
 }
 
-// A FIXED root's codec: its file is FORM 3 (docs/SPEC-TABLES.md §3.4), which
-// is what `schema pack` writes for it, so the wire questions go through the
-// fixed-form names over one record. FixedLoad is the plain strict read of that
-// form: -1 refuses the whole load.
-#define FIXED_CODEC( codec, ns, type )                                                                      \
-    struct codec                                                                                            \
-    {                                                                                                       \
-        typedef ns::type Value;                                                                             \
-        typedef ns::TableReport Report;                                                                     \
-        static bool FromJson( Value & v, const char * t, int64_t n, Report * r )                            \
-        {                                                                                                   \
-            return ns::type##FromJson( v, t, n, r );                                                        \
-        }                                                                                                   \
-        static bool Load( Value & v, const uint8_t * b, int64_t n, Report * r )                             \
-        {                                                                                                   \
-            static ns::TableFixedEntry plan[4096];                                                          \
-            return ns::type##FixedLoad( &v, 1, b, n, plan, 4096, NULL, r ) == 1;                            \
-        }                                                                                                   \
-        static int64_t Measure( const Value & ) { return ns::type##FixedMeasure( 1 ); }                     \
-        static int64_t Save( const Value & v, uint8_t * o, int64_t n ) { return ns::type##FixedSave( &v, 1, o, n ); } \
+// question 2 for both classes: the bytes the text read saves are the bytes
+// schema pack wrote
+static void same_wire( const char * name, const uint8_t * saved, int64_t saved_size, const uint8_t * packed, long size )
+{
+    if ( saved_size != size )
+    {
+        printf( "FAIL %s: FromJson -> Save is %lld bytes, schema pack wrote %ld\n", name, (long long) saved_size, size );
+        failures++;
+        return;
     }
+    if ( memcmp( saved, packed, (size_t) size ) != 0 )
+    {
+        const long at = first_difference( packed, saved, size );
+        printf( "FAIL %s: one text, two wires — first difference at %ld: pack 0x%02x, FromJson 0x%02x\n",
+                name, at, at >= 0 ? packed[at] : 0, at >= 0 ? saved[at] : 0 );
+        failures++;
+    }
+}
 
-FIXED_CODEC( RootConfigCodec, tabledemo, RootConfig );
-FIXED_CODEC( PackConfigCodec, tabledemo, PackConfig );
-FIXED_CODEC( ToolMessageCodec, messagedemo, ToolMessage );
-FIXED_CODEC( SimStateCodec, scalardemo, SimState );
+// question 3's tail for both classes: what the backend read re-saves to pack's bytes
+static void same_resave( const char * name, const uint8_t * resaved, int64_t resaved_size, const uint8_t * packed, long size )
+{
+    if ( resaved_size != size )
+    {
+        printf( "FAIL %s: resave is %lld bytes, pack wrote %ld\n", name, (long long) resaved_size, size );
+        failures++;
+        return;
+    }
+    if ( memcmp( resaved, packed, (size_t) size ) != 0 )
+    {
+        const long at = first_difference( packed, resaved, size );
+        printf( "FAIL %s: resave differs at %ld: pack 0x%02x, Save 0x%02x\n",
+                name, at, at >= 0 ? packed[at] : 0, at >= 0 ? resaved[at] : 0 );
+        failures++;
+    }
+}
 
-// one fixed-root case. The questions:
-//   1. the same text through the generated FromJson gets the manifest's verdict;
-//   2. an accepted text saves to the bytes `schema pack` wrote, byte for byte;
-//   3. the generated read of pack's bytes accepts them WHOLE and re-saves them
-//      byte-identically: a text either engine calls clean is one the backend
-//      does not then refuse or cut down.
-template <typename C>
-static void check_case( const char * name, const char * text, long text_size,
-                        const uint8_t * packed, long size, bool refused )
+// A FIXED root (the roster's Codec rows): its file is FORM 3 (docs/SPEC-TABLES.md
+// §3.4), which is what `schema pack` writes for it, so the wire questions go
+// through the fixed-form names over one record.
+static void check_fixed( const Codec * codec, const char * name, const char * text, long text_size,
+                         const uint8_t * packed, long size, bool refused )
 {
     checked++;
 
     // 1. the same text, through the generated walk
-    typename C::Value from_text;
-    typename C::Report text_report;
-    const bool text_ok = C::FromJson( from_text, text, text_size, &text_report );
+    void * value = codec->make();
+    codec->reset( value );
+    Report text_report = Report();
+    const bool text_ok = codec->from_json( value, text, text_size, &text_report ) && !text_report.refused;
     if ( refused )
     {
         if ( text_ok )
@@ -180,7 +164,7 @@ static void check_case( const char * name, const char * text, long text_size,
         }
         return;
     }
-    if ( !text_ok || !clean( text_report ) )
+    if ( !text_ok )
     {
         printf( "FAIL %s: FromJson refused a text schema pack accepted\n", name );
         failures++;
@@ -189,98 +173,64 @@ static void check_case( const char * name, const char * text, long text_size,
     if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     // 2. and the bytes it saves are the bytes schema pack wrote
-    const int64_t from_text_size = C::Measure( from_text );
-    if ( from_text_size != size )
+    const int64_t from_text_size = codec->measure( value );
+    if ( from_text_size < 0 )
     {
-        printf( "FAIL %s: FromJson -> Save is %lld bytes, schema pack wrote %ld\n",
-                name, (long long) from_text_size, size );
+        printf( "FAIL %s: the backend cannot measure the value FromJson read\n", name );
         failures++;
     }
     else
     {
-        uint8_t * text_bytes = (uint8_t *) malloc( (size_t) from_text_size );
-        if ( C::Save( from_text, text_bytes, from_text_size ) != from_text_size ||
-             memcmp( text_bytes, packed, (size_t) size ) != 0 )
+        std::vector<uint8_t> saved( (size_t) from_text_size );
+        if ( codec->save( value, saved.data(), from_text_size ) != from_text_size )
         {
-            const long at = first_difference( packed, text_bytes, size );
-            printf( "FAIL %s: one text, two wires — first difference at %ld: pack 0x%02x, FromJson 0x%02x\n",
-                    name, at, at >= 0 ? packed[at] : 0, at >= 0 ? text_bytes[at] : 0 );
+            printf( "FAIL %s: the backend's Save refused the value FromJson read\n", name );
             failures++;
         }
-        free( text_bytes );
+        else
+        {
+            same_wire( name, saved.data(), from_text_size, packed, size );
+        }
     }
 
-    // 3. and the bytes read whole
-    typename C::Value value;
-    typename C::Report report;
-    if ( !C::Load( value, packed, size, &report ) || !clean( report ) )
+    // 3. and the bytes read whole, and re-save
+    codec->reset( value );
+    Report report = Report();
+    if ( !codec->load( value, packed, size, &report ) || report.refused )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
         failures++;
         return;
     }
-    const int64_t again = C::Measure( value );
-    if ( again != size )
+    const int64_t again = codec->measure( value );
+    if ( again < 0 )
     {
-        printf( "FAIL %s: resave is %lld bytes, pack wrote %ld\n", name, (long long) again, size );
+        printf( "FAIL %s: the backend cannot measure the value it loaded\n", name );
         failures++;
         return;
     }
-    uint8_t * resaved = (uint8_t *) malloc( (size_t) again );
-    if ( C::Save( value, resaved, again ) != again || memcmp( resaved, packed, (size_t) again ) != 0 )
+    std::vector<uint8_t> resaved( (size_t) again );
+    if ( codec->save( value, resaved.data(), again ) != again )
     {
-        const long at = first_difference( packed, resaved, size );
-        printf( "FAIL %s: resave differs at %ld: pack 0x%02x, Save 0x%02x\n",
-                name, at, at >= 0 ? packed[at] : 0, at >= 0 ? resaved[at] : 0 );
+        printf( "FAIL %s: the backend's Save refused the value it loaded\n", name );
         failures++;
+        return;
     }
-    free( resaved );
+    same_resave( name, resaved.data(), again, packed, size );
 }
 
-// a variable root's codec, named once so one check serves every unit whose
-// text reads into a builder and whose bytes load into a region
-#define REGION_CODEC( codec, ns, type )                                                                     \
-    struct codec                                                                                            \
-    {                                                                                                       \
-        typedef ns::type##Builder Builder;                                                                  \
-        typedef ns::type Root;                                                                              \
-        typedef ns::TableReport Report;                                                                     \
-        static bool FromJson( Builder & b, const char * t, int64_t n, Report * r )                          \
-        {                                                                                                   \
-            return ns::type##FromJson( b, t, n, r );                                                        \
-        }                                                                                                   \
-        static int64_t Measure( const Builder & b ) { return ns::type##Measure( b ); }                      \
-        static int64_t Measure( const Root * v ) { return ns::type##Measure( v ); }                         \
-        static int64_t Save( const Builder & b, uint8_t * o, int64_t n ) { return ns::type##Save( b, o, n ); } \
-        static int64_t Save( const Root * v, uint8_t * o, int64_t n ) { return ns::type##Save( v, o, n ); }   \
-        static int64_t LoadMeasure( const uint8_t * b, int64_t n ) { return ns::type##LoadMeasure( b, n ); } \
-        static const Root * Load( uint8_t * region, int64_t bytes, const uint8_t * b, int64_t n, Report * r ) \
-        {                                                                                                   \
-            return ns::type##Load( region, bytes, b, n, r );                                                \
-        }                                                                                                   \
-    }
-
-REGION_CODEC( SceneCodec, graphdemo, Scene );
-REGION_CODEC( ArmyCodec, listdemo, Army );
-REGION_CODEC( RootCodec, featurewitnesses, Root );
-REGION_CODEC( FeedCodec, streamdemo, Feed );
-REGION_CODEC( DepthCodec, mapdemo, Depth );
-REGION_CODEC( EdgeRowCodec, mapdemo, EdgeRow );
-REGION_CODEC( CatalogCodec, blobdemo, Catalog );
-
-// the same three questions over the VARIABLE class (docs/SPEC-TABLES.md §16.7):
-// the text reads into a BUILDER, the bytes it saves are compared with the pack's,
-// and the pack's bytes load into a REGION and re-save byte-identically
-template <typename C>
-static void check_region_case( const char * name, const char * text, long text_size,
-                               const uint8_t * packed, long size, bool refused )
+// A VARIABLE root (the roster's VarCodec rows, docs/SPEC-TABLES.md §16.7): the
+// text reads into a BUILDER whose save the roster hands back, and the pack's
+// bytes load into a REGION and re-save byte-identically.
+static void check_variable( const VarCodec * codec, const char * name, const char * text, long text_size,
+                            const uint8_t * packed, long size, bool refused )
 {
     checked++;
 
-    // 1. the same text, through the generated walk, into a builder
-    typename C::Builder from_text;
-    typename C::Report text_report;
-    const bool text_ok = C::FromJson( from_text, text, text_size, &text_report );
+    // 1. the same text, through the generated walk, into a builder; 2. its save
+    Report text_report = Report();
+    std::vector<uint8_t> saved;
+    const bool text_ok = codec->json_read( text, text_size, &text_report, saved ) && !text_report.refused;
     if ( refused )
     {
         if ( text_ok )
@@ -290,105 +240,40 @@ static void check_region_case( const char * name, const char * text, long text_s
         }
         return;
     }
-    if ( !text_ok || !clean( text_report ) )
+    if ( !text_ok )
     {
-        printf( "FAIL %s: FromJson refused a text schema pack accepted\n", name );
+        printf( "FAIL %s: FromJson refused a text schema pack accepted, or its builder would not save\n", name );
         failures++;
         return;
     }
     if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
-
-    // 2. and the bytes the builder saves are the bytes schema pack wrote
-    const int64_t from_text_size = C::Measure( from_text );
-    if ( from_text_size != size )
-    {
-        printf( "FAIL %s: FromJson -> Save is %lld bytes, schema pack wrote %ld\n",
-                name, (long long) from_text_size, size );
-        failures++;
-    }
-    else
-    {
-        uint8_t * text_bytes = (uint8_t *) malloc( (size_t) from_text_size );
-        if ( C::Save( from_text, text_bytes, from_text_size ) != from_text_size ||
-             memcmp( text_bytes, packed, (size_t) size ) != 0 )
-        {
-            const long at = first_difference( packed, text_bytes, size );
-            printf( "FAIL %s: one text, two wires — first difference at %ld: pack 0x%02x, FromJson 0x%02x\n",
-                    name, at, at >= 0 ? packed[at] : 0, at >= 0 ? text_bytes[at] : 0 );
-            failures++;
-        }
-        free( text_bytes );
-    }
+    same_wire( name, saved.data(), (int64_t) saved.size(), packed, size );
 
     // 3. and the bytes read whole, into a region, and re-save
-    const int64_t region_bytes = C::LoadMeasure( packed, size );
-    if ( region_bytes < 0 )
-    {
-        printf( "FAIL %s: the backend's measure refused bytes schema pack wrote\n", name );
-        failures++;
-        return;
-    }
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) ( region_bytes > 0 ? region_bytes : 1 ) );
-    typename C::Report report;
-    const typename C::Root * value = C::Load( region, region_bytes, packed, size, &report );
-    if ( value == NULL || !clean( report ) )
+    std::vector<uint8_t> region;
+    Report report = Report();
+    const void * root = codec->load( region, packed, size, &report );
+    if ( root == NULL || report.refused )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
         failures++;
-        free( region );
         return;
     }
-    const int64_t again = C::Measure( value );
-    if ( again != size )
+    const int64_t again = codec->measure( root );
+    if ( again < 0 )
     {
-        printf( "FAIL %s: resave is %lld bytes, pack wrote %ld\n", name, (long long) again, size );
-        failures++;
-        free( region );
-        return;
-    }
-    uint8_t * resaved = (uint8_t *) malloc( (size_t) again );
-    if ( C::Save( value, resaved, again ) != again || memcmp( resaved, packed, (size_t) again ) != 0 )
-    {
-        printf( "FAIL %s: resave differs from what pack wrote\n", name );
-        failures++;
-    }
-    free( resaved );
-    free( region );
-}
-
-// the MAP unit's Text root (docs/SPEC-TABLES.md §2.8, §16.2). Its rows today are
-// refused by the standard, so the engine writes no bytes for them and the
-// question is the text read's alone; a Text row that PACKS would owe the wire
-// and load questions too, and this driver says it does not ask them rather
-// than passing such a row on its verdict.
-static void check_text_case( const char * name, const char * text, long text_size,
-                             const uint8_t * packed, bool refused )
-{
-    checked++;
-
-    mapdemo::TextBuilder from_text;
-    mapdemo::TableReport text_report;
-    const bool text_ok = mapdemo::TextFromJson( from_text, text, text_size, &text_report );
-    if ( refused )
-    {
-        if ( text_ok )
-        {
-            printf( "FAIL %s: the manifest says the text is refused; FromJson accepted it\n", name );
-            failures++;
-        }
-        return;
-    }
-    if ( !text_ok || !clean( text_report ) )
-    {
-        printf( "FAIL %s: FromJson refused a text the manifest says reads\n", name );
+        printf( "FAIL %s: the backend cannot measure the value it loaded\n", name );
         failures++;
         return;
     }
-    if ( packed != NULL )
+    std::vector<uint8_t> resaved( (size_t) again );
+    if ( codec->save( root, resaved.data(), again ) != again )
     {
-        printf( "FAIL %s: a Text row that packs owes the wire and load checks, which this driver does not build\n", name );
+        printf( "FAIL %s: the backend's Save refused the value it loaded\n", name );
         failures++;
+        return;
     }
+    same_resave( name, resaved.data(), again, packed, size );
 }
 
 // One json-hostile row's marks (the MANIFEST header): `carried-by=<ports>
@@ -456,6 +341,7 @@ int main( int argc, char ** argv )
         printf( "FAIL: cannot open %s\n", argv[1] );
         return 1;
     }
+    int rows = 0;
     char line[1024];
     while ( fgets( line, sizeof( line ), manifest ) != NULL )
     {
@@ -464,11 +350,22 @@ int main( int argc, char ** argv )
             extra[8];
         if ( line[0] == '#' || line[0] == '\n' ) { continue; }
         if ( sscanf( line, "%31s", kind ) != 1 || strcmp( kind, "json-hostile" ) != 0 ) { continue; }
+        rows++;
         const int fields = sscanf( line, "%31s %127s %63s %63s %511s %63s %127s %127s %7s", kind, name, unit, root, tree,
                                    verdict, carried_mark, uncarried_mark, extra );
         if ( fields < 6 )
         {
             printf( "FAIL: a json-hostile row this gate cannot read: %s", line );
+            failures++;
+            continue;
+        }
+        // the roster first: a root it does not carry is this row's FAIL, by name
+        const VarCodec * variable = find_var_codec( unit, root );
+        const Codec * fixed = variable == NULL ? find_codec( unit, root ) : NULL;
+        if ( variable == NULL && fixed == NULL )
+        {
+            printf( "FAIL %s: the manifest names %s.%s, which the C++ codec roster (test/conformance/cpp/codecs.h) does not carry\n",
+                    name, unit, root );
             failures++;
             continue;
         }
@@ -492,7 +389,7 @@ int main( int argc, char ** argv )
         char path[640];
         snprintf( path, sizeof( path ), "%s/%s.json", tree, root );
         long text_size = 0;
-        uint8_t * text = slurp( path, text_size );
+        uint8_t * text = slurp_file( path, text_size );
         if ( text == NULL )
         {
             printf( "FAIL %s: cannot read %s\n", name, path );
@@ -504,7 +401,7 @@ int main( int argc, char ** argv )
         if ( !refused && packs )
         {
             snprintf( path, sizeof( path ), "%s/%s.bin", argv[2], name );
-            packed = slurp( path, size );
+            packed = slurp_file( path, size );
             if ( packed == NULL )
             {
                 printf( "FAIL %s: cannot read %s\n", name, path );
@@ -514,31 +411,21 @@ int main( int argc, char ** argv )
             }
         }
         const char * t = (const char *) text;
-        if ( strcmp( root, "RootConfig" ) == 0 ) { check_case<RootConfigCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "PackConfig" ) == 0 ) { check_case<PackConfigCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "ToolMessage" ) == 0 ) { check_case<ToolMessageCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "SimState" ) == 0 ) { check_case<SimStateCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Scene" ) == 0 ) { check_region_case<SceneCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Feed" ) == 0 ) { check_region_case<FeedCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Catalog" ) == 0 ) { check_region_case<CatalogCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Army" ) == 0 ) { check_region_case<ArmyCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Root" ) == 0 ) { check_region_case<RootCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Depth" ) == 0 ) { check_region_case<DepthCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "EdgeRow" ) == 0 ) { check_region_case<EdgeRowCodec>( name, t, text_size, packed, size, refused ); }
-        else if ( strcmp( root, "Text" ) == 0 ) { check_text_case( name, t, text_size, packed, refused ); }
-        else
-        {
-            printf( "FAIL %s: the manifest names root %s, which this driver does not build\n", name, root );
-            failures++;
-        }
+        if ( variable != NULL ) { check_variable( variable, name, t, text_size, packed, size, refused ); }
+        else { check_fixed( fixed, name, t, text_size, packed, size, refused ); }
         free( packed );
         free( text );
     }
     fclose( manifest );
 
-    if ( checked == 0 )
+    if ( rows == 0 )
     {
-        printf( "FAIL: the manifest named no case that packs\n" );
+        printf( "FAIL: the manifest named no json-hostile row\n" );
+        failures++;
+    }
+    if ( failures == 0 && checked != rows )
+    {
+        printf( "FAIL: %d json-hostile rows, %d checked\n", rows, checked );
         failures++;
     }
     if ( failures == 0 )
@@ -546,6 +433,6 @@ int main( int argc, char ** argv )
         printf( "pack hostile-value gate: %d trees agree on verdict and wire across both engines\n", checked );
         return 0;
     }
-    printf( "pack hostile-value gate: %d failure(s) over %d cases\n", failures, checked );
+    printf( "pack hostile-value gate: %d failure(s) over %d rows\n", failures, rows );
     return 1;
 }

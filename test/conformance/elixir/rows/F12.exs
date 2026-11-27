@@ -121,24 +121,24 @@ end
 f12.()
 
 # THE CONTRAST THAT MAKES F12 DISCRIMINATING: a hash in NO lineage entry is a
-# different answer — `:layout_newer`, the file's hash reported — which is why a
+# different answer — `:layout_unknown`, the file's hash reported — which is why a
 # held-hash-over-different-bytes must be its own name and not that one.
 unknown_hash = hash + 1
 unknown_file = R.file_header(unknown_hash, byte_size(layout)) <> layout <> record
 
 case FX1Fixed.fx_root_fixed_load(unknown_file) do
-  {:error, :layout_newer, newer_report} ->
-    Leg.ok("F12: an unknown hash is `layout_newer`, a different name")
+  {:error, :layout_unknown, newer_report} ->
+    Leg.ok("F12: an unknown hash is `layout_unknown`, a different name")
 
     Leg.eq(
-      "F12: and `layout_newer` reports the file's hash",
+      "F12: and `layout_unknown` reports the file's hash",
       newer_report.layout_hash,
       unknown_hash
     )
 
   other ->
     Leg.fail(
-      "F12: an unknown hash is `layout_newer`, a different name",
+      "F12: an unknown hash is `layout_unknown`, a different name",
       "got #{inspect(other, limit: 12)}"
     )
 end

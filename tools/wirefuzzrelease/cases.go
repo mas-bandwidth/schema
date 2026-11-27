@@ -9,7 +9,8 @@
 // no verdict and a file the index does not name are errors.
 //
 //	CASES.tsv  id <TAB> verdict <TAB> kind <TAB> spec <TAB> what the case is
-//	           verdict: pass, or red:<words the RED verdict must say>
+//	           verdict: pass, pass:<words the pass verdict must say>,
+//	                    or red:<words the RED verdict must say>
 //	           row spec:   <leg> <arm> <seed> <exit status> <n asked>
 //	           table spec: <leg> <row removed, or ->
 package main
@@ -42,8 +43,8 @@ func readGateCases(dir string) ([]gateCase, error) {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) != 5 || f[0] == "" || (f[1] != "pass" && (!strings.HasPrefix(f[1], "red:") || len(f[1]) == len("red:"))) || (f[2] != "row" && f[2] != "table") {
-			return nil, fmt.Errorf("%s/CASES.tsv:%d: a case is id, verdict (pass, or red:<what the verdict says>), kind (row or table), spec and what it is", dir, n+1)
+		if len(f) != 5 || f[0] == "" || !gateVerdict(f[1]) || (f[2] != "row" && f[2] != "table") {
+			return nil, fmt.Errorf("%s/CASES.tsv:%d: a case is id, verdict (pass, pass:<what the pass says>, or red:<what the verdict says>), kind (row or table), spec and what it is", dir, n+1)
 		}
 		if seen[f[0]] {
 			return nil, fmt.Errorf("%s/CASES.tsv:%d: the case %s is named twice", dir, n+1, f[0])
@@ -98,7 +99,7 @@ func runGateCase(dir string, c gateCase, scratch string) (string, error) {
 		if err := os.WriteFile(filepath.Join(work, base+".log"), log, 0o644); err != nil {
 			return "", err
 		}
-		if err := writeRow(f[0], f[1], f[2], work, none, none, false, status, 3, asked); err != nil {
+		if err := writeRow(f[0], f[1], f[2], work, none, false, status, 3, asked); err != nil {
 			return "", err
 		}
 		row, err := os.ReadFile(filepath.Join(work, base+".row"))
@@ -140,9 +141,10 @@ func holdGateVerdict(c gateCase, got string, err error) error {
 	if err != nil {
 		return err
 	}
-	if c.verdict == "pass" {
-		if !strings.HasPrefix(got, "pass (") {
-			return fmt.Errorf("the case owes a pass and came to: %s", got)
+	if c.verdict == "pass" || strings.HasPrefix(c.verdict, "pass:") {
+		want := strings.TrimPrefix(c.verdict, "pass:")
+		if !strings.HasPrefix(got, "pass (") || (want != "pass" && !strings.Contains(got, want)) {
+			return fmt.Errorf("the case owes a pass saying %q and came to: %s", want, got)
 		}
 		return nil
 	}
@@ -151,6 +153,17 @@ func holdGateVerdict(c gateCase, got string, err error) error {
 		return fmt.Errorf("the case owes a RED saying %q and came to: %s", want, got)
 	}
 	return nil
+}
+
+// gateVerdict says whether a CASES.tsv verdict is one the replay can hold a
+// case to: pass, or pass: or red: followed by the words the verdict says.
+func gateVerdict(v string) bool {
+	for _, p := range []string{"pass:", "red:"} {
+		if strings.HasPrefix(v, p) {
+			return len(v) > len(p)
+		}
+	}
+	return v == "pass"
 }
 
 func runGateCases(dir, scratch string) ([]string, error) {
