@@ -2652,16 +2652,17 @@ unit tblann4096 test/tables/announce4096/Announce.schema
 unit tblann4097 test/tables/announce4097/Announce.schema
 connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
 
-# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap counts every
-# container (root=0, depth 128 = 129 nested containers max; 130th refuses
-# malformed), while the write cap counts table/type values only. 128 Links put
-# `vals` at container depth 129 (130th container), so `surf_chain128_vals` is
-# `no-text` on the positive round-trip corpus and `surf_chain127_vals` (depth
-# 128 = 129 containers) is the positive round-trip witness; one Link past the
-# write cap is refused (`graph_chain_past_cap`, above). FL-16 (§2.3): a null
+# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap and the write cap
+# count the same containers (root=0, depth 128 = 129 nested containers max;
+# the 130th refuses), an empty leaf array included. 127 Links put the last
+# Link's `vals` at depth 128, so `surf_chain127_vals` writes and reads back,
+# the lawful side of the boundary; 128 Links put `vals` at depth 129, so
+# `surf_chain128_vals` is `no-text` and every leg's text writer refuses it
+# (`surf_chain128_vals_write`). FL-16 (§2.3): a null
 # `*T | required` is written as index 0 and reads back null; its twin points at a node.
 instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin no-text
 instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
+json-write-refusal surf_chain128_vals_write tblsurf Chain testdata/conformance/tables/wire/surf_chain128_vals.bin none
 instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
 instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
 instance surf_counted_full         tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin

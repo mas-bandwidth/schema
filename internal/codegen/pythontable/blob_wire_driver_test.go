@@ -139,7 +139,7 @@ func TestPythonWireBlobDriverNegativeControl(t *testing.T) {
 	for _, tc := range []struct{ name, path, before, after, diagnostic string }{
 		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "missing observed blob_shared refusal"},
 		{"writer", "generated/blobdemo/blobdemo/_schema/save.py", "if identity in ctx.blob_refs:", "if False:", "shared bytes writer accepted"},
-		{"driver", "surfaces/wire.py", "absent(outdir, case, err.reason)", "no_codec(outdir, case)", "driver dropped a public refusal"},
+		{"driver", "surfaces/wire.py", "write_bytes(outdir, case, b\"refused\\n\")", "no_codec(outdir, case)", "missing observed blob_shared refusal"},
 		{"driver-missing", "surfaces/wire.py", "        no_codec(outdir, case)\n        return", "        raise AssertionError(case)", "driver treated a missing root as a refusal or an error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
