@@ -567,9 +567,11 @@ reason, and `compiler/porting_test.go` holds it to the tree:
   counting over its own allocator), M11 (a Lobster class has no layout to
   assert), M17 (no caller-visible arena: a blob is one VM string at its exact
   size).
-- **❌ not yet:** every other technique, each citing its own carry-across
-  issue, titled `<technique>: carry to lobster` (#2246 to #2272, filed
-  2026-10-28), and saying what the port has today.
+- **❌ not yet:** every other technique, each citing the docs/roadmap.sexp
+  entry that carries it (`port/lobster/open/*`, or the variable-tables or
+  bench entry the work belongs to; the carry-across issues #2246 to #2272
+  filed 2026-10-28 moved there 2026-11-27), and saying what the port has
+  today.
 
 **THE STRICT GATE** (`make/schema-lobster-generated-strict-gate.mk`, J4).
 Lobster has no separate linter: its compiler type-checks every function of

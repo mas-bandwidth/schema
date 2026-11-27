@@ -5190,6 +5190,17 @@ int surfaceJsonWrite(String outDir) {
             outText = graphdemo.sceneToJson(v);
           }
           break;
+        case 'tblsurf Chain':
+          // a lawful wire whose text puts an empty `[]` past the depth cap:
+          // the write refuses it (docs/SPEC-TABLES.md §16.14 W2)
+          final r = surfw.TableWireReport();
+          final v = surfw.chainWireLoad(wire, r);
+          if (r.refused) {
+            outText = 'refused\n';
+          } else {
+            outText = surfw.chainToJson(v);
+          }
+          break;
         case 'tabledemo ProfileConfig':
           final fx = _fixedLoadOne(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.profileConfigFixedLoad);
           if (fx == null) return 1;

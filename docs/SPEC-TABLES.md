@@ -11443,6 +11443,15 @@ Two consequences follow, and each is a rule:
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body
   CONTAINS, and a retained field is content.
+- **A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES, AND NOTHING ELSE.**
+  Retention adds content; it never changes the test for a field with none.
+  A FIXED ARRAY OF UNIONS whose every element is None is left out, as §3
+  leaves out any fixed array at its defaults: a None element has no arm, so
+  no body under it can carry a retained record, and there is nothing for the
+  field to carry. A retaining save that tested the list for emptiness wrote
+  the field as its bound of Nones, because a fixed array is always its bound
+  long (Java, found by the full nightly 45130315968 on
+  `messagedemo.ToolEnvelope`; SPEC-CONFORMANCE.md §7).
 - **A retained id enters the file's ID TABLE in first-use order** (§3), at the
   point the walk reaches it, which is after its body's own fields. An id
   already in the table takes that entry and is never appended twice, exactly as
@@ -16900,8 +16909,10 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -17121,8 +17132,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18326,7 +18338,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
@@ -18354,13 +18366,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 

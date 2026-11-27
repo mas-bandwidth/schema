@@ -1146,9 +1146,11 @@ jobs:
           PACKAGES: ${{ needs.plan.outputs.lint_packages }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           export PATH="$HOME/sdk/bin:$PATH"
           command -v golangci-lint >/dev/null 2>&1 || {
             echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
@@ -1239,12 +1241,11 @@ jobs:
           ELIXIR_HANDOFF: ${{ contains(needs.plan.outputs.verify_legs, '"elixir"') }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
-          if [ -f "$HOME/sdk/env.sh" ]; then
-            . "$HOME/sdk/env.sh"
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           export PATH="$HOME/sdk/bin:$PATH"
           case "$LANG_ROW" in
             c)
@@ -1493,9 +1494,11 @@ jobs:
           ROW_RUN: ${{ matrix.run }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           echo "nightly-fast $ROW_NAME: $ROW_RUN"
           eval "$ROW_RUN"
 
@@ -1612,9 +1615,11 @@ jobs:
       - name: make verify-${{ matrix.leg }}-${{ matrix.gate }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           case "${{ matrix.leg }}" in
             rust)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             dart)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" DART=dart ;;
@@ -1687,9 +1692,11 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
       - name: make verify-elixir-conformance
         run: |
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           : "${ELIXIR_AGREEMENT_ARTIFACTS:?missing agreement artifact directory}"
           make verify-elixir-conformance BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
       - name: the skip ledger — every skip this row's go test recorded, by reason
@@ -1735,7 +1742,7 @@ jobs:
           VERIFY: ${{ contains(needs.plan.outputs.verify_legs, '"dart"') }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           options=()
           if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
           python3 make/conformance-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
@@ -1795,7 +1802,7 @@ jobs:
           ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
           if [ "$ACCOUNT" != true ]; then
             make -j"$(nproc)" -o build/conformance-dart _conformance-corpus-dart DART=dart
@@ -1854,7 +1861,7 @@ jobs:
       - name: make verify-cpp-conformance-${{ matrix.part }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           make "verify-cpp-conformance-${{ matrix.part }}"
       - name: the skip ledger
         if: always()
@@ -1909,7 +1916,7 @@ jobs:
       - name: verify the same-run Dart build and run the fuzz gate
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
           make -j"$(nproc)" -o build/conformance-dart _verify-dart-fuzz DART=dart
       - name: the skip ledger
@@ -1959,7 +1966,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
       - name: Build the C++ conformance driver and cook companion
         run: |
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp --prebuilt-compiler
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1999,7 +2006,7 @@ jobs:
           digest-mismatch: error
       - name: Verify the same-run C++ build and account for inputs
         run: |
-          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi; done
           python3 make/conformance-handoff.py consume "$RUNNER_TEMP/cpp-conformance/cpp-conformance.tar.gz" --leg cpp
           go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
           # Pass -o to the recursive make only after verifying the executables.
@@ -2115,9 +2122,11 @@ jobs:
           ACCOUNT_CONTROL: ${{ matrix.account_control }}
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
           vars=()
           case "$LEG" in
@@ -3157,9 +3166,11 @@ jobs:
       - name: schema-test run --group pr
         run: |
           set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
+          # the SDK env.sh nova-fleet sdk-toolchain writes: ~/sdk/env.sh is its contract (a link to
+          # /opt/nova/sdk on most hosts, a real directory on captain), /opt/nova/sdk the old path
+          for sdk_env in "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
+            if [ -f "$sdk_env" ]; then . "$sdk_env"; break; fi
+          done
           go run ./tools/schema-test run --group pr
 
   verdict:

@@ -1274,6 +1274,9 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
         const bench_table_union_info_t * arms = f->arms;
         uint64_t tag = bench_table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
         const char * arm;
+        /* the union's object, None's {} included, is a container the read
+           counts, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( tag == 0 )
         {
             bench_table_json_raw( out, "{}", 2 );
@@ -1330,6 +1333,9 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
         uint64_t bits = bench_table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
+        /* a flags value is an array of names, a container the read counts,
+           [] included, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( bits == 0 )
         {
             bench_table_json_raw( out, "[]", 2 );
@@ -1450,6 +1456,9 @@ static SCHEMA_UNUSED int bench_table_json_write_field( bench_table_json_out_t * 
            the key i + 1: nothing is stored for None, so nothing is written for it. */
         int first = 1;
         int64_t slot;
+        /* the keyed object, an empty {} included, is a container the read
+           counts, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         bench_table_json_put( out, '{' );
         for ( slot = 0; slot < f->array_bound; slot++ )
         {
@@ -1479,6 +1488,9 @@ static SCHEMA_UNUSED int bench_table_json_write_field( bench_table_json_out_t * 
     {
         int32_t count = bench_table_json_count( base, f );
         int32_t i;
+        /* the array, an empty [] included, is a container the read counts,
+           so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( f->text_total > 0 && schema_bench_table_json_text_bytes_( storage, count, f ) > f->text_total )
         {
             return 0;
