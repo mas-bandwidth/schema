@@ -6869,7 +6869,11 @@ well as about work, and this is where that memory lives.
   after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.** The bound
+  is applied as the entries are read: once the bound's count of entries is
+  placed, ANOTHER ENTRY STARTING is `vocabulary_too_large`, and that entry and
+  every byte after it is neither decoded nor compared, so damage past the
+  bound never turns the verdict into a malformed announcement. The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
