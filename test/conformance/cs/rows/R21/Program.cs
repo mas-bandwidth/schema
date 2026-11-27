@@ -23,8 +23,12 @@ using NewEntry = Vnew_float_widen.TableFixedEntry;
 // this pair - copy, widenf, copy - through its own TableFixedWire.Run, the R29
 // pattern (a bare pair of generated units has no lineage, so the plan is
 // spelled here, one entry per field, slot indices the reader's). A non-finite
-// vector is refused by the writer, and a body carrying one by hand is widened by
-// the run into a value the reader's finite pass names.
+// vector is the writer's precondition, held by a DEBUG ASSERT over the writer's
+// own finite pass and by no release check (C# writes check by debug assert
+// only, the house rule for C, C++, C#, Rust, Java and Dart), so the row holds
+// that pass, FloatWidenFixedFiniteBody, to name the field rather than calling
+// the writer into its assert; a body carrying one by hand is widened by the run
+// into a value the reader's finite pass names.
 
 class Program
 {
@@ -63,11 +67,10 @@ class Program
         var w = new Old.FloatWiden();
         Old.Schema.TableReset(w);
         w.V = BitConverter.UInt32BitsToSingle(bits);
-        byte[] file = new byte[Old.Schema.FloatWidenFixedMeasure(1)];
-        Array.Fill(file, (byte)0xA5);
-        if (Old.Schema.FloatWidenFixedSave(w, file) != -1 || !Array.TrueForAll(file, b => b == 0xA5))
+        string writerWhy = Old.Schema.FloatWidenFixedFiniteBody(w);
+        if (writerWhy != "FloatWiden.v")
         {
-            Console.WriteLine("FAIL: " + what + ": the writer did not refuse the non-finite f32");
+            Console.WriteLine($"FAIL: {what}: the writer's finite pass (its debug-assert precondition) answered {writerWhy ?? "null"}, want FloatWiden.v");
             ok = false;
         }
         var back = Run(Body(bits), out New.TableReport r);

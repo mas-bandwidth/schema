@@ -80,13 +80,15 @@ public final class R26 {
             TableFixed.KnownLayout bad = new TableFixed.KnownLayout(
                     0xDEADBEEFL, garbage, garbage.length, 50);
 
-            // Call lineagePlans: the reader is GunnerConfigFixed, and the
+            // Call lineagePlans as the generated initializer does (the
+            // reader's body size sizes the prefill): the reader is GunnerConfigFixed, and the
             // garbage entry is NOT the identity (hash != GunnerConfigFixed.hash).
             TableFixed.Plan[] plans = TableFixed.lineagePlans(
                     new TableFixed.KnownLayout[] { bad },
                     GunnerConfigFixed.layout,
                     GunnerConfigFixed.dest,
-                    GunnerConfigFixed.hash);
+                    GunnerConfigFixed.hash,
+                    GunnerConfigFixed.bodyBytes);
             check(plans.length == 1,
                     "lineagePlans returned 1 plan for 1 entry");
             check(plans[0] != null,
