@@ -1,0 +1,5 @@
+# Message-fuzz roster roots (test/conformance/harness/messagefuzz.go) the Rust leg answers
+# nothing for, so no mutant of them runs. Exact set (docs/SPEC-CONFORMANCE.md
+# MF-ROSTER). Measured at main 0fd0920029 on vision, 2026-11-24.
+backenddemo.Envelope	owed: the Rust driver (test/conformance/rust/driver) answers no message-form case for Envelope, so the harness knows 0 of its messages and no mutant runs
+tbla1.Root	owed: the Rust driver (test/conformance/rust/driver) answers no message-form case for tbla1 Root, so the harness knows 0 of its messages and no mutant runs

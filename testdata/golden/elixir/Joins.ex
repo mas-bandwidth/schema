@@ -247,6 +247,10 @@ defmodule Example.Joins do
   """
   @spec write_arms_agree!(Example.ArmsAgree.t()) :: binary()
   def write_arms_agree!(value) do
+    if not is_struct(value, Example.ArmsAgree) do
+      raise ArgumentError, "value is not a ArmsAgree"
+    end
+
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -263,6 +267,11 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
     data = <<>>
@@ -432,6 +441,10 @@ defmodule Example.Joins do
   """
   @spec write_arms_disagree!(Example.ArmsDisagree.t()) :: binary()
   def write_arms_disagree!(value) do
+    if not is_struct(value, Example.ArmsDisagree) do
+      raise ArgumentError, "value is not a ArmsDisagree"
+    end
+
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -448,6 +461,11 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
     data = <<>>
@@ -621,6 +639,10 @@ defmodule Example.Joins do
   """
   @spec write_arm_empty!(Example.ArmEmpty.t()) :: binary()
   def write_arm_empty!(value) do
+    if not is_struct(value, Example.ArmEmpty) do
+      raise ArgumentError, "value is not a ArmEmpty"
+    end
+
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -637,6 +659,11 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
     data = <<>>
@@ -797,6 +824,10 @@ defmodule Example.Joins do
   """
   @spec write_arms_nested!(Example.ArmsNested.t()) :: binary()
   def write_arms_nested!(value) do
+    if not is_struct(value, Example.ArmsNested) do
+      raise ArgumentError, "value is not a ArmsNested"
+    end
+
     %{lead: value_lead, outer: value_outer, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -813,12 +844,21 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x7
     scratch = v
+
+    if not is_boolean(value_outer) do
+      raise ArgumentError, "value.outer is not a boolean"
+    end
+
     v = if value_outer, do: 1, else: 0
     scratch = scratch ||| v <<< 3
     data = <<>>
 
     {data, scratch, scratch_bits} =
       if value_outer do
+        if not is_boolean(value.inner) do
+          raise ArgumentError, "value.inner is not a boolean"
+        end
+
         v = if value.inner, do: 1, else: 0
         scratch = scratch ||| v <<< 4
 
@@ -1049,6 +1089,10 @@ defmodule Example.Joins do
   """
   @spec write_arm_align!(Example.ArmAlign.t()) :: binary()
   def write_arm_align!(value) do
+    if not is_struct(value, Example.ArmAlign) do
+      raise ArgumentError, "value is not a ArmAlign"
+    end
+
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -1065,12 +1109,21 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
     data = <<>>
 
     {data, scratch} =
       if value_flag do
+        if not is_binary(value.s) do
+          raise ArgumentError, "value.s is not a binary"
+        end
+
         if byte_size(value.s) > 4 do
           raise ArgumentError, "value.s longer than the declared 4-byte bound"
         end
@@ -1254,6 +1307,10 @@ defmodule Example.Joins do
   """
   @spec write_arm_array!(Example.ArmArray.t()) :: binary()
   def write_arm_array!(value) do
+    if not is_struct(value, Example.ArmArray) do
+      raise ArgumentError, "value is not a ArmArray"
+    end
+
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -1270,12 +1327,21 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
     data = <<>>
 
     {data, scratch, scratch_bits} =
       if value_flag do
+        if not is_list(value.items) do
+          raise ArgumentError, "value.items is not a list"
+        end
+
         n = length(value.items)
 
         if n > 3 do
@@ -1448,6 +1514,10 @@ defmodule Example.Joins do
   """
   @spec write_narrow!(Example.Narrow.t()) :: binary()
   def write_narrow!(value) do
+    if not is_struct(value, Example.Narrow) do
+      raise ArgumentError, "value is not a Narrow"
+    end
+
     if not is_integer(value.n) do
       raise ArgumentError, "value.n is not an integer"
     end
@@ -1552,6 +1622,10 @@ defmodule Example.Joins do
   """
   @spec write_wide!(Example.Wide.t()) :: binary()
   def write_wide!(value) do
+    if not is_struct(value, Example.Wide) do
+      raise ArgumentError, "value is not a Wide"
+    end
+
     if not is_integer(value.w) do
       raise ArgumentError, "value.w is not an integer"
     end
@@ -1680,10 +1754,10 @@ defmodule Example.Joins do
         nil ->
           0
 
-        {:narrow, _} ->
+        {:narrow, %Example.Narrow{}} ->
           1
 
-        {:wide, _} ->
+        {:wide, %Example.Wide{}} ->
           2
 
         value_other ->
@@ -1860,6 +1934,10 @@ defmodule Example.Joins do
   """
   @spec write_holds_uneven!(Example.HoldsUneven.t()) :: binary()
   def write_holds_uneven!(value) do
+    if not is_struct(value, Example.HoldsUneven) do
+      raise ArgumentError, "value is not a HoldsUneven"
+    end
+
     %{lead: value_lead, u: value_u, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -1882,10 +1960,10 @@ defmodule Example.Joins do
         nil ->
           0
 
-        {:narrow, _} ->
+        {:narrow, %Example.Narrow{}} ->
           1
 
-        {:wide, _} ->
+        {:wide, %Example.Wide{}} ->
           2
 
         value_u_other ->
@@ -2092,6 +2170,10 @@ defmodule Example.Joins do
   """
   @spec write_arr_uneven!(Example.ArrUneven.t()) :: binary()
   def write_arr_uneven!(value) do
+    if not is_struct(value, Example.ArrUneven) do
+      raise ArgumentError, "value is not a ArrUneven"
+    end
+
     %{lead: value_lead, items: value_items, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -2108,6 +2190,11 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_list(value_items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value_items)
 
     if n > 3 do
@@ -2238,6 +2325,10 @@ defmodule Example.Joins do
   """
   @spec write_regain_after_align!(Example.RegainAfterAlign.t()) :: binary()
   def write_regain_after_align!(value) do
+    if not is_struct(value, Example.RegainAfterAlign) do
+      raise ArgumentError, "value is not a RegainAfterAlign"
+    end
+
     %{
       lead: value_lead,
       items: value_items,
@@ -2262,6 +2353,11 @@ defmodule Example.Joins do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_list(value_items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value_items)
 
     if n > 3 do
@@ -2274,6 +2370,10 @@ defmodule Example.Joins do
 
     {data, scratch, scratch_bits} =
       wZregain_after_alignZitems(value_items, <<>>, scratch, scratch_bits)
+
+    if not is_binary(value_s) do
+      raise ArgumentError, "value.s is not a binary"
+    end
 
     if byte_size(value_s) > 4 do
       raise ArgumentError, "value.s longer than the declared 4-byte bound"
@@ -2608,10 +2708,10 @@ defmodule Example.Joins do
         nil ->
           0
 
-        {:narrow, _} ->
+        {:narrow, %Example.Narrow{}} ->
           1
 
-        {:wide, _} ->
+        {:wide, %Example.Wide{}} ->
           2
 
         e_other ->

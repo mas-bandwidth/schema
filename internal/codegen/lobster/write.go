@@ -23,7 +23,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func init() { Register("write", writePart) }
@@ -179,6 +179,9 @@ func emitWriteField(g *Gen, c *writeCtx, val string, f *ir.Field, indent string)
 		g.Pf("%ss.serialize_bytes(%s, %d) // [N]uint8 at a byte-aligned position: one bulk copy, wire-identical to the per-byte loop (SPEC §4.7)\n", indent, val, f.ArrayBound)
 		return
 	}
+	// a [N]T holds exactly N values: any other count is refused, never cut
+	// or padded to N (SPEC §5.1, SF-20), by the packet writer's assert
+	g.Pf("%sassert length(%s) == %d // a [N]T holds exactly N values (SPEC §5.1)\n", indent, val, f.ArrayBound)
 	g.Pf("%sfor(%d) _i:\n", indent, f.ArrayBound)
 	emitWriteElem(g, val, f, indent+"    ")
 }

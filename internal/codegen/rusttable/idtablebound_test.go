@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const idTableBoundProbeSchema = `package probe
@@ -170,7 +170,8 @@ func TestRustIdTableReaderContract(t *testing.T) {
 
 	for _, fnSig := range []string{
 		"fn packet_load_inner(",
-		"pub fn packet_load_measure(",
+		// the public measure delegates to its walk, which reads the id table
+		"fn packet_load_measure_walk(",
 	} {
 		body, err := extractRustFn(src, fnSig)
 		if err != nil {

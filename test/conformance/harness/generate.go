@@ -30,10 +30,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type units struct {
@@ -291,6 +291,9 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		return err
 	}
 	if err := generate1122(u, m); err != nil {
+		return err
+	}
+	if err := generateRetainRefusals(u, m, jsonDir); err != nil {
 		return err
 	}
 

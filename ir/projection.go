@@ -73,7 +73,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // ProjectionVersion is the rendering's own version. BUMPING IT MOVES EVERY

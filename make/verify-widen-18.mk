@@ -2,14 +2,20 @@
 # and Canonical-Write Input Permutations (Pillar #5), wired into
 # `_verify-<lang>-bench` across all 9 compiled legs and all 9 VM legs.
 #
-#   make verify-bitphase-<lang>              66 vectors across bit phases 0,1,7,31,32,33,56,63 + EmptyZero
+#   make verify-bitphase-<lang>              66 vectors across bit phases 0,1,7,31,32,33,56,63 + EmptyZero,
+#                                            CfDecode read at all 11,001 indices (SPEC §4.6's decode), and the
+#                                            float32 literal case: F32Const, F32Lit's defaults, both float32 ends written
+#                                            then the align-arrays family (--family align-arrays): every
+#                                            leg writes align-bearing array elements back to exact bytes
 #   make verify-canonical-<lang>             6 permutations (3 JSON + 3 native) of unsorted maps & distinct equal blobs
-#   make verify-bitphase-negative-control    sabotage unaligned JS 32-bit read shift -> fails bitphase immediately
+#   make verify-bitphase-negative-control    sabotage unaligned JS 32-bit read shift -> fails bitphase immediately;
+#                                            sabotage the JS flat tier's float32 literals -> fails the decode case;
+#                                            sabotage the JS stream tier's float32 literals -> fails the f32lit case
 #   make verify-canonical-negative-control   sabotage JS map entry sort -> fails canonical immediately
 
 VERIFY_ALL_18_LEGS := cpp c cs unity go rust java dart elixir js python ruby lua luau squirrel moo goose lobster
 
-build/verify-bitphase-bin: $(wildcard test/verify-bitphase/*.go) test/verify-bitphase/cpp/oracle.cpp test/verify-bitphase/BitPhase.schema $(GO_SOURCES)
+build/verify-bitphase-bin: $(wildcard test/verify-bitphase/*.go) test/verify-bitphase/cpp/oracle.cpp test/verify-bitphase/cpp/verify.cpp test/verify-bitphase/BitPhase.schema test/verify-bitphase/align-arrays/BitPhase.schema $(GO_SOURCES)
 	@mkdir -p build
 	go build -o $@.$$$$ ./test/verify-bitphase && mv $@.$$$$ $@
 
@@ -138,6 +144,10 @@ verify-bitphase-$(1): build/verify-bitphase-bin verify-bitphase-cases build/veri
 		./build/verify-bitphase-bin --lang $(1) \
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-bitphase --corpus build/verify-bitphase/corpus
+	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-bitphase/cargo-align-$(1)" \
+		./build/verify-bitphase-bin --lang $(1) --family align-arrays \
+		--schema ./bin/schema --schema-moo ./build/schema-moo \
+		--work build/verify-bitphase
 
 verify-canonical-$(1): build/verify-canonical-bin verify-canonical-cases build/verify-canonical/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-canonical/cargo-$(1)" \
@@ -186,6 +196,48 @@ verify-bitphase-negative-control: verify-toolchain-js build/verify-bitphase-bin 
 	@grep -q 'FAILED:' build/verify-bitphase-nc/run.log || \
 		{ echo "NEGATIVE CONTROL FAILED: unexpected bitphase failure log:" >&2; cat build/verify-bitphase-nc/run.log >&2; exit 1; }
 	@echo "verify-bitphase-negative-control: unaligned bit-shift sabotage caught immediately by verify-bitphase"
+	@mkdir -p build/verify-bitphase-nc/cfdecode
+	go run ./tools/sabotage -name verify-bitphase-cfdecode-js-flat -out build/verify-bitphase-nc/cfdecode/flat.gotext internal/codegen/js/flat.go
+	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/verify-bitphase-nc/cfdecode/flat.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-bitphase-nc/cfdecode/overlay.json
+	go build -overlay=build/verify-bitphase-nc/cfdecode/overlay.json -o build/verify-bitphase-nc/cfdecode/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/verify-bitphase-bin --lang js --schema ./build/verify-bitphase-nc/cfdecode/schema --work build/verify-bitphase-nc/cfdecode/work --corpus build/verify-bitphase/corpus > build/verify-bitphase-nc/cfdecode/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the flat tier's double min passed the compressed-float decode case" >&2; exit 1; fi
+	@grep -Fq 'tier flat decodes 2535 of 11001 indices off SPEC §4.6' build/verify-bitphase-nc/cfdecode/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected cfdecode failure log:" >&2; cat build/verify-bitphase-nc/cfdecode/run.log >&2; exit 1; }
+	@if grep -Fq 'tier stream' build/verify-bitphase-nc/cfdecode/run.log; then \
+		echo "NEGATIVE CONTROL FAILED: the flat-tier sabotage moved the stream tier:" >&2; cat build/verify-bitphase-nc/cfdecode/run.log >&2; exit 1; fi
+	@echo "verify-bitphase-negative-control: the flat tier's double min reds the compressed-float decode case at 2,535 indices, the stream tier stays green"
+	@mkdir -p build/verify-bitphase-nc/f32lit
+	go run ./tools/sabotage -name verify-bitphase-f32lit-js -out build/verify-bitphase-nc/f32lit/js.gotext internal/codegen/js/js.go
+	@printf '{"Replace":{"%s/internal/codegen/js/js.go":"%s/build/verify-bitphase-nc/f32lit/js.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-bitphase-nc/f32lit/overlay.json
+	go build -overlay=build/verify-bitphase-nc/f32lit/overlay.json -o build/verify-bitphase-nc/f32lit/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/verify-bitphase-bin --lang js --schema ./build/verify-bitphase-nc/f32lit/schema --work build/verify-bitphase-nc/f32lit/work --corpus build/verify-bitphase/corpus > build/verify-bitphase-nc/f32lit/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the float32 constants spelled as their shortest decimals passed the float32 literal case" >&2; exit 1; fi
+	@for owed in 'tier stream const reads 3fb999999999999a' 'tier stream default-e reads bfd3333333333333' \
+		'tier stream write-min: the write refused float32 be99999a' 'tier stream write-max: the write refused float32 3e99999a' \
+		'tier flat const reads 3fb999999999999a'; do \
+		grep -Fq "$$owed" build/verify-bitphase-nc/f32lit/run.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the f32lit failure does not say '$$owed':" >&2; cat build/verify-bitphase-nc/f32lit/run.log >&2; exit 1; }; \
+	done
+	@if grep -Fq 'tier flat write-' build/verify-bitphase-nc/f32lit/run.log || grep -Fq 'cfdecode' build/verify-bitphase-nc/f32lit/run.log; then \
+		echo "NEGATIVE CONTROL FAILED: the stream-tier literal sabotage moved the flat tier's writes or the decode case:" >&2; cat build/verify-bitphase-nc/f32lit/run.log >&2; exit 1; fi
+	@echo "verify-bitphase-negative-control: the float32 shortest decimals red the float32 literal case (constant and defaults on both tiers, both stream-tier writes), the flat tier's writes and the decode case stay green"
+
+# Removes the one call that writes the Elixir write loop's scratch zero before
+# the next element (internal/codegen/elixir/functions.go, writeClause; F1 of
+# the 2026-11-24 coverage audit) and proves the align-arrays family fails on
+# Elixir, naming the audit's fixed-array row.
+.PHONY: verify-bitphase-align-negative-control
+verify-bitphase-align-negative-control: toolchain-elixir build/verify-bitphase-bin
+	@rm -rf build/verify-bitphase-align-nc && mkdir -p build/verify-bitphase-align-nc
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/elixir/functions.go").read_text(); target = "g.ensureScratch(\"    \", false) // clean bits for the next element"; assert src.count(target) == 1, "missing Elixir write-loop scratch anchor"; pathlib.Path("build/verify-bitphase-align-nc/functions.gotext").write_text(src.replace(target, "// sabotaged: stale scratch rides the call", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/elixir/functions.go":"%s/build/verify-bitphase-align-nc/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-bitphase-align-nc/overlay.json
+	go build -overlay=build/verify-bitphase-align-nc/overlay.json -o build/verify-bitphase-align-nc/schema ./cmd/schema
+	@if BEAM_PATH="$(BEAM_PATH)" ./build/verify-bitphase-bin --lang elixir --family align-arrays --schema ./build/verify-bitphase-align-nc/schema --work build/verify-bitphase-align-nc/work > build/verify-bitphase-align-nc/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotaged Elixir write loop passed the align-arrays family" >&2; exit 1; fi
+	@grep -q 'FAILED: write aa_emptyzero_valid_a-empty.bin' build/verify-bitphase-align-nc/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected align-arrays failure log:" >&2; cat build/verify-bitphase-align-nc/run.log >&2; exit 1; }
+	@echo "verify-bitphase-align-negative-control: stale Elixir scratch caught by the align-arrays family"
 
 # Sabotages map entry sorting in internal/codegen/jstable/variablearms.go and
 # proves verify-canonical-js fails immediately on unsorted input permutations.

@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestLuaCookWrite holds the Lua cook writer to the tool's bytes
@@ -85,7 +85,10 @@ func TestLuaCookWrite(t *testing.T) {
 			luarun.WriteHexProbe(t, dir)
 			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
+				// ReadFixed refuses by raising (fixed.lua's read): a raise is
+				// the refusal, so v is nil exactly where the read refused.
+				loadLine = `local okRead, v = pcall(T.ReadFixed, "` + r.root + `", inputs.wire)
+if not okRead then io.stderr:write("ReadFixed refused: " .. tostring(v) .. "\n"); v = nil end`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
@@ -259,7 +262,10 @@ func TestLuaCookWriteNegativeControlsFunctional(t *testing.T) {
 			luarun.WriteHexProbe(t, dir)
 			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
+				// ReadFixed refuses by raising (fixed.lua's read): a raise is
+				// the refusal, so v is nil exactly where the read refused.
+				loadLine = `local okRead, v = pcall(T.ReadFixed, "` + r.root + `", inputs.wire)
+if not okRead then io.stderr:write("ReadFixed refused: " .. tostring(v) .. "\n"); v = nil end`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")

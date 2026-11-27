@@ -23,8 +23,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const (
@@ -287,8 +287,10 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	// checks and the stores cannot drift apart.
 	m.Printf("  local check = blob(_M.%sFixedRecord - 8);\n", st.Name)
 	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
-	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
-	m.Printf("    if (why == null) why = _M.%sFixedCheckBody(check, recs[k]);\n", st.Name)
+	// the body check first: it holds every value to its kind, so the
+	// deprecated-variant walk after it reads only the shapes it expects
+	m.Printf("    local why = _M.%sFixedCheckBody(check, recs[k]);\n", st.Name)
+	m.Printf("    if (why == null) why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	m.Printf("  local b = out;\n")
@@ -448,6 +450,12 @@ func emitFixedRowCopy(m *Module, st *ir.Struct) {
 // writer's declared order at the declared storage widths (§3.4).
 func emitFixedWriteBody(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedWriteBody <- function(b, at, v) {\n", st.Name)
+	// A RECORD IS AN INSTANCE OF ITS TABLE'S CLASS (docs/SPEC.md §5.1;
+	// docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE): anything else (an integer, a
+	// string, a bare table, null) is refused by name before a field is read,
+	// where the runtime would raise on the missing index
+	m.Printf("  if (typeof v != \"instance\" || !(v instanceof _M.%s)) { _M.FixedField <- %s; return \"invalid_value\"; }\n",
+		st.Name, squirrel.StringLit([]byte(st.Name)))
 	var cur int64
 	for _, f := range st.Fields {
 		fixedEmitWriteField(m, f, cur, "v."+squirrel.Member(f), "  ")
@@ -583,6 +591,9 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			tag := fixedUnionTagBytes(r)
 			// a tag outside the arm set, or not an integer, refuses before
 			// the tag byte is stored (docs/SPEC.md §5.1 row 6)
+			// a union is an instance of its union's class (DW-TABLE-SHAPE):
+			// an integer, a string or a bare table has no Type to read
+			m.Printf("%sif (typeof %s != \"instance\" || !(%s instanceof _M.%s)) %s\n", ind, expr, expr, r.Name, fixedWriteRefusal(m, f))
 			m.Printf("%sif (typeof %s.Type != \"integer\" || %s.Type < 0 || %s.Type > %d) %s\n", ind, expr, expr, expr, len(r.Variants), fixedWriteRefusal(m, f))
 			m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s.Type);\n", ind, off, tag, expr)
 			for i, v := range r.Variants {

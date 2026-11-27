@@ -3,7 +3,7 @@ package mootable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6), in moo. The walks are the

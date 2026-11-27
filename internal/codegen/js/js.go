@@ -56,9 +56,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // MemberName is the one mapping from a schema field or union arm name to its
@@ -860,12 +860,17 @@ func formatFloat(v float64) string {
 	return s
 }
 
-// formatFloat32 renders a float32-precision literal: the shortest form that
-// parses to exactly float32(v) — as a JS double it holds that float32 value
-// exactly (f32 ⊂ f64), and the runtime frounds its parameters, so the wire
-// widths agree with ir.CompressedFloatBits in every target.
+// formatFloat32 renders float32(v) as a JavaScript literal: the shortest
+// decimal of its float64 value, which a double parser reads as exactly that
+// float32 (the stream tier's twin of flat.go's f32lit, kept apart so each
+// tier's negative control plants one tier). The float32's own shortest
+// decimal ("0.1") names float32(0.1) only to a float32 parser; JavaScript
+// reads it as the double 0.1, so a float32 constant and a float32 default
+// held a value the declaration does not name, and the stream tier's write
+// guard, x > 0.3, refused float32(0.3), the declared max itself (SPEC §4.3,
+// "A FLOAT LITERAL IS A float64 FIRST"; test/verify-bitphase f32lit.go).
 func formatFloat32(v float64) string {
-	s := strconv.FormatFloat(v, 'g', -1, 32)
+	s := strconv.FormatFloat(float64(float32(v)), 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}

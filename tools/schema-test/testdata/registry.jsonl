@@ -1,0 +1,8 @@
+{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
+{"rec":"lang","name":"c","write":"assert","adapter":""}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"type","name":"roundtrip","what":"same bytes back"}
+{"rec":"type","name":"plant","what":"a negative control"}
+{"rec":"test","key":"roundtrip.fam.one","type":"roundtrip","family":"fam","case":"one","tier":"functional","checks":"one","inputs":{"n":1},"expect":"same"}
+{"rec":"test","key":"plant.fam.one-red","type":"plant","family":"fam","case":"one-red","tier":"functional","checks":"one goes red when broken","inputs":{"target":"go.functional.roundtrip.fam.one","env":{"BREAK":"1"}},"expect":"the target fails","scope":"none","adapter":"plant"}
+{"rec":"group","name":"ready","what":"the ready languages","query":{"langs":["go"]}}

@@ -102,12 +102,18 @@ export function ZeroArmsAgree(value) {
 }
 
 export function WriteArmsAgree(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -211,12 +217,18 @@ export function ZeroArmsDisagree(value) {
 }
 
 export function WriteArmsDisagree(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -314,12 +326,18 @@ export function ZeroArmEmpty(value) {
 }
 
 export function WriteArmEmpty(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -422,6 +440,9 @@ export function ZeroArmsNested(value) {
 }
 
 export function WriteArmsNested(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) { // a bits(N) value must fit its width
     return false;
   }
@@ -429,11 +450,17 @@ export function WriteArmsNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
+  if (typeof value.outer !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.outer;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
   if (value.outer) {
+    if (typeof value.inner !== "boolean") {
+      return false; // a bool is a boolean (SPEC §5.1)
+    }
     BOOL_SCRATCH.value = value.inner;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
@@ -563,12 +590,18 @@ export function ZeroArmAlign(value) {
 }
 
 export function WriteArmAlign(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -581,6 +614,9 @@ export function WriteArmAlign(stream, value) {
     NUMBER_SCRATCH.value = value.sLength;
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
+    }
+    if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) {
+      return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
     }
     if (!validText(value.s, value.sLength)) {
       return false;
@@ -688,12 +724,18 @@ export function ZeroArmArray(value) {
 }
 
 export function WriteArmArray(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -706,6 +748,9 @@ export function WriteArmArray(stream, value) {
     NUMBER_SCRATCH.value = value.itemsCount;
     if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
       return false;
+    }
+    if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+      return false; // the storage holds every element the loop reads (SPEC §5.1)
     }
     for (let i = 0; i < value.itemsCount; i++) {
       if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
@@ -794,6 +839,9 @@ export function ZeroNarrow(value) {
 }
 
 export function WriteNarrow(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.n) || value.n < 0 || value.n > 7) { // a bits(N) value must fit its width
     return false;
   }
@@ -835,6 +883,9 @@ export function ZeroWide(value) {
 }
 
 export function WriteWide(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.w !== "bigint" || value.w < 0n || value.w > 137438953471n) { // a bits(N) value must fit its width
     return false;
   }
@@ -901,6 +952,9 @@ export function ZeroUneven(value) {
 }
 
 export function WriteUneven(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
@@ -968,6 +1022,9 @@ export function ZeroHoldsUneven(value) {
 }
 
 export function WriteHoldsUneven(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -1040,6 +1097,9 @@ export function ZeroArrUneven(value) {
 }
 
 export function WriteArrUneven(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -1053,6 +1113,9 @@ export function WriteArrUneven(stream, value) {
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!WriteUneven(stream, value.items[i])) {
@@ -1137,6 +1200,9 @@ export function ZeroRegainAfterAlign(value) {
 }
 
 export function WriteRegainAfterAlign(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -1150,6 +1216,9 @@ export function WriteRegainAfterAlign(stream, value) {
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
@@ -1166,6 +1235,9 @@ export function WriteRegainAfterAlign(stream, value) {
   NUMBER_SCRATCH.value = value.sLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
+  }
+  if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!validText(value.s, value.sLength)) {
     return false;

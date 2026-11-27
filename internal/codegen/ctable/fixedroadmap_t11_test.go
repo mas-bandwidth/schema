@@ -25,11 +25,11 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestFixedRoadmapCT11Optionals(t *testing.T) {
@@ -384,7 +384,11 @@ func cT11ScalarDefaults(t *testing.T) {
 // a declared default, and the template holds it. Each is asserted at its
 // declared default, round-tripped, and then round-tripped at the boundary —
 // the text and byte buffers filled to their declared capacities (N = 8, N = 4)
-// and the flags mask at every storage bit set.
+// and the flags mask at every DECLARED bit set (Alpha, Beta, Gamma). A mask is
+// held to its declared width W on the file save too (SPEC-TABLES §6.5, "A flags
+// MASK IS HELD TO W ON BOTH FORMS"): a bit at or above W is an unlawful value,
+// which the C writer refuses by its debug assert, so the boundary is the top
+// declared bit and never the 64-bit storage.
 func cT11TextBytesFlagsDefaults(t *testing.T) {
 	cT11Probe(t, cT11TextBytesFlagsSrc, `
     {
@@ -409,11 +413,11 @@ func cT11TextBytesFlagsDefaults(t *testing.T) {
         if ( n != 1 ) { printf( "text-bytes-flags-defaults: load n=%lld\n", (long long) n ); return 1; }
         if ( back.label_length != 2 || memcmp( back.label, "hi", 2 ) != 0 || back.blob_length != 2 || memcmp( back.blob, "ab", 2 ) != 0 || back.f != fmask )
             { printf( "text-bytes-flags-defaults: a declared default did not round-trip\n" ); return 1; }
-        /* non-default and boundary: buffers full to capacity, every flag bit set */
+        /* non-default and boundary: buffers full to capacity, every DECLARED flag bit set */
         @SNAKE@_reset( &v );
         memcpy( v.label, "abcdefgh", 8 ); v.label_length = 8;
         memcpy( v.blob, "WXYZ", 4 ); v.blob_length = 4;
-        v.f = ~(uint64_t) 0;
+        v.f = FL_ALPHA | FL_BETA | FL_GAMMA;
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
@@ -422,7 +426,7 @@ func cT11TextBytesFlagsDefaults(t *testing.T) {
             { printf( "text-bytes-flags-defaults: the full string did not round-trip: len=%d\n", back.label_length ); return 1; }
         if ( back.blob_length != 4 || memcmp( back.blob, "WXYZ", 4 ) != 0 )
             { printf( "text-bytes-flags-defaults: the full bytes did not round-trip: len=%d\n", back.blob_length ); return 1; }
-        if ( back.f != ~(uint64_t) 0 ) { printf( "text-bytes-flags-defaults: the flags mask did not round-trip: 0x%llx\n", (unsigned long long) back.f ); return 1; }
+        if ( back.f != ( FL_ALPHA | FL_BETA | FL_GAMMA ) ) { printf( "text-bytes-flags-defaults: the flags mask did not round-trip: 0x%llx\n", (unsigned long long) back.f ); return 1; }
         if ( r.refused ) { printf( "text-bytes-flags-defaults: a clean read moved a counter\n" ); return 1; }
     }
 `)

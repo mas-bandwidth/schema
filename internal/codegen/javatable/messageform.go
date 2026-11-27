@@ -15,9 +15,9 @@ import (
 	"sort"
 	"strings"
 
-	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	javapkt "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // messageAnnouncementClass is the public type the announcement surface lives in.
@@ -436,7 +436,7 @@ public final class TableVocabulary {
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
                 // ALLOCATED: the caller's byte bound, checked from the field's
                 // own L before an entry is touched (§3.3).
-                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;
+                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes; // The explicit byte limit also applies when zero (R9).
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
                     report.reason = "vocabulary_too_large";
@@ -2139,11 +2139,30 @@ func messageScalarBounds(f *ir.Field, expr string) []string {
 		if fl, ok := f.Type.Ref.(*ir.Flags); ok && fl.WireBits < 64 {
 			return []string{fmt.Sprintf("(%s >>> %d) == 0L", expr, fl.WireBits)}
 		}
+		// §2.15 WRITE: a deprecated variant is never written. The body's
+		// switch refuses an ordinal past the variants in every build; this is
+		// the one the switch would otherwise write.
+		if en, ok := f.Type.Ref.(*ir.Enum); ok {
+			if cond := enumNotDeprecated(en, expr); cond != "" {
+				return []string{cond}
+			}
+		}
 		return nil
 	}
+	// ROW 10: a finite ranged or compressed float off its range, held at the
+	// reader's own ends (the float32 nearest each end for a float32), so the
+	// quantizer never clamps a caller's value silently onto an end. A NaN or an
+	// infinity is ROW 7's (docs/SPEC-TABLES.md §3.3), refused in EVERY build by
+	// the writer's non_finite_float pass and answered -1: this debug assert
+	// lets it through to that refusal, or an -ea build throws where a release
+	// build refuses (the fixed form's twin, fixedform.go, holds the same guard).
 	if (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && f.HasFloatRange {
 		lo, hi, _ := fixedFloatRange(f)
-		return []string{fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi)}
+		finite := "java.lang.Float.isFinite"
+		if f.Type.Kind == ir.TFloat64 {
+			finite = "java.lang.Double.isFinite"
+		}
+		return []string{fmt.Sprintf("!%s(%s) || (%s >= %s && %s <= %s)", finite, expr, expr, lo, expr, hi)}
 	}
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
@@ -3180,8 +3199,25 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        return loadMessages(values, values == null ? 0 : values.length, vocab, data, report);\n")
 	g.pf("    }\n\n")
 
+	// THE CALLER'S VALUES AFTER A REFUSAL (docs/SPEC-TABLES.md §6.5): a
+	// message batch read resets EVERY value it was handed, not only those it
+	// reached or the wire's count of them, whatever the reason and wherever
+	// the refusal fell (the form byte, the vocabulary, the capacity, a body),
+	// and answers a count of 0. The wrapper decides that once, after the read.
 	g.pf("    public static int loadMessages(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
 	g.pf("        if (report == null) { report = new TableVocabulary.Report(); } else { report.zero(); }\n")
+	g.pf("        int read = loadMessagesRead(values, capacity, vocab, data, report);\n")
+	g.pf("        if (report.refused || report.damaged) {\n")
+	g.pf("            int handed = values == null ? 0 : java.lang.Math.min(java.lang.Math.max(capacity, 0), values.length);\n")
+	g.pf("            for (int j = 0; j < handed; j++) {\n")
+	g.pf("                if (values[j] != null) { reset(values[j]); }\n")
+	g.pf("            }\n")
+	g.pf("            return 0;\n")
+	g.pf("        }\n")
+	g.pf("        return read;\n")
+	g.pf("    }\n\n")
+
+	g.pf("    private static int loadMessagesRead(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
 	g.pf("        if (data == null || data.length == 0) { report.damaged = true; return 0; }\n")
 	g.pf("        if ((data[0] & 0xff) != 2) {\n")
 	g.pf("            report.refused = true;\n")

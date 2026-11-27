@@ -14,13 +14,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cNormDamageProbe = `#include <stdio.h>
@@ -124,6 +125,13 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 	maps.Copy(files, tfiles)
 	dir := t.TempDir()
 	mutApplied := false
+	// The generated C is formatted (one statement per line, indented by
+	// depth), so the sabotage target is a regexp in which every space matches
+	// any whitespace run; the replacement may use $1.
+	var sabotageRe *regexp.Regexp
+	if sabotage[0] != "" {
+		sabotageRe = regexp.MustCompile(strings.ReplaceAll(sabotage[0], " ", `\s+`))
+	}
 	header := ""
 	var srcs []string
 	for name, data := range files {
@@ -133,9 +141,9 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		if strings.HasSuffix(name, "Table.h") {
 			header = name
 		}
-		if sabotage[0] != "" {
-			if text := string(data); strings.Contains(text, sabotage[0]) {
-				data = []byte(strings.ReplaceAll(text, sabotage[0], sabotage[1]))
+		if sabotageRe != nil {
+			if text := string(data); sabotageRe.MatchString(text) {
+				data = []byte(sabotageRe.ReplaceAllString(text, sabotage[1]))
 				mutApplied = true
 			}
 		}
@@ -199,10 +207,12 @@ func TestCFixedNormalizationIsDamageNegativeControl(t *testing.T) {
 	t.Parallel()
 	// Plant the pre-fix answer in the real generated header: bool/present
 	// damage refused as out_of_range instead of wire_damaged by the load's
-	// check pass.
+	// check pass. The target is the refusal inside the fixed load's bool and
+	// present byte test (> 1u), anchored on that test so a reshaped generator
+	// fails loudly here instead of planting nothing.
 	out, err := cNormDamageRun(t, [2]string{
-		"memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;",
-		"memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;",
+		`(\( at \+ 8 \)\[p->src \+ b\] > 1u \) \{ memset\( report, 0, sizeof\( \*report \) \); report->refused = 1; report->refuse_reason = )SCHEMA_TABLE_REFUSE_WIRE_DAMAGED`,
+		"${1}SCHEMA_TABLE_REFUSE_OUT_OF_RANGE",
 	})
 	if err == nil {
 		t.Fatalf("negative control failed: probe exited 0 when wire_damaged was planted back to out_of_range:\n%s", out)
