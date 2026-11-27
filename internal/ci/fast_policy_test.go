@@ -11,7 +11,7 @@ import (
 // The policy checks must run with the same admission as the fast lint job,
 // and remain in a separate bounded job so all checks can finish.
 func TestCIFastPolicyJobCoverage(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}

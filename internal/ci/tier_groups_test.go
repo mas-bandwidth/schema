@@ -204,8 +204,8 @@ func branchBehaviourErrors(wfs map[string]string, only string) []string {
 func TestNoJobRunsOnABranchName(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
-	if n := len(yamlJobs(wfs["ci-fast.yml"])); n < 10 {
-		t.Fatalf("ci-fast.yml has %d jobs: this gate would pass over an empty fast lane", n)
+	if _, ok := yamlJobs(wfs["ci-fast.yml"])["happy-path"]; !ok {
+		t.Fatal("ci-fast.yml has no happy-path job: this gate would pass over an empty fast lane")
 	}
 	for _, e := range branchTokenErrors(wfs) {
 		t.Error(e)
@@ -218,8 +218,8 @@ func TestNoJobRunsOnABranchName(t *testing.T) {
 	// refused whatever its branch is called.
 	for _, head := range []string{"sprint/schema-main/a-card", "feature"} {
 		fork := fullPlan(ciEvent{Name: "pull_request", Branch: "main", HeadRef: head, Repo: tierRepo, HeadRepo: "someone/schema"})
-		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "plan", fork); err != nil || runs {
-			t.Errorf("a fork's pull request from %q runs ci-fast.yml plan on the fleet (runs=%v err=%v)", head, runs, err)
+		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "happy-path", fork); err != nil || runs {
+			t.Errorf("a fork's pull request from %q runs ci-fast.yml happy-path on the fleet (runs=%v err=%v)", head, runs, err)
 		}
 		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "fork-pull-request", fork); err != nil || !runs {
 			t.Errorf("a fork's pull request from %q does not get the red fork-pull-request job (runs=%v err=%v)", head, runs, err)
@@ -235,17 +235,17 @@ func TestNoJobRunsOnABranchName(t *testing.T) {
 		m[name] = strings.Replace(m[name], from, to, 1)
 		return m
 	}
-	planIf := "  plan:\n    if: ("
+	happyIf := "  happy-path:\n    if: ("
 	for _, c := range []struct {
 		name      string
 		wfs       map[string]string
 		behaviour string // the workflow the evaluated half must catch it in; "" when only the text gate can
 	}{
-		{"the sprint/ skip put back on plan", plant("ci-fast.yml", planIf, "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && ("), "ci-fast.yml"},
-		{"a skip on the pull request's head ref", plant("ci-fast.yml", planIf, "  plan:\n    if: !startsWith(github.event.pull_request.head.ref, 'sprint/') && ("), "ci-fast.yml"},
-		{"a base-branch gate", plant("ci-fast.yml", planIf, "  plan:\n    if: github.base_ref == 'main' && ("), "ci-fast.yml"},
+		{"the sprint/ skip put back on happy-path", plant("ci-fast.yml", happyIf, "  happy-path:\n    if: startsWith(github.head_ref, 'sprint/') == false && ("), "ci-fast.yml"},
+		{"a skip on the pull request's head ref", plant("ci-fast.yml", happyIf, "  happy-path:\n    if: !startsWith(github.event.pull_request.head.ref, 'sprint/') && ("), "ci-fast.yml"},
+		{"a base-branch gate", plant("ci-fast.yml", happyIf, "  happy-path:\n    if: github.base_ref == 'main' && ("), "ci-fast.yml"},
 		{"a label gate", plant("caa-self-test.yml", "    if: (", "    if: contains(github.event.pull_request.labels.*.name, 'full-ci') && ("), ""},
-		{"a ref gate on a step", plant("ci-fast.yml", "        if: startsWith(matrix.lang, 'elixir-') && runner.environment == 'github-hosted'", "        if: github.ref_name == 'main'"), ""},
+		{"a ref gate on a step", plant("ci-fast.yml", "        if: runner.environment == 'github-hosted'", "        if: github.ref_name == 'main'"), ""},
 		{"a base filter on the pull_request trigger", plant("roadmap.yml", "  pull_request:\n", "  pull_request:\n    branches: [ main ]\n"), "roadmap.yml"},
 	} {
 		if len(branchTokenErrors(c.wfs)) == 0 {
@@ -424,16 +424,16 @@ func TestEveryJobHasItsTierInCITiers(t *testing.T) {
 		m[name] = strings.Replace(m[name], body, "", 1)
 		return m
 	}
-	verifyRow := "| `verify-leg` | `ci-fast.yml` | per-PR, main, dispatch |"
+	happyRow := "| `happy-path` | `ci-fast.yml` | per-PR, main, dispatch |"
 	for _, c := range []struct {
 		name string
 		wfs  map[string]string
 		doc  string
 	}{
-		{"a group dropped from ci-fast.yml", dropJob("ci-fast.yml", "verify-leg"), doc},
-		{"a job with no row", wfs, plantDoc(verifyRow, "| `verify-leg-gone` | `ci-fast.yml` | per-PR, main, dispatch |")},
-		{"a row with the wrong tiers", wfs, plantDoc(verifyRow, "| `verify-leg` | `ci-fast.yml` | main |")},
-		{"a dispatch-only gate called per-PR", wfs, plantDoc("| `leg-gate` | `ci-fast.yml` | dispatch |", "| `leg-gate` | `ci-fast.yml` | per-PR, main, dispatch |")},
+		{"a group dropped from ci-fast.yml", dropJob("ci-fast.yml", "happy-path"), doc},
+		{"a job with no row", wfs, plantDoc(happyRow, "| `happy-path-gone` | `ci-fast.yml` | per-PR, main, dispatch |")},
+		{"a row with the wrong tiers", wfs, plantDoc(happyRow, "| `happy-path` | `ci-fast.yml` | main |")},
+		{"a nightly-only job called per-PR", wfs, plantDoc("| `page` | `roadmap.yml` | nightly, dispatch |", "| `page` | `roadmap.yml` | per-PR, main, nightly, dispatch |")},
 	} {
 		if len(tierTableErrors(c.wfs, c.doc)) == 0 {
 			t.Errorf("PLANTED %q left the gate green", c.name)
@@ -474,8 +474,10 @@ func perPRGroupErrors(wfs map[string]string, doc string) []string {
 			}
 		}
 	}
-	if groups < 10 {
-		errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md names %d per-PR groups of ci-fast.yml: this gate would pass over an empty tier", groups))
+	// THE PER-PR TIER IS THE HAPPY PATH ONLY (the owner, 2026-11-25): one
+	// group, happy-path; TestPerPRIsTheHappyPathOnly holds what it runs
+	if groups != 1 {
+		errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md names %d per-PR groups of ci-fast.yml; the per-PR tier is one group, happy-path", groups))
 	}
 	return errs
 }
@@ -498,15 +500,15 @@ func TestEveryPerPRGroupRunsOnEveryPullRequest(t *testing.T) {
 		return m
 	}
 	m := maps.Clone(wfs)
-	m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], yamlJobs(m["ci-fast.yml"])["verify-leg"], "", 1)
-	verifyIf := "    if: (needs.plan.outputs.verify_legs != '[]'"
+	m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], yamlJobs(m["ci-fast.yml"])["happy-path"], "", 1)
+	happyIf := "  happy-path:\n    if: ("
 	for _, c := range []struct {
 		name string
 		wfs  map[string]string
 	}{
 		{"a group dropped from ci-fast.yml", m},
-		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]'")},
-		{"a group given three minutes", plant("  vet:\n", "  vet:\n    timeout-minutes: 3\n")},
+		{"the sprint/ skip put back on a group", plant(happyIf, "  happy-path:\n    if: startsWith(github.head_ref, 'sprint/') == false && (")},
+		{"a group given three minutes", plant("  happy-path:\n", "  happy-path:\n    timeout-minutes: 3\n")},
 	} {
 		if len(perPRGroupErrors(c.wfs, doc)) == 0 {
 			t.Errorf("PLANTED %q left the gate green", c.name)
