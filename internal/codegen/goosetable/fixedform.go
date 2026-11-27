@@ -27,6 +27,7 @@ package goosetable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -688,9 +689,84 @@ func (e *fixedEmit) landValue(ind int, f *ir.Field, pl place, off string) {
 		e.landElem(ind+1, el, pl.at(i), offStep(off+" + 4", i, ir.TableFixedElementBytes(f)))
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
+		e.slackReset(ind, el, pl, f.ArrayBound)
 	default:
 		e.landElem(ind, el, pl, off)
 	}
+}
+
+// slackReset writes a fresh element over every slot past a counted array's
+// live count (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A COUNT AFTER ANY
+// LOAD, LAWFUL OR REFUSED): the run above lands the whole record image, so a
+// dead slot holds the writer's zeros, and zero is not the declared default of
+// an element that declares one. It is emitted only for an element whose fresh
+// value is not what zero bytes land (slackResetNeeded), so a schema without
+// one generates exactly the code it did before. It runs inside the element's
+// own _<T>FixedRead, which the identity load and every lineage plan call, so
+// a counted array inside a live element, a live union arm or a present
+// optional is reset at its own depth. The count has passed the scan's
+// fixed_scan_count, so it is inside [0, bound] here.
+func (e *fixedEmit) slackReset(ind int, el *ir.Field, pl place, bound int64) {
+	if !slackResetNeeded(el) {
+		return
+	}
+	st := el.Type.Ref.(*ir.Struct)
+	e.home(st.Name)
+	k := e.loopVar()
+	e.p(ind, "var %s: i64 = %sCount as i64;", k, pl.val)
+	e.p(ind, "while %s < %d {", k, bound)
+	e.p(ind+1, "%s = %s { .. };", pl.at(k).val, e.structType(st))
+	e.p(ind+1, "%s += 1;", k)
+	e.p(ind, "}")
+}
+
+// slackResetNeeded reports whether a counted array's element, landed from a
+// dead slot's zero bytes, differs from a fresh element: a struct that declares,
+// at any depth, a default whose storage is not zero (a scalar, an enum, a
+// flags set, a text or bytes default, or a [A..N] count born at A > 0). A
+// scalar element carries no default of its own, and a union element lands
+// reset to its fresh value with no arm, so neither needs the reset.
+func slackResetNeeded(el *ir.Field) bool {
+	if el.Type.Kind != ir.TNamed || el.Type.Pointer {
+		return false
+	}
+	st, ok := el.Type.Ref.(*ir.Struct)
+	return ok && structFreshNotZero(st)
+}
+
+func structFreshNotZero(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if fieldFreshNotZero(f) {
+			return true
+		}
+	}
+	return false
+}
+
+func fieldFreshNotZero(f *ir.Field) bool {
+	if f.Array == ir.ArrayCounted && f.BornCount() > 0 {
+		return true
+	}
+	if f.HasDefault {
+		switch {
+		case f.Type.Kind == ir.TBool:
+			return f.DefBool
+		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+			return f.DefFloat != 0 || math.Signbit(f.DefFloat)
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+			return len(f.DefBytes) > 0
+		case f.DefVariant != "":
+			return true
+		case f.DefInt != nil && f.DefInt.Sign() != 0:
+			return true
+		}
+	}
+	if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
+		if st, ok := f.Type.Ref.(*ir.Struct); ok {
+			return structFreshNotZero(st)
+		}
+	}
+	return false
 }
 
 func (e *fixedEmit) landElem(ind int, f *ir.Field, pl place, off string) {

@@ -1645,6 +1645,11 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 			g.pf("%s}\n", ind)
 		}
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, walked, indent)
+		// THE SLOTS PAST A COUNT AFTER ANY LOAD, LAWFUL OR REFUSED
+		// (docs/SPEC-TABLES.md §3.4): every slot past the live count holds what
+		// a fresh value holds there. Identity and lineage plans both land
+		// through this scatter, and a live element's own scatter resets its own
+		// counted arrays, so the reset reaches every depth.
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, 0, f.Type.Size, rep, walked, "lengthOverBound", indent)

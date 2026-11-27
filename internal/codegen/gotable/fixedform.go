@@ -440,6 +440,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedCheckBodyFn(st)
 	}
+	// THE SLOTS PAST A COUNT (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A COUNT
+	// AFTER ANY LOAD), in the same order: only a type that needs it gets one.
+	for _, st := range order {
+		g.emitFixedSlackBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedBounds(st)
 		g.emitFixedRoot(st)
@@ -1319,6 +1324,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
 		g.pf("\t\tif !%sFixedBounds(&values[k : k+1][0]) {\n", st.Name)
 		g.pf("\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t}\n")
+	}
+	if fixedSlackNeededStruct(st) {
+		// THE SLOTS PAST A COUNT AFTER ANY LOAD (docs/SPEC-TABLES.md §3.4): the
+		// record landed the writer's zeros in every dead slot, on either plan;
+		// each one whose fresh element is not all zero is reset in place, after
+		// the bounds pass, so every count is held to its bound.
+		g.pf("\t\t%sFixedSlackBody(&values[k : k+1][0])\n", st.Name)
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")
 	g.pf("\t}\n")

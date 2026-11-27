@@ -175,7 +175,15 @@ table LiveNested
 	if !strings.Contains(nested, "i < value.itemsCount") {
 		t.Fatalf("counted-array decode must walk the live count:\n%s", nested)
 	}
-	if strings.Contains(nested, "i < 4") {
+	// THE ONE LOOP TO THE BOUND IS THE SLACK RESET (docs/SPEC-TABLES.md §3.4,
+	// THE SLOTS PAST A COUNT AFTER ANY LOAD): it starts at the live count and
+	// only restores each slot in place; it decodes nothing. Any other loop to
+	// the bound is the decode walking slack.
+	const reset = "  for (var i = value.itemsCount; i < 4; i++) {\n    initItem(value.items[i]);\n  }\n"
+	if !strings.Contains(nested, reset) {
+		t.Fatalf("counted-array decode must restore the slots past its count:\n%s", nested)
+	}
+	if strings.Count(nested, "i < 4") != 1 {
 		t.Fatalf("counted-array decode still walks the declared bound:\n%s", nested)
 	}
 

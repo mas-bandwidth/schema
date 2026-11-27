@@ -3125,6 +3125,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       }
     }
   }
+  for (let i = value.entitiesCount; i < 8; i++) { InitMixedEntity(value.entities[i]); }
   {
     let n = view.getInt32(at + 464, true);
     if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
@@ -3142,6 +3143,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       }
     }
   }
+  for (let i = value.statsCount; i < 80; i++) { InitMixedStat(value.stats[i]); }
   value.gameEvent.type = view.getUint8(at + 1108);
   if (value.gameEvent.type > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
   switch (value.gameEvent.type) {
@@ -3546,6 +3548,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
         }
       }
     }
+    for (let i = e1.entitiesCount; i < 8; i++) { InitMixedEntity(e1.entities[i]); }
     {
       let n = view.getInt32(at + 464, true);
       if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
@@ -3563,6 +3566,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
         }
       }
     }
+    for (let i = e1.statsCount; i < 80; i++) { InitMixedStat(e1.stats[i]); }
     e1.gameEvent.type = view.getUint8(at + 1108);
     if (e1.gameEvent.type > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
     switch (e1.gameEvent.type) {

@@ -266,6 +266,12 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedFiniteBodyFn(st)
 	}
+	// THE SLACK PASS, in the same order: the slots past a counted array's
+	// count after the run lands a record (§3.4, THE SLOTS PAST A COUNT AFTER
+	// ANY LOAD). Nothing is emitted for a type that needs none.
+	for _, st := range own {
+		g.emitFixedSlackBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -1070,6 +1076,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
 		g.pf("        {\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
 		g.pf("            report->widened = batch_widened;\n            return -1;\n        }\n")
+	}
+	if fixedSlackNeededStruct(st, map[string]bool{}) {
+		g.pf("        // THE SLOTS PAST A COUNT AFTER ANY LOAD (docs/SPEC-TABLES.md §3.4): the\n")
+		g.pf("        // run landed the writer's dead zeros there, on either plan; each slot\n")
+		g.pf("        // past a count now holds its declared default, as a fresh value does,\n")
+		g.pf("        // so the load never depends on what the value held.\n")
+		g.pf("        %sFixedSlack( values[k] );\n", st.Name)
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 	g.emitFixedLoadStrict(st)

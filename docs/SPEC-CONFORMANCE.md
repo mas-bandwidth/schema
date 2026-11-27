@@ -614,6 +614,53 @@ build:
 ./build/conformance-harness run --only lua --surfaces message
 ```
 
+### Counted-array slots after a lawful fixed load
+
+SPEC-TABLES.md §3.4 (THE SLOTS PAST A COUNT AFTER ANY LOAD) and §6.5: after
+every fixed-form load, lawful or refused, by the identity plan or a lineage
+plan, every element slot past a counted array's live count holds its declared
+default. A load's result never depends on what the value held before.
+
+Use [the declaration](../test/tables/FixedSlack.schema). Every element default
+in it is non-zero (`SlackCell.id = 7`, `SlackSub.v = 3`), so both failure
+shapes show up:
+
+1. Save file A, one record with every counted array at its bound and every
+   value `77`.
+2. Save file B, one record with `cells` count 1, `cells[0].subs` count 1,
+   `nums` count 1, and every live value `77`.
+3. Load A into one value, then load B into the same value.
+
+The value must equal a fresh value loaded from B: `cells[1]` and `cells[2]` hold
+`id` 7, a `subs` count of 0 and every sub at `v` 3; `cells[0].subs[1].v` is 3;
+and `nums[1..3]` are 0. A port whose slots are objects failed by keeping the
+77s (JavaScript, Dart, Java, and the Go reference engine `internal/tablewire`).
+A port that lands the record's bytes failed by holding the writer's zeros where
+the declared default is 7 or 3 (C, C++, C#, C# (unity), Go, Rust and Goose). A refused load
+still leaves the declared defaults.
+
+| leg | regression test (`internal/codegen/<leg>table` unless named) |
+|---|---|
+| C | `TestCFixedSlackPastCountHoldsDefaults`, `TestCFixedSlackEmitted` |
+| C++ | `TestCppFixedSlackPastCountHoldsDefaults`, `TestCppFixedSlackEmitted` |
+| C# | `TestCSharpFixedSlackPastCountHoldsDefaults`, `TestCSharpFixedSlackEmitterPin` |
+| C# (unity) | `TestUnityFixedSlackPastCountHoldsDefaults`, `TestUnityFixedSlackEmitterPin` (a fresh value too: `Init<T>` now builds every slot of such an array) |
+| Dart | `TestDartFixedSlackPastCountHoldsDefaults`, `TestDartFixedSlackEmitterResetsPastCount` |
+| Go | `TestGoFixedSlackPastCountHoldsDefaults`, `TestGoFixedSlackEmitterPin`; engine `internal/tablewire` `TestFixedSlackPastCountHoldsDefaults` |
+| Goose | `TestGooseFixedSlackPastCountHoldsDefaults`, `TestGooseFixedSlackResetEmitted` |
+| Java | `TestJavaFixedSlackPastCountHoldsDefaults`, `TestJavaFixedSlackScatterResetsPastCount` |
+| JavaScript | `TestJSFixedSlackPastCountHoldsDefaults` (identity and lineage), `TestJSFixedSlackEmitsTheReset` |
+| Rust | `TestRustFixedSlackPastCountHoldsDefaults`, `TestRustFixedSlackEmitterPin` |
+| Elixir, Lobster, Lua, Luau, Moo, Python, Ruby, Squirrel | `Test<Leg>FixedSlackPastCountHoldsDefaults`: these legs already held the rule, and the test guards it |
+
+Every test goes red when its fix is removed. For a leg that already held the
+rule, its test goes red when a load is planted that merges into the old value.
+
+**The shared case is owed.** The `read-into` surface judges a value by its
+`ToJson` text. That text writes only a counted array's live elements, so no
+shared case can see a slot past the count. The per-leg tests above hold the
+rule until a surface can read element slots past the count.
+
 ### Explicit zero and omitted limits
 
 Use a fresh receiving vocabulary for each [§3.3 announcement case](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary).

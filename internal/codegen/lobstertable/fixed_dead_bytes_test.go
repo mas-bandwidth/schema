@@ -24,7 +24,7 @@ import (
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpusDir(t)
-	dir := deadBytesFiles(t)
+	dir := tableSchemaFiles(t, "DeadBytes.schema")
 
 	const main = `import .DeadBytesTable
 def hexline(b:string) -> string:
@@ -96,10 +96,11 @@ else:
 	}
 }
 
-// deadBytesFiles emits the shared dead-byte root's Lobster modules.
-func deadBytesFiles(t *testing.T) string {
+// tableSchemaFiles emits one test/tables schema's Lobster modules (the shared
+// dead-byte root, FixedSlack.schema) into a fresh directory.
+func tableSchemaFiles(t *testing.T, name string) string {
 	t.Helper()
-	schema := filepath.Join(root, "test", "tables", "DeadBytes.schema")
+	schema := filepath.Join(root, "test", "tables", name)
 	paths, err := compiler.GatherPaths([]string{schema})
 	if err != nil {
 		t.Fatalf("%s: %v", schema, err)

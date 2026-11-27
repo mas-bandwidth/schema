@@ -4784,6 +4784,11 @@ var tableGeneratedVerbs = []string{
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.
 	"FixedFiniteBody",
+	// and the Go leg's SLACK PASS (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A COUNT
+	// AFTER ANY LOAD): emitted for every fixed type that holds a counted array
+	// whose element default is not zero, which a field gains as an ordinary edit,
+	// so it is claimed on the same rule.
+	"FixedSlackBody",
 	// Go emits these package-level fixed-form image and hole data and the
 	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
 	// The bound probe is also an exported package-level helper emitted for

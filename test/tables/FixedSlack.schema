@@ -1,0 +1,41 @@
+// FixedSlack.schema — the slots past a counted array's count after a LAWFUL
+// fixed load (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A COUNT AFTER ANY
+// LOAD; docs/SPEC-CONFORMANCE.md, "Counted-array slots after a lawful fixed
+// load"). A load's result never depends on what the value held before: after
+// every fixed-form load, lawful or refused, every element slot past a counted
+// array's live count holds its declared default.
+//
+// The per-leg test, in every leg, is one recipe:
+//
+//   1. save file A: one record, every counted array at its bound, every slot
+//      set off its default (cells[i].id = 77, cells[i].subs[j].v = 77,
+//      nums[i] = 77)
+//   2. save file B: one record, cells count 1, cells[0].subs count 1, nums
+//      count 1, every live value 77
+//   3. load A into one value, then load B into THE SAME value
+//   4. the value holds what a fresh value loaded from B holds: cells[1] and
+//      cells[2] hold id 7, a subs count of 0 and every sub at v 3;
+//      cells[0].subs[1].v is 3; nums[1..3] are 0
+//
+// Every element default here is NOT zero on purpose: a leg that lands the
+// record's bytes gets the writer's zeros in the dead slots, and zero is not
+// the declared default 7 or 3. A leg whose slots are objects keeps the 77s
+// unless it resets the slots past the count.
+package tblslack
+
+fixed table SlackSub
+{
+    v int16 = 3
+}
+
+fixed table SlackCell
+{
+    id   int32 = 7
+    subs [..2]SlackSub
+}
+
+fixed table SlackRoot
+{
+    cells [..3]SlackCell
+    nums  [..4]int32
+}

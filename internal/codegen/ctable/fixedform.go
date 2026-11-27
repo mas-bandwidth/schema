@@ -177,6 +177,12 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedFiniteBodyFn(st)
 	}
+	/* THE SLACK PASS, in the same post-order: the slots past a counted
+	   array's count after the run lands a record (§3.4, THE SLOTS PAST A
+	   COUNT AFTER ANY LOAD). Nothing is emitted for a type that needs none. */
+	for _, st := range own {
+		g.emitFixedSlackBodyFn(st)
+	}
 	/* THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
 	   post-order, so a nested type's body stands before the call to it. */
 	for _, st := range own {
@@ -1016,6 +1022,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("           and the plan's counters are committed only past it (§5.8). */\n")
 		g.pf("        if ( %s( values + k, report ) != 0 )\n", g.sym(st.Name, "fixed_clamp"))
 		g.pf("        {\n            report->widened = rec_widened;\n            return -1;\n        }\n")
+	}
+	if fixedSlackNeededStruct(st, map[string]bool{}) {
+		g.pf("        /* THE SLOTS PAST A COUNT AFTER ANY LOAD (docs/SPEC-TABLES.md §3.4): the\n")
+		g.pf("           run landed the writer's dead zeros there, on either plan; each\n")
+		g.pf("           slot past a count now holds its declared default, as a fresh\n")
+		g.pf("           value does, so the load never depends on what the value held. */\n")
+		g.pf("        %s( values + k );\n", g.sym(st.Name, "fixed_slack"))
 	}
 	g.pf("        at += record_bytes;\n    }\n")
 	g.pf("    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */\n")

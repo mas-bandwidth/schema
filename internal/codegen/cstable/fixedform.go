@@ -1530,6 +1530,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedFiniteBodyFn(st)
 	}
+	// THE SLACK PASS, in the same order (docs/SPEC-TABLES.md §3.4, THE SLOTS
+	// PAST A COUNT AFTER ANY LOAD): only for types that need it (fixedslack.go).
+	for _, st := range bodies {
+		g.emitFixedSlackFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedWriteAdmits(st)
@@ -2278,6 +2283,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (run_why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
+	if csSlackNeedsStruct(st, map[string]bool{}) {
+		// THE SLOTS PAST A COUNT (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A
+		// COUNT AFTER ANY LOAD): the run landed the writer's zeros in every
+		// dead slot; on every plan they go back to the declared defaults here.
+		g.pf("        TableFixedSlack(values[k]);\n")
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,

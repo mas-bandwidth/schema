@@ -6434,9 +6434,15 @@ void tableMixedFixedDecode(
       report,
     );
   }
+  for (var i = value.entitiesCount; i < 8; i++) {
+    initTableEntity(value.entities[i]);
+  }
   value.statsCount = view.getInt32(at + 466, Endian.little);
   for (var i = 0; i < value.statsCount; i++) {
     tableStatFixedDecode(value.stats[i], image, view, at + 470 + i * 8, report);
+  }
+  for (var i = value.statsCount; i < 80; i++) {
+    initTableStat(value.stats[i]);
   }
   value.gameEvent.type = TableEventType(view.getUint8(at + 1110));
   switch ((value.gameEvent.type as int)) {

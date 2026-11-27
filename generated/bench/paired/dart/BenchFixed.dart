@@ -6297,9 +6297,15 @@ void benchMixedFixedDecode(
       report,
     );
   }
+  for (var i = value.entitiesCount; i < 8; i++) {
+    initMixedEntity(value.entities[i]);
+  }
   value.statsCount = view.getInt32(at + 464, Endian.little);
   for (var i = 0; i < value.statsCount; i++) {
     mixedStatFixedDecode(value.stats[i], image, view, at + 468 + i * 8, report);
+  }
+  for (var i = value.statsCount; i < 80; i++) {
+    initMixedStat(value.stats[i]);
   }
   value.gameEvent.type = MixedEventType(view.getUint8(at + 1108));
   switch ((value.gameEvent.type as int)) {

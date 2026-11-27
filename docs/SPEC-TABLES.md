@@ -8909,6 +8909,27 @@ The prefill runs only once every check has passed, so a refused load never
 leaves a partly landed row: **after ANY refusal, every row the call was handed
 holds its declared defaults** (§6.5, THE CALLER'S VALUES AFTER A REFUSAL).
 
+**THE SLOTS PAST A COUNT AFTER ANY LOAD, LAWFUL OR REFUSED.** A load's result
+never depends on what the value held before the call. After every fixed-form
+load, lawful or refused, by the identity plan or a lineage plan, **every
+element slot past a counted array's live count holds its declared default**:
+what a fresh value holds there, which is the element's declared default (a
+scalar at the declared default of the element, a table or a type at its
+declared defaults, a union with no arm; §21.2 states the same element default
+for a grown `[N]T`). This holds at every depth: a counted array inside a live
+element, a live union arm or a present optional has its own slots past its own
+count reset the same way. The slots are dead (THE SLACK RULE, above), so
+nothing of them is read from the record; the reader writes them from its own
+defaults. A language whose slots are objects resets each slot past the count
+in place, and does not stop at the count; a language that lands the record's
+bytes, whose dead slots arrive as the writer's zeros, writes the element's
+default image over each slot past the count wherever that image is not zero. A
+reused value therefore reads back exactly as a fresh one does: `rows[5].id`
+after a lawful load whose count is `5` is the declared default of `id`, never
+the `77` the caller's value held there, and never `0` when `id` declares `7`
+(docs/SPEC-CONFORMANCE.md, [Counted-array slots after a lawful fixed
+load](SPEC-CONFORMANCE.md#counted-array-slots-after-a-lawful-fixed-load)).
+
 **A CALLER THAT STATES NO CAPACITY IS BOUNDED BY THE FILE.** Where a port's
 fixed load lets the caller omit the capacity (step 10), the omitted capacity
 is the file's own record count, so a lawful file of any record count reads;
@@ -11036,7 +11057,11 @@ the class. A Go fixed refusal is a typed
   refusal as leaving a handed instance "as it was" or "untouched": every
   instance a call is handed holds its declared defaults after a refusal, and a
   call handed none returns none (docs/SPEC-CONFORMANCE.md §7; the per-leg
-  rows of docs/fix-ledger-1122.md FL-03).
+  rows of docs/fix-ledger-1122.md FL-03). **THE CALLER'S VALUES AFTER A
+  LAWFUL FIXED READ** hold nothing of what the caller held either: every row
+  the read lands holds the records' values, and every element slot past a
+  counted array's count holds its declared default, as after a refusal
+  (§3.4, THE SLOTS PAST A COUNT AFTER ANY LOAD).
   The region read hands back no root, and a builder read leaves a
   builder whose root the caller does not use and shuts down. **There is no
   `*Tolerant` entry point**: `LoadTolerant`, `LoadBuilderTolerant`,
@@ -14779,7 +14804,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch  FixedFromText
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedSlackBody  FixedRefuseBatch  FixedFromText
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -14844,7 +14869,11 @@ in build version (§20.5).
   ordinary edit, and the name has to already be taken when it does.
   `FixedFiniteBody` is the read's FINITE PASS (§3.3), which refuses a NaN or an
   infinity before the bounds pass runs; it is claimed on the same rule, because
-  a type gains a float as an ordinary edit. `FixedRefuseBatch` is the batch
+  a type gains a float as an ordinary edit. `FixedSlackBody` is the Go leg's SLACK
+  PASS (§3.4, THE SLOTS PAST A COUNT AFTER ANY LOAD), which resets every slot
+  past a counted array's count to its declared default; it is claimed on the
+  same rule, because a type gains such an array as an ordinary edit.
+  `FixedRefuseBatch` is the batch
   save's refusal path, which the JavaScript leg emits at module scope for every
   fixed table; it is claimed on the same rule, and so is `FixedCheckDead`,
   the read's dead-byte check, which the JavaScript leg emits there too.
@@ -21130,7 +21159,8 @@ widening.
 
 A field the reader added: its declared default. A field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it, in either form. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
-and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
+and count land, every slot past the count holds the ELEMENT DEFAULT, as a fresh value does (§3.4, THE
+SLOTS PAST A COUNT AFTER ANY LOAD), and a text field's slack past its length is zeros — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
 prefix. Everything else: copied.
 
