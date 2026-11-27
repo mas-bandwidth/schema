@@ -59,3 +59,34 @@ func TestProofListNamesOnlyExistingTests(t *testing.T) {
 		}
 	})
 }
+
+// TestProofListResolvesDerivedNames is the witness for names a recipe takes
+// from a make variable computed by $(shell …) (PR 4912): the audit asks make
+// for the list, checks every token it holds, and still refuses a stale literal
+// beside it and a token that is no test.
+func TestProofListResolvesDerivedNames(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("testdata", "prooflist-derived")
+	recipes, err := scanMakefiles(root, map[string]bool{"./testpkg": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings, err := proofListFindings(root, recipes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range findings {
+		switch {
+		case strings.Contains(f, "derived-good"):
+			t.Fatalf("a derived list of declared tests was refused: %s", f)
+		case strings.Contains(f, "TestBogus names no test"), strings.Contains(f, "notatest names no test"):
+			names = append(names, f)
+		default:
+			t.Fatalf("unexpected finding: %s", f)
+		}
+	}
+	if len(names) != 2 {
+		t.Fatalf("want exactly TestBogus and notatest refused, got %d: %v", len(names), findings)
+	}
+}

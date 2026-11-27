@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/irtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/irtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func loadBase(t *testing.T, base, src string) *ir.Unit {

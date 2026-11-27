@@ -47,11 +47,11 @@ import (
 	"sync"
 	"unicode"
 
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	schemaparser "github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	schemaparser "github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
@@ -836,7 +836,7 @@ func isPathWordByte(c byte) bool {
 // generated comment cites — docs/... and internal/... — with the repository's
 // name, so an adopter's path linter reads them as another repository's rather
 // than its own. A path already inside a longer one (an import like
-// github.com/mas-bandwidth/schema/v2/internal/ast) is left alone: it is
+// github.com/mas-bandwidth/schema/v3/internal/ast) is left alone: it is
 // preceded by a word byte or a slash, which a bare citation never is.
 func repoPrefix(src string) string {
 	idxs := repoPrefixRe.FindAllStringIndex(src, -1)
@@ -1389,7 +1389,7 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 // when the checked-in package and the emitter disagree.
 
 // SharedRuntimeImport is the import path of the shared Go runtime package.
-const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
+const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v3/tables/goruntime"
 
 // SharedRuntimeFile is the one file of the shared package, relative to
 // tables/goruntime.

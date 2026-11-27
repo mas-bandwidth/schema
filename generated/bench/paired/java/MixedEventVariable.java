@@ -453,6 +453,10 @@ public final class MixedEventVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         switch (v.tag) {
             case 0:
@@ -463,10 +467,7 @@ public final class MixedEventVariable {
                     TableJson.indent(b, depth + 1);
                     TableJson.esc(b, "hit");
                     b.append(": ");
-                    {
-                        int nestedDepth = depth + 1;
-                        MixedHitEventVariable.jsonFields(b, graph, v.hit, nestedDepth);
-                    }
+                    schema_jsonArm1(b, graph, v, depth + 1);
                     break;
                 }
             case 2:
@@ -474,10 +475,7 @@ public final class MixedEventVariable {
                     TableJson.indent(b, depth + 1);
                     TableJson.esc(b, "chat");
                     b.append(": ");
-                    {
-                        int nestedDepth = depth + 1;
-                        MixedChatEventVariable.jsonFields(b, graph, v.chat, nestedDepth);
-                    }
+                    schema_jsonArm2(b, graph, v, depth + 1);
                     break;
                 }
             case 3:
@@ -485,10 +483,7 @@ public final class MixedEventVariable {
                     TableJson.indent(b, depth + 1);
                     TableJson.esc(b, "pickup");
                     b.append(": ");
-                    {
-                        int nestedDepth = depth + 1;
-                        MixedPickupEventVariable.jsonFields(b, graph, v.pickup, nestedDepth);
-                    }
+                    schema_jsonArm3(b, graph, v, depth + 1);
                     break;
                 }
             default:
@@ -496,6 +491,21 @@ public final class MixedEventVariable {
         }
         TableJson.indent(b, depth);
         b.append('}');
+    }
+
+    static void schema_jsonArm1(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        MixedHitEventVariable.jsonFields(b, graph, v.hit, depth);
+    }
+
+    static void schema_jsonArm2(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        MixedChatEventVariable.jsonFields(b, graph, v.chat, depth);
+    }
+
+    static void schema_jsonArm3(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        MixedPickupEventVariable.jsonFields(b, graph, v.pickup, depth);
     }
 
     static Value readJson(TableJson.In in, int depth) {

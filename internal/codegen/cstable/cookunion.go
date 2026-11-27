@@ -1,12 +1,12 @@
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // The containing row remains sequential; the union alone owns an explicit
 // unmanaged overlay. Every arm offset is the compiler's canonical C layout.
 func (g *cookGen) emitUnionRow(un *ir.Union) {
 	size, _, _, armAt := ir.UnionLayout(g.unit, un)
-	g.sf("[StructLayout(LayoutKind.Explicit, Size = %d)]\npublic unsafe struct %sRow\n{\n    [FieldOffset(0)] public %s.%sType Type;\n", size, un.Name, capitalize(g.unit.Package), un.Name)
+	g.sf("[StructLayout(LayoutKind.Explicit, Size = %d)]\npublic unsafe struct %sRow\n{\n    [FieldOffset(0)] public %s Type;\n", size, un.Name, g.unionRowTagType(un))
 	for _, v := range un.Variants {
 		if v.Void() {
 			continue
@@ -53,4 +53,19 @@ func (g *cookGen) emitUnionRow(un *ir.Union) {
 		}
 	}
 	g.sf("}\n\n")
+}
+
+// unionRowTagType is the type of a union row's tag field. A packet union's tag
+// enum is emitted by the packet backend into <Base>.cs, which the accelerator
+// pair compiles beside, so the row names it. A union with a TABLE arm
+// (ir.Unit.TableUnions) is invisible to the packet backend: its <Name>Type
+// enum lives in <Base>Table.cs, and <Base>Block.cs and <Base>Cook.cs compile
+// together without any table source (docs/SPEC-TABLES.md §19.2, §7). Its row
+// therefore carries the enum's own underlying integer: the same width and the
+// same values, None = 0 and then each arm in declared order.
+func (g *cookGen) unionRowTagType(un *ir.Union) string {
+	if _, tableOnly := g.unit.TableUnions[un.Name]; tableOnly {
+		return csFieldType(ir.FieldType{Kind: ir.TInt, Width: ir.StorageBitsFor(int64(len(un.Variants)))})
+	}
+	return capitalize(g.unit.Package) + "." + un.Name + "Type"
 }

@@ -40,7 +40,7 @@
 
 use blockdemo::{
     padded_frame_fixed_load, padded_frame_fixed_measure, padded_frame_fixed_save,
-    PaddedFrameRow, TableFixedEntry, TableFixedReport, TABLE_FIXED_HEADER_BYTES,
+    PaddedFrameRow, TableFixedEntry, TableFixedReason, TableFixedReport, TABLE_FIXED_HEADER_BYTES,
 };
 
 static FAILURES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -149,17 +149,40 @@ fn test_row_w8() {
     let mut plan = [TableFixedEntry::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    let n = padded_frame_fixed_load(&mut values, &wrong, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the wrong wire");
-    check(n == 1, "W8 NEGATIVE CONTROL: the reader still opens a wire where length and buffer were swapped");
+    let n = padded_frame_fixed_load(&mut values, &wrong, &mut plan, &mut remap, &mut report);
+    // THE LAW MOVED (docs/rulings.json strict-only-read; docs/FIXED-FORM-ALGORITHM.md
+    // :449, §4.5 `text`/bytes row: "if v < 0 or v > size then REFUSE
+    // length_over_bound"). Under the wrong wire the reader takes the LENGTH
+    // word from body+3213, which now holds the live bytes: 0xEFBEADDE LE, a
+    // length outside [0, 12]. This control once asserted the reader still opened the
+    // wire (n == 1) with the length CLAMPED into [0, 12] and the live bytes lost; no
+    // read clamps now, so the whole load REFUSES. That is the stronger
+    // statement: the wrong wire is not read as the right one at all.
+    check(n.is_none(), "W8 NEGATIVE CONTROL: the swapped wire refuses the whole load (was: opens with the length clamped to 12)");
+    // WHICH check refuses first is per-language detail (docs/rulings.json
+    // refusal-verdict-only: "the verdict is the contract"): this leg's CHECK
+    // pass runs first: the forged length word DE AD BE EF is 0xEFBEADDE, a
+    // NEGATIVE i32 (outside [0, 12] at the low end), so no byte of the buffer
+    // is live and the length word 04 00 00 00 now sitting in it is a non-zero
+    // dead byte — wire damage — before the scatter's length bound
+    // (out_of_range) is reached. Either is the refusal; neither is a read.
+    check(
+        (report.damaged && !report.refused)
+            || (report.refused && report.reason == TableFixedReason::OutOfRange),
+        &format!("W8 NEGATIVE CONTROL: refused as wire damage or out_of_range, never read: {report:?}"),
+    );
     let back = &values[0];
+    let fresh = PaddedFrameRow::default();
     let back_live: [u8; 4] = back.blob[..4].try_into().expect("four bytes");
-    // Under the wrong wire the reader lands the LENGTH WORD (4 LE: 04 00 00 00)
-    // at the buffer offset, so back.blob[0..4] is { 04, 00, 00, 00 } and
-    // back.blob_length is the bytes that were at the length slot
-    // (0xDEADBEEF clamped to [0, 12] = 12). Neither is the live pattern.
+    // was: "live bytes lost" (the count landed in the buffer) — a refusal lands
+    // nothing at all, so the live pattern is not in the value and the row holds
+    // its declared default (R4)
     let live_was_lost = back_live != [0xDE, 0xAD, 0xBE, 0xEF] || back.blob_length != 4;
-    check(live_was_lost, "W8 NEGATIVE CONTROL: the text row really did write the count into the buffer — live bytes lost");
+    check(live_was_lost, "W8 NEGATIVE CONTROL: the live bytes do not come back from the wrong wire");
+    check(
+        back.blob_length == fresh.blob_length && back.marker == fresh.marker && back.stamp == fresh.stamp,
+        "W8 NEGATIVE CONTROL: a refused load lands nothing (declared defaults, R4)",
+    );
 
     let fails = FAILURES.load(std::sync::atomic::Ordering::Relaxed);
     assert_eq!(fails, 0, "W8: {fails} assertion(s) failed");

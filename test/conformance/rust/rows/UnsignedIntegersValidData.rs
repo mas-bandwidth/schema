@@ -84,8 +84,10 @@ fn unsigned_integers_valid_data_write_read_acceptance() {
 
     // clean read: no counters moved
     assert!(
-        report.oor == 0 && !report.damaged && !report.refused,
-        "clean read: no counters moved, no refusal"
+        // strict-only-read (docs/rulings.json): the retired clamp count `oor == 0` is now
+        // "no out_of_range refusal": a value past its bound refuses the whole load.
+        report.reason.name() == "none" && !report.damaged && !report.refused,
+        "clean read: no out_of_range refusal, no damage, no refusal"
     );
 
     // ---- NEGATIVE CONTROL: break the uint32 byte on the wire ----

@@ -30,14 +30,14 @@ public final class Enums {
 
     // enumNameTeam: debug/log/tooling name for any Team storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameTeam(long value) {
-        if (value == Team.NONE) {
+    public static java.lang.String enumNameTeam(long schema_value) {
+        if (schema_value == Team.NONE) {
             return "None";
         }
-        if (value == Team.RED) {
+        if (schema_value == Team.RED) {
             return "Red";
         }
-        if (value == Team.BLUE) {
+        if (schema_value == Team.BLUE) {
             return "Blue";
         }
         return "???";
@@ -62,23 +62,23 @@ public final class Enums {
 
     // enumNameShipType: debug/log/tooling name for any ShipType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameShipType(long value) {
-        if (value == ShipType.NONE) {
+    public static java.lang.String enumNameShipType(long schema_value) {
+        if (schema_value == ShipType.NONE) {
             return "None";
         }
-        if (value == ShipType.FIGHTER) {
+        if (schema_value == ShipType.FIGHTER) {
             return "Fighter";
         }
-        if (value == ShipType.CORVETTE) {
+        if (schema_value == ShipType.CORVETTE) {
             return "Corvette";
         }
-        if (value == ShipType.BOMBER) {
+        if (schema_value == ShipType.BOMBER) {
             return "Bomber";
         }
-        if (value == ShipType.DESTROYER) {
+        if (schema_value == ShipType.DESTROYER) {
             return "Destroyer";
         }
-        if (value == ShipType.CARRIER) {
+        if (schema_value == ShipType.CARRIER) {
             return "Carrier";
         }
         return "???";
@@ -101,17 +101,17 @@ public final class Enums {
 
     // enumNameMissileType: debug/log/tooling name for any MissileType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameMissileType(long value) {
-        if (value == MissileType.NONE) {
+    public static java.lang.String enumNameMissileType(long schema_value) {
+        if (schema_value == MissileType.NONE) {
             return "None";
         }
-        if (value == MissileType.HEATSEEKER) {
+        if (schema_value == MissileType.HEATSEEKER) {
             return "Heatseeker";
         }
-        if (value == MissileType.TORPEDO) {
+        if (schema_value == MissileType.TORPEDO) {
             return "Torpedo";
         }
-        if (value == MissileType.NUKE) {
+        if (schema_value == MissileType.NUKE) {
             return "Nuke";
         }
         return "???";
@@ -137,26 +137,26 @@ public final class Enums {
 
     // enumNamePropType: debug/log/tooling name for any PropType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNamePropType(long value) {
-        if (value == PropType.NONE) {
+    public static java.lang.String enumNamePropType(long schema_value) {
+        if (schema_value == PropType.NONE) {
             return "None";
         }
-        if (value == PropType.ASTEROID) {
+        if (schema_value == PropType.ASTEROID) {
             return "Asteroid";
         }
-        if (value == PropType.CHUNK) {
+        if (schema_value == PropType.CHUNK) {
             return "Chunk";
         }
-        if (value == PropType.FRAGMENT) {
+        if (schema_value == PropType.FRAGMENT) {
             return "Fragment";
         }
-        if (value == PropType.SPHERE) {
+        if (schema_value == PropType.SPHERE) {
             return "Sphere";
         }
-        if (value == PropType.BLACK_HOLE) {
+        if (schema_value == PropType.BLACK_HOLE) {
             return "BlackHole";
         }
-        if (value == PropType.DYSON_PANEL) {
+        if (schema_value == PropType.DYSON_PANEL) {
             return "DysonPanel";
         }
         return "???";
@@ -176,8 +176,8 @@ public final class Enums {
 
     // enumNamePending: debug/log/tooling name for any Pending storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNamePending(long value) {
-        if (value == Pending.NONE) {
+    public static java.lang.String enumNamePending(long schema_value) {
+        if (schema_value == Pending.NONE) {
             return "None";
         }
         return "???";

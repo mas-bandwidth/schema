@@ -163,12 +163,14 @@ fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> FxRootRow {
     let locked = the_old_writer_block();
     let theirs = TableFixedBlock::parse(&locked).expect("the locked layout parses");
     let mut plan = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 512];
     let mut remap = [0u16; 512];
     let n = table_fixed_compile(
         &theirs,
         &mine,
         &FX_ROOT_FIXED_COUNTED,
         &mut plan,
+        &mut guards,
         &mut remap,
         report,
     );
@@ -181,16 +183,22 @@ fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> FxRootRow {
         let (o, z) = (h.off as usize, h.size as usize);
         image[o..o + z].copy_from_slice(&FX_ROOT_FIXED_DEFAULTS[o..o + z]);
     }
-    table_fixed_run(&plan[..n], &[], &the_old_writer_record(), &mut image, report);
+    table_fixed_run(&plan[..n], &guards, &remap, &the_old_writer_record(), &mut image, report);
     let mut value = FxRootRow::default();
     fx_root_fixed_scatter(&image, &mut value, report);
     // AND THE BOUND THE LOOP DOES NOT HOLD, the read's last pass (§3.4).
     let mut clamped = 0i32;
     let mut damaged = 0i32;
     fx_root_fixed_clamp_body(&mut value, &mut clamped, &mut damaged);
-    report.oor += clamped as u32;
+    // strict-only-read (docs/rulings.json): the load no longer adds the clamp
+    // count to a report counter; it marks `held` and refuses the whole batch
+    // out_of_range on it (fixedform.go's load), so this read does the same.
+    report.held += clamped as u32;
     if damaged != 0 {
         report.damaged = true;
+    }
+    if report.held != 0 {
+        let _ = report.refuse::<()>(TableFixedReason::OutOfRange);
     }
     value
 }
@@ -264,10 +272,16 @@ fn e6_a_rename_reads_through_the_declared_identity_and_moves_no_counter() {
         "the one field this reader cannot name is `gone`, and the renamed field must census nothing: unknown={}",
         report.unknown
     );
+    // strict-only-read: `mismatch` and `oor` are retired counters. A kind
+    // mismatch refuses KindMismatch and an out-of-range value refuses
+    // OutOfRange, so "no kind_mismatch, no clamp" is "not refused for either",
+    // and `held` (the out-of-range mark) stays zero.
     assert!(
-        report.widened == 0 && report.mismatch == 0 && report.oor == 0,
-        "a rename through `was` is not a version, and no counter moves for it: widened={} kind_mismatch={} clamped={}",
-        report.widened, report.mismatch, report.oor
+        report.widened == 0 && report.held == 0
+            && report.reason != TableFixedReason::KindMismatch
+            && report.reason != TableFixedReason::OutOfRange,
+        "a rename through `was` is not a version, and no counter moves for it: {:?}",
+        report
     );
     assert!(
         !report.damaged && !report.refused && report.reason == TableFixedReason::None,

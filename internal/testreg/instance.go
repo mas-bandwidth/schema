@@ -1,0 +1,268 @@
+package testreg
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// Instance is one test in one language. Its full name is
+// <lang>.<tier>.<type>.<family>.<case>. Instances are generated, never
+// listed: every test times every language row.
+type Instance struct {
+	Full string
+	Lang string
+	Test Test
+}
+
+// FullName is the instance name of a test in a language.
+func FullName(lang string, t Test) string {
+	return lang + "." + t.Tier + "." + t.Key
+}
+
+// Instances is every instance the registry implies, test-major, languages in
+// registry order: every per-language test times every language row, less
+// the pairs declared unrepresentable (a language that cannot express a test
+// has no instance of it: the declaration is data, never a runtime result),
+// and one instance of each language-free test.
+func (r *Registry) Instances() []Instance {
+	out := make([]Instance, 0, len(r.Tests)*len(r.Langs))
+	for _, t := range r.Tests {
+		if !t.PerLang() {
+			out = append(out, Instance{Full: FullName(LangFree, t), Lang: LangFree, Test: t})
+			continue
+		}
+		for _, l := range r.Langs {
+			if _, unrep := r.Unrepresentable(t.Key, l.Name); unrep {
+				continue
+			}
+			out = append(out, Instance{Full: FullName(l.Name, t), Lang: l.Name, Test: t})
+		}
+	}
+	return out
+}
+
+// Resolve finds the instance with the full name. An unknown name is an error
+// that says which part is unknown: it is never an empty result.
+func (r *Registry) Resolve(full string) (Instance, error) {
+	parts := strings.SplitN(full, ".", 3)
+	if len(parts) != 3 {
+		return Instance{}, fmt.Errorf("unknown test %q: a full name is <lang>.<tier>.<type>.<family>.<case>", full)
+	}
+	t, ok := r.Test(parts[2])
+	if !ok {
+		return Instance{}, fmt.Errorf("unknown test %q: no test has the key %q", full, parts[2])
+	}
+	if t.Tier != parts[1] {
+		return Instance{}, fmt.Errorf("unknown test %q: %s is tier %s, not %s", full, t.Key, t.Tier, parts[1])
+	}
+	if !t.PerLang() {
+		if parts[0] != LangFree {
+			return Instance{}, fmt.Errorf("unknown test %q: %s is language-free, so its one instance is %s", full, t.Key, FullName(LangFree, t))
+		}
+		return Instance{Full: full, Lang: LangFree, Test: t}, nil
+	}
+	l, ok := r.Lang(parts[0])
+	if !ok {
+		return Instance{}, fmt.Errorf("unknown test %q: language %q is not in the registry (%s)", full, parts[0], strings.Join(r.LangNames(), ", "))
+	}
+	if reason, unrep := r.Unrepresentable(t.Key, l.Name); unrep {
+		return Instance{}, fmt.Errorf("unknown test %q: %s declares %s unrepresentable (%s), so it has no such instance", full, l.Name, t.Key, reason)
+	}
+	return Instance{Full: full, Lang: l.Name, Test: t}, nil
+}
+
+// Query selects instances. Names are full names or wildcard patterns ("*"
+// matches any run of characters, dots included: "squirrel.*",
+// "*.unit.roundtrip.align-arrays.*"); with none, every instance is a
+// candidate. The filters then narrow the candidates: within one filter the
+// values are alternatives, across filters all must hold. Ready keeps only
+// languages whose adapter has landed (and every language-free test, whose
+// row names its adapter). --lang none selects the language-free tests.
+type Query struct {
+	Names    []string
+	Langs    []string
+	Tiers    []string
+	Types    []string
+	Families []string
+	Ready    bool
+}
+
+// Empty reports whether the query names nothing at all.
+func (q Query) Empty() bool {
+	return len(q.Names) == 0 && len(q.Langs) == 0 && len(q.Tiers) == 0 && len(q.Types) == 0 && len(q.Families) == 0 && !q.Ready
+}
+
+func (q Query) String() string {
+	parts := append([]string(nil), q.Names...)
+	add := func(flag string, vs []string) {
+		for _, v := range vs {
+			parts = append(parts, "--"+flag+" "+v)
+		}
+	}
+	add("lang", q.Langs)
+	add("tier", q.Tiers)
+	add("type", q.Types)
+	add("family", q.Families)
+	if q.Ready {
+		parts = append(parts, "--ready")
+	}
+	if len(parts) == 0 {
+		return "(everything)"
+	}
+	return strings.Join(parts, " ")
+}
+
+// IsPattern reports whether a name is a wildcard pattern.
+func IsPattern(name string) bool { return strings.Contains(name, "*") }
+
+// Glob compiles a wildcard pattern: "*" matches any run of characters, every
+// other character itself, and the whole name must match.
+func Glob(pattern string) *regexp.Regexp {
+	parts := strings.Split(pattern, "*")
+	for i := range parts {
+		parts[i] = regexp.QuoteMeta(parts[i])
+	}
+	return regexp.MustCompile("^" + strings.Join(parts, ".*") + "$")
+}
+
+// Selection is a query expanded, before anything runs: the explicit list of
+// names, and how many test-language pairs the selected tests declare
+// unrepresentable (they have no instance, so they are not in the list).
+type Selection struct {
+	Instances []Instance
+	Unrep     int
+}
+
+// Names is the selection's list of full names.
+func (s Selection) Names() []string {
+	out := make([]string, len(s.Instances))
+	for i, inst := range s.Instances {
+		out[i] = inst.Full
+	}
+	return out
+}
+
+// Select expands the query into its explicit list of names. A value the
+// registry does not know (a language, tier, type or family), a full name
+// that is not an instance, a pattern that matches none, and a query that
+// matches no instance are each an error: running a test that does not exist
+// always fails.
+func (r *Registry) Select(q Query) (Selection, error) {
+	families := map[string]bool{}
+	for _, t := range r.Tests {
+		families[t.Family] = true
+	}
+	var unknown []string
+	for _, l := range q.Langs {
+		if _, ok := r.Lang(l); !ok && l != LangFree {
+			unknown = append(unknown, fmt.Sprintf("language %q", l))
+		}
+	}
+	for _, t := range q.Tiers {
+		if !r.HasTier(t) {
+			unknown = append(unknown, fmt.Sprintf("tier %q", t))
+		}
+	}
+	for _, t := range q.Types {
+		if !r.HasType(t) {
+			unknown = append(unknown, fmt.Sprintf("type %q", t))
+		}
+	}
+	for _, f := range q.Families {
+		if !families[f] {
+			unknown = append(unknown, fmt.Sprintf("family %q", f))
+		}
+	}
+	if len(unknown) > 0 {
+		return Selection{}, fmt.Errorf("query %s names what the registry does not have: %s", q, strings.Join(unknown, ", "))
+	}
+	all := r.Instances()
+	candidate := all
+	if len(q.Names) > 0 {
+		picked := map[string]bool{}
+		for _, name := range q.Names {
+			if !IsPattern(name) {
+				if _, err := r.Resolve(name); err != nil {
+					return Selection{}, err
+				}
+				picked[name] = true
+				continue
+			}
+			re := Glob(name)
+			n := 0
+			for _, inst := range all {
+				if re.MatchString(inst.Full) {
+					picked[inst.Full] = true
+					n++
+				}
+			}
+			if n == 0 {
+				return Selection{}, fmt.Errorf("pattern %q matches 0 tests", name)
+			}
+		}
+		candidate = nil
+		for _, inst := range all {
+			if picked[inst.Full] {
+				candidate = append(candidate, inst)
+			}
+		}
+	}
+	in := func(vs []string, v string) bool { return len(vs) == 0 || contains(vs, v) }
+	keep := func(lang string, t Test) bool {
+		l, _ := r.Lang(lang)
+		ready := !t.PerLang() || l.Ready()
+		return in(q.Langs, lang) && in(q.Tiers, t.Tier) && in(q.Types, t.Type) && in(q.Families, t.Family) && (!q.Ready || ready)
+	}
+	var sel Selection
+	for _, inst := range candidate {
+		if keep(inst.Lang, inst.Test) {
+			sel.Instances = append(sel.Instances, inst)
+		}
+	}
+	// a name given in full is run or the query fails: a filter never drops
+	// it in silence
+	var dropped []string
+	for _, name := range q.Names {
+		if IsPattern(name) {
+			continue
+		}
+		inst, _ := r.Resolve(name)
+		if !keep(inst.Lang, inst.Test) {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) > 0 {
+		return Selection{}, fmt.Errorf("query %s: the filters exclude the full names %s; a name given in full runs or fails", q, strings.Join(dropped, ", "))
+	}
+	if len(sel.Instances) == 0 {
+		return Selection{}, fmt.Errorf("query %s matches 0 tests", q)
+	}
+	if len(q.Names) == 0 {
+		for _, u := range r.Unreps {
+			if t, ok := r.Test(u.Test); ok && keep(u.Lang, t) {
+				sel.Unrep++
+			}
+		}
+	}
+	return sel, nil
+}
+
+// Shard is the i-th of n parts (1-based) of a name list: name k goes to
+// part k mod n + 1, so the parts cover every name exactly once. An empty
+// part is an error: a shard that would run nothing fails.
+func Shard(instances []Instance, i, n int) ([]Instance, error) {
+	if n < 1 || i < 1 || i > n {
+		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
+	}
+	var out []Instance
+	for k, inst := range instances {
+		if k%n == i-1 {
+			out = append(out, inst)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("shard %d/%d of %d names matches 0 tests", i, n, len(instances))
+	}
+	return out, nil
+}

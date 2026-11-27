@@ -112,10 +112,15 @@ json-write-into <case> <instance>
   declared defaults when it was not the taken arm — and continues into its
   payload. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
-  count of the array at `<path>` (a new element is a copy of element 0, or the
-  element's declared default when the array was empty),
-  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
-  an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
+  count of the array at `<path>` (preserve the original prefix, dropping the
+  tail on shrink; on growth append copies of element 0, or the element's
+  declared default when the array was empty),
+  `length` the used length at `<path>`. Fill text with `a`. For a
+  `bytes(N)` field the length is a byte count and the fill byte is `0x61`.
+  With fixed-capacity backing storage, set the used length to the requested
+  number and fill only the available bytes. The `wref_bytes_length_ok` and
+  `wref_bytes_length` cases request 16 and 17 bytes for a 16-byte buffer.
+  `ordinal` sets an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
   the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
   arm's declared defaults, and a tag past the last arm holds no payload and is
   the value the writer refuses (rows `wref_union_tag_none`, `fref_`, `mref_`,
@@ -125,6 +130,11 @@ json-write-into <case> <instance>
   and the derived manifest withholds it. The driver writes `refused`, `wrote`
   or, where the leg's own types cannot hold the value at all, `unrepresentable`,
   which answers a `refused` row and no other.
+  A `write-refusal` row whose verdict is `wrote` may name an expected saved
+  wire after the verdict. The derived manifest withholds the verdict and
+  expected path and adds `save-wire` after the caller value. The driver
+  also writes its actual saved bytes to `<case>.wire`; the harness requires
+  byte identity with the expected saved wire.
   **The same row drives three more writers, one line kind and one surface
   each**: `write-refusal-fixed` saves the value through the fixed form's
   `FixedSave` as a batch of one; `write-refusal-message` saves it through

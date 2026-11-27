@@ -3,7 +3,7 @@ package darttable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *cookGen) emitCookTextExtent(f *ir.Field, val, addr, ind string, write bool, base string) {

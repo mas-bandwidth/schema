@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/jsontestsuite"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE OUTSIDE ORACLE (docs/SPEC-TABLES.md §16.12): json.moo's JSON layer over

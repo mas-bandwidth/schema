@@ -454,6 +454,11 @@ static partial class Program
                 int cap = WriteRefusalCapacity(buf);
                 for (int i = oldCount; i < Math.Min(n, cap); i++)
                 {
+                    if (holderType.Namespace == "Writebounds" && member == "OptArr" && oldCount > 0)
+                    {
+                        WriteRefusalElementSet(buf, i, WriteRefusalElementGet(buf, 0));
+                        continue;
+                    }
                     object freshRoot = WriteRefusalFreshRoot(codec, wire);
                     object freshBuf = f.GetValue(freshRoot);
                     WriteRefusalElementSet(buf, i, WriteRefusalElementGet(freshBuf, 0));
@@ -647,7 +652,17 @@ static partial class Program
                     case "write-refusal-json": verdict = WriteRefusalJson(codec, value, f[6], f[7]); break;
                     case "write-refusal-cook": verdict = WriteRefusalCook(codec, value, f[1]); break;
                     case "write-refusal-block": verdict = WriteRefusalBlock(value, f[1]); break;
-                    default: verdict = WriteRefusalSave(() => codec.Save(value, buffer)); break;
+                    default:
+                        verdict = WriteRefusalSave(() =>
+                        {
+                            long written = codec.Save(value, buffer);
+                            if (written >= 0 && f.Length > 8 && f[8] == "save-wire")
+                            {
+                                File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), buffer.AsSpan(0, (int)written).ToArray());
+                            }
+                            return written;
+                        });
+                        break;
                 }
             }
             File.WriteAllText(Path.Combine(outDir, f[1]), verdict + "\n");

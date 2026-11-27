@@ -72,10 +72,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // OutputFileNames returns the exact set of Java filenames Generate writes for u,
@@ -618,10 +618,14 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", name, name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static java.lang.String enumName%s(long value) {\n", name)
-	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", name)
+	// the parameter is schema_value, never value: an enum may be named value,
+	// and schema check refuses every declaration with the schema_ prefix, so
+	// no type this function spells can be hidden by it (SPEC §4.6,
+	// Generator-name safety).
+	g.bpf("    public static java.lang.String enumName%s(long schema_value) {\n", name)
+	g.bpf("        if (schema_value == %s.NONE) {\n            return \"None\";\n        }\n", name)
 	for _, m := range members {
-		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, constName(m), m)
+		g.bpf("        if (schema_value == %s.%s) {\n            return \"%s\";\n        }\n", name, constName(m), m)
 	}
 	g.bpf("        return \"???\";\n    }\n\n")
 }
@@ -646,10 +650,14 @@ func (g *gen) emitEnum(d *ir.Enum) {
 
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", d.Name, d.Name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static java.lang.String enumName%s(long value) {\n", d.Name)
-	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", d.Name)
+	// the parameter is schema_value, never value: an enum may be named value,
+	// and schema check refuses every declaration with the schema_ prefix, so
+	// no type this function spells can be hidden by it (SPEC §4.6,
+	// Generator-name safety).
+	g.bpf("    public static java.lang.String enumName%s(long schema_value) {\n", d.Name)
+	g.bpf("        if (schema_value == %s.NONE) {\n            return \"None\";\n        }\n", d.Name)
 	for _, v := range d.Variants {
-		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, constName(v), v)
+		g.bpf("        if (schema_value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, constName(v), v)
 	}
 	g.bpf("        return \"???\";\n    }\n\n")
 }

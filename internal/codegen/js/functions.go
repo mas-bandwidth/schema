@@ -23,7 +23,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitUnionFunctions emits the union's bounds, Zero helper and wire pair.
@@ -44,6 +44,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
 	g.pf("export function Write%s(stream, value) {\n", d.Name)
+	g.refuseNonObject("value", "  ")
 	if d.Max == 0 {
 		g.pf("  // an empty union holds only None; its degenerate tag range [0, 0] costs\n")
 		g.pf("  // zero bits (SPEC §4.8)\n")
@@ -115,6 +116,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
 		g.pf("export function Write%s(stream, value) {\n", st.Name)
+		g.refuseNonObject("value", "  ")
 		g.emitWriteItems(st.Items, "  ")
 	}
 	g.pf("  return true;\n}\n\n")
@@ -512,13 +514,14 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			g.emitWriteFoldedNum(count, fmt.Sprintf("%d", f.ArrayMin), bound,
 				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), true,
 				" // the count guards the loop (§6.3)", ind)
+			g.refuseShortStorage(name, count, ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 		} else {
-			// a [N]T holds exactly N values: a storage of any other length
-			// is refused, never cut or padded to N (SPEC 5.1, SF-20), and
-			// the loop runs over the SCHEMA bound
-			g.pf("%sif (%s == null || %s.length !== %s) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)\n%s  return false;\n%s}\n",
-				ind, name, name, bound, ind, ind)
+			// a [N]T holds exactly N values: a storage that is not an object,
+			// or of any other length, is refused, never read, cut or padded
+			// to N (SPEC 5.1, SF-20), and the loop runs over the SCHEMA bound
+			g.pf("%sif (%s === null || typeof %s !== \"object\" || %s.length !== %s) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)\n%s  return false;\n%s}\n",
+				ind, name, name, name, bound, ind, ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, bound)
 		}
 		g.emitWriteScalar(f, name+"[i]", ind+"  ")
@@ -644,6 +647,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, f.Type.Width), "")
 		}
 	case ir.TBool:
+		g.pf("%sif (typeof %s !== \"boolean\") {\n%s  return false; // a bool is a boolean (SPEC §5.1)\n%s}\n", ind, name, ind, ind)
 		scratch := g.boolScratch()
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeBool(%s)", scratch), "")
@@ -653,6 +657,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
 			g.pf("%s{\n", ind)
+			// the Number type test rides first: Math.fround converts null,
+			// a boolean or a numeric string to a number rather than refusing
+			// it (SPEC §5.1)
+			g.pf("%s  if (typeof %s !== \"number\") {\n%s    return false; // a float is a Number (SPEC §5.1)\n%s  }\n", ind, name, ind, ind)
 			g.pf("%s  const x = globalThis.Math.fround(%s);\n", ind, name)
 			g.pf("%s  if (!globalThis.Number.isFinite(x) || x < %s || x > %s) {\n",
 				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
@@ -682,6 +690,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFoldedNum(length, "0", g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			big.NewInt(0), big.NewInt(f.Type.Size), true,
 			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+		g.pf("%sif (!(%s instanceof globalThis.Uint8Array) || %s.length < %s) {\n%s  return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)\n%s}\n",
+			ind, name, name, length, ind, ind)
 		if f.Type.Kind == ir.TString {
 			g.needText = true
 			emitWriteText(g.pf, name, length, ind, "false")
@@ -1035,8 +1045,12 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 // raw bit calls mask, so this refusal is generated (nothing latches; bool
 // is the verdict). BigInt.asUintN(64, ...) first is the exact translation
 // of C#'s ulong storage domain: a negative misuse value reinterprets to its
-// huge two's-complement pattern and the guard refuses it.
+// huge two's-complement pattern and the guard refuses it. The BigInt type
+// test rides first, in every build (SPEC §5.1): BigInt.asUintN throws a
+// TypeError on a Number, null or undefined, and converts a numeric string
+// such as "1" rather than refusing it.
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
+	g.pf("%sif (typeof %s !== \"bigint\") {\n%s  return false; // a flags value is a BigInt (SPEC §5.1)\n%s}\n", ind, name, ind, ind)
 	g.pf("%s{\n%s  const flagsValue = globalThis.BigInt.asUintN(64, %s);\n", ind, ind, name)
 	if wireBits < 64 {
 		g.pf("%s  if (flagsValue >= 1n << %dn) { // a mask bit above the wire width cannot ride\n", ind, wireBits)
@@ -1052,4 +1066,20 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 		g.call(ind+"  ", fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, wireBits), "")
 	}
 	g.pf("%s}\n", ind)
+}
+
+// refuseNonObject refuses a record or union value that is not an object: a
+// field read on null or undefined would throw a TypeError, never the
+// writer's own false (SPEC §5.1; JavaScript refuses in every build).
+func (g *gen) refuseNonObject(expr, ind string) {
+	g.pf("%sif (%s === null || typeof %s !== \"object\") {\n%s  return false; // a record or union value is an object (SPEC §5.1)\n%s}\n",
+		ind, expr, expr, ind, ind)
+}
+
+// refuseShortStorage refuses an array's storage that is not an object
+// holding at least n elements: the loop would index null or undefined into
+// a TypeError, or write elements that are not there (SPEC §5.1).
+func (g *gen) refuseShortStorage(expr, n, ind string) {
+	g.pf("%sif (%s === null || typeof %s !== \"object\" || !(%s.length >= %s)) {\n%s  return false; // the storage holds every element the loop reads (SPEC §5.1)\n%s}\n",
+		ind, expr, expr, expr, n, ind, ind)
 }
