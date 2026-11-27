@@ -1627,6 +1627,8 @@ negative control remain in force. The format inventory is unchanged.
 
 **Wave 3 warning inventory (2026-11-25).** The C++ table units that Wave 3 put on main, `ann/announce4096`, `ann/announce4097`, `packetunions`, `prior`, `shapes`, `surfaces` and the `examples` block, view and union arm (f259a7aa3a, 02249b0443), entered the corpus without their warning lines; #5046 records them under the same one-time rule: 35 lines, 110 path/kind pairs, each kind one the list already holds for that template file type (the packet files carry only the `switch-default` / `covered-switch-default` pair). They are an inventory of units already on main, not new warnings.
 
+**Writebounds warning inventory (2026-11-27).** The `writebounds` unit that #4856 put on main (f76d98e8a5) entered the corpus without its warning lines; the #424 redo of #5046 records it under the same one-time rule: 4 lines, each kind one the list already holds for that template file type. The format half needs no entry: the unit is clang-format clean.
+
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python | ruby | unity |

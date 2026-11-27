@@ -30,6 +30,8 @@
 # (f259a7aa3a, 02249b0443): ann/announce4096, ann/announce4097, packetunions,
 # prior, shapes, surfaces, and the examples block, view and union arm. Each
 # kind is one the list already holds for that template file type.
+# 2026-11-27: the same one-time inventory for the writebounds unit #4856
+# added (f76d98e8a5); each kind is one the list holds for that file type.
 build/tables-generated/a1/A1Table.cpp float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros
 build/tables-generated/a1/A1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,switch-default,switch-enum
 build/tables-generated/a1/Tbla1View.cpp old-style-cast
@@ -707,6 +709,10 @@ build/tables-generated/w2/W2Table.cpp float-equal,nrvo,old-style-cast,sign-conve
 build/tables-generated/w2/W2Table.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,switch-default
 build/tables-generated/widelist/WidesTable.cpp float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros
 build/tables-generated/widelist/WidesTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,switch-default
+build/tables-generated/writebounds/TableWriteBounds.h covered-switch-default
+build/tables-generated/writebounds/TableWriteBoundsTable.cpp float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros
+build/tables-generated/writebounds/TableWriteBoundsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,sign-conversion,switch-default,switch-enum
+build/tables-generated/writebounds/WriteboundsView.cpp old-style-cast
 generated/bench/cpp/Bench.h covered-switch-default
 generated/bench/cpp/BenchWire.h covered-switch-default,switch-default
 generated/bench/cpp/RealWorld.h covered-switch-default
