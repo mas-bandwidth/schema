@@ -1815,6 +1815,9 @@ fixedPayload = function(T, fd, bytes, off, report, st, set) {
     if (fd.counted) {
       local count = i32At(bytes, off);
       if (count < 0 || count > fd.bound) return "count_over_bound";
+      // a count below the declared Min refuses count_over_bound in every
+      // form, the fixed form's included (docs/SPEC-TABLES.md §3.4)
+      if (count < fd.min) return "count_over_bound";
       local arr = array(count);
       for (local i = 0; i < count; i++) {
         local idx = i;
@@ -1910,7 +1913,12 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     set(0.0);
     return null;
   }
+  // NO FIXED READ CLAMPS (docs/SPEC-TABLES.md §3.4, §4): a value past its
+  // declared range refuses the load out_of_range; it is never landed at the
+  // end and counted, as the variable form's walk does
+  local oor = report.oor;
   x = rangeScalar(e, fk, x, report);
+  if (report.oor != oor) return "out_of_range";
   set(x);
   return null;
 };

@@ -762,6 +762,17 @@ build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
 
+build/tables-generated-go/writebounds/.stamp: bin/schema make/go.mk testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@mkdir -p build/tables-generated-go/writebounds
+	./bin/schema generate --lang go --out build/tables-generated-go/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	$(call go_table_module,writebounds,writebounds)
+	@touch $@
+
+build/conformance-go-writebounds: build/tables-generated-go/writebounds/.stamp test/conformance/go/main.go test/conformance/go/regions.go test/conformance/go/writerefusal.go test/conformance/go/codec_writebounds.go test/conformance/go/stubs_writebounds.go $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
+	@mkdir -p build
+	@printf 'module conformancego\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\twritebounds v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s/%s\nreplace writebounds => %s/build/tables-generated-go/writebounds\n' "$(CURDIR)" "$(CURDIR)" "$(SERIALIZE_GO_RUNTIME)" "$(CURDIR)" > build/conformance-go-writebounds.mod
+	cd test/conformance/go && go build -modfile="$(CURDIR)/build/conformance-go-writebounds.mod" -tags writebounds_only -o ../../../$@ .
+
 # THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
 # cross-compiles, and the pinned emulator is already installed for the C++
 # big-endian legs above, so the table WIRE's own claim — every field id, every

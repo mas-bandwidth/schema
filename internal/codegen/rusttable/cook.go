@@ -1193,6 +1193,31 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 // both byte orders ride (1 little, 2 big, Go's TableByteOrder values). A
 // variable table's writer is the region writer (numbering, containers), which
 // this leg does not carry yet, so it keeps its read side only.
+func cookRowHasDeprecatedEnum(st *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if seen[st] {
+		return false
+	}
+	seen[st] = true
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.Deprecated {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			for i := range ref.Variants {
+				if variantDeprecated(ref, i) {
+					return true
+				}
+			}
+		case *ir.Struct:
+			if cookRowHasDeprecatedEnum(ref, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (g *gen) emitCookWrite(st *ir.Struct) {
 	if !g.cookable(st.Name) || !st.IsTable || st.IsMapEntry() {
 		return
@@ -1211,6 +1236,7 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 	g.pf("// fixed table, so the reason is always Ok; a buffer short of it, a bad\n")
 	g.pf("// byte order or a value outside a declared bound writes NOTHING and\n")
 	g.pf("// returns false.\n")
+	checkEnum := cookRowHasDeprecatedEnum(st, map[*ir.Struct]bool{})
 	g.pf("pub fn %s(_value: &%sRow) -> i64 {\n    %d\n}\n\n", fn(n, "cook_measure"), n, total)
 	g.pf("pub fn %s(value: &%sRow) -> (i64, TableCookRefuse) {\n    (%s(value), TableCookRefuse::Ok)\n}\n\n",
 		fn(n, "cook_measure_reason"), n, fn(n, "cook_measure"))
@@ -1219,6 +1245,9 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 	g.pf("        if order != 1 && order != 2 {\n            return false;\n        }\n")
 	g.pf("        if (buffer.len() as i64) < %d {\n            return false;\n        }\n", total)
 	g.pf("        let p = value as *const %sRow as *const u8;\n", n)
+	if checkEnum {
+		g.pf("        #[cfg(debug_assertions)]\n        table_cook_check_enum_variants(p, %s());\n", fn(n, "cook_info"))
+	}
 	g.pf("        let out = buffer.as_mut_ptr();\n")
 	g.pf("        // the measure pass: no buffer, so a refusal changes no byte (Go's\n")
 	g.pf("        // first record walk with a nil buffer)\n")
@@ -1338,6 +1367,10 @@ pub struct TableCookFieldInfo {
     pub count_offset: i32,   // the count companion's offset, or -1
     pub present_offset: i32, // an optional's presence bool, or -1
     pub storage: TableCookStorage,
+    #[cfg(debug_assertions)]
+    pub deprecated_variants: &'static [(u64, &'static str)],
+    #[cfg(debug_assertions)]
+    pub deprecated_field: bool,
     // the record this field NAMES, behind a function so the table stays
     // constructible in any order. None when the field is a scalar. Following it
     // is how a walker DESCENDS — a pointer's target, a by-value nesting and an
@@ -1397,6 +1430,40 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
         }
     }
     v
+}
+
+// Check only live enum slots of the caller's fixed row (§2.15).
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub unsafe fn table_cook_check_enum_variants(p: *const u8, t: &TableCookInfo) {
+    for f in &t.fields[..t.num_fields as usize] {
+        if f.is_pointer || f.deprecated_field || (f.deprecated_variants.is_empty() && f.record.is_none()) {
+            continue;
+        }
+        if f.present_offset >= 0 && unsafe { table_cook_raw(p, f.present_offset as i64, 1) } == 0 {
+            continue;
+        }
+        let count = if f.count_offset >= 0 {
+            let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) } as i32;
+            used.clamp(0, f.array_bound)
+        } else if f.is_array {
+            f.array_bound
+        } else {
+            1
+        };
+        for k in 0..count as i64 {
+            let at = f.offset as i64 + k * f.elem_size as i64;
+            if let Some(record) = f.record {
+                unsafe { table_cook_check_enum_variants(p.add(at as usize), record()); }
+            } else {
+                let value = unsafe { table_cook_raw(p, at, f.elem_size as u32) };
+                for &(ordinal, name) in f.deprecated_variants {
+                    debug_assert!(value != ordinal,
+                        "invalid_value: {}.{} holds deprecated variant {}", t.name, f.name, name);
+                }
+            }
+        }
+    }
 }
 
 // table_cook_write_record is Go's record/field/value walk over these
@@ -1587,6 +1654,16 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "            count_offset: %d,\n", countOffset)
 	fmt.Fprintf(&b, "            present_offset: %d,\n", presentOffset)
 	fmt.Fprintf(&b, "            storage: %s,\n", storage)
+	b.WriteString("            #[cfg(debug_assertions)]\n            deprecated_variants: &[")
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && !f.Deprecated {
+		for i, variant := range en.Variants {
+			if variantDeprecated(en, i) {
+				fmt.Fprintf(&b, "(%d, %q), ", i+1, en.Name+"."+variant)
+			}
+		}
+	}
+	b.WriteString("],\n")
+	fmt.Fprintf(&b, "            #[cfg(debug_assertions)]\n            deprecated_field: %v,\n", f.Deprecated)
 	fmt.Fprintf(&b, "            record: %s,\n", record)
 	fmt.Fprintf(&b, "        }")
 	return b.String()
