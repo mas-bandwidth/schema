@@ -217,6 +217,7 @@ func runLuauWireFuzzVerdictPipe(t *testing.T, stageDir string, n int, expectGree
 	driverScript := filepath.Join(stageDir, "test", "conformance", "luau", "wirefuzz.luau")
 	driver := fmt.Sprintf("%s %s", host, driverScript)
 	cmd := testproc.Command(t, harness, "wire-fuzz",
+		"--leg", "luau",
 		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),

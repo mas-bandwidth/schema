@@ -290,3 +290,35 @@ func TestWireFuzzFiniteExemptionIsRetired(t *testing.T) {
 		t.Fatalf("non-finite comparison exemption survived: %v", err)
 	}
 }
+
+// THE READ COUNTERS ARE DIAGNOSTICS AND ARE NEVER COMPARED (docs/SPEC-TABLES.md
+// §4.2 requirement 2; docs/rulings.json conformance-is-read-then-write, the
+// maintainer, 2026-11-03: "read counters, memory size obviously yes these can
+// change per-language"). A leg whose report, measured size and retention
+// counts are garbage agrees with the oracle when it accepts the same mutant
+// and saves the same bytes; the verdict and the bytes are what diverge.
+func TestWireVerdictCountersAreDiagnostics(t *testing.T) {
+	answer := oracleAnswer{accepted: true, report: Counts{Unknown: 1}, encoded: []byte{1, 2, 3}}
+	garbage := legReply{
+		loaded:     true,
+		report:     Counts{Unknown: 6, KindMismatch: 3, Widened: 7, Clamped: 2, Duplicate: 1},
+		measure:    999,
+		saved:      []byte{1, 2, 3},
+		retained:   4,
+		retainLost: 6,
+	}
+	if verdict := wireVerdict(nil, garbage, answer, 16); verdict != "" {
+		t.Fatalf("a per-language diagnostic changed the verdict: %s", verdict)
+	}
+	// the controls: the same reply refusing, or saving other bytes, diverges
+	refused := garbage
+	refused.report.Refused = true
+	if verdict := wireVerdict(nil, refused, answer, 16); verdict == "" {
+		t.Fatal("a leg that refused a wire the oracle reads did not diverge")
+	}
+	other := garbage
+	other.saved = []byte{1, 2, 4}
+	if verdict := wireVerdict(nil, other, answer, 16); verdict == "" {
+		t.Fatal("a leg that saved other bytes did not diverge")
+	}
+}

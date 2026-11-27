@@ -424,7 +424,7 @@ tables-lua-release-negative-control: toolchain-lua build/conformance-harness bui
 		if ! cmp -s "$$f" "$$f.sabotaged"; then n=$$((n + 1)); fi; mv "$$f.sabotaged" "$$f"; \
 	done; \
 	if [ "$$n" -eq 0 ]; then echo "NEGATIVE CONTROL: the release sabotage patched no unit's load.lua"; exit 1; fi
-	@if ./build/conformance-harness wire-fuzz \
+	@if ./build/conformance-harness wire-fuzz --leg lua \
 		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/lua-release-negative/units' \
 		--seed 2 --n $(LUA_RELEASE_FUZZ_N) > build/lua-release-negative/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the release wire fuzz stayed green over a load that refuses every unknown field as damage"; \

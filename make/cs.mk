@@ -943,16 +943,16 @@ CS_FUZZ_SMOKE_N ?= 2000
 # relax that once skipped them is gone and every mutant is compared.
 .PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
 tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
+	./build/conformance-harness wire-fuzz --leg cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
+	./build/conformance-harness wire-fuzz --leg cs-region --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg cs-region --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
 
 # A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §6.5). The wire fuzzer
 # stopped on this rule before the wire-alone walk landed, and the region arm
@@ -990,7 +990,7 @@ test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-
 # report completion" on its first mutant, a truncated shapes.Bounds.)
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin \
+	./build/conformance-harness wire-fuzz --leg cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin \
 		> build/wire-fuzz/cs-builder.log 2>&1; status=$$?; cat build/wire-fuzz/cs-builder.log; test $$status -eq 0
 	@grep -qE '^wire-fuzz-builder: seed [0-9]+, [1-9][0-9]* seeds over' build/wire-fuzz/cs-builder.log || { \
 		echo "tables-cs-builder-fuzz: the builder arm printed no summary: the run proved nothing"; exit 1; }
@@ -998,7 +998,7 @@ tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 		echo "tables-cs-builder-fuzz: the builder arm left seeds absent (a root with no builder binding): $$(grep -oE '[0-9]+ (ledgered )?seeds absent' build/wire-fuzz/cs-builder.log)"; exit 1; fi
 
 tables-cs-retain-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin
+	./build/conformance-harness wire-fuzz --leg cs --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin
 
 .PHONY: tables-cs-retain-negative-control
 tables-cs-retain-negative-control: bin/schema
@@ -1476,7 +1476,7 @@ CARDS_CS_DRIVER = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconforma
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-cs-wire-fuzz
 cards-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg cards-cs \
 		--timeout $(CARDS_CS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
 		> build/cards-cs-wire-fuzz.log 2>&1; \
@@ -1497,7 +1497,7 @@ test-cs: cards-cs-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-cs-retain-fuzz
 cards-cs-retain-fuzz: build-conformance-cs build/conformance-harness
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg cards-cs \
 		--timeout $(CARDS_CS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
 		> build/cards-cs-retain-fuzz.log 2>&1; \
@@ -1519,7 +1519,7 @@ test-cs: cards-cs-retain-fuzz
 .PHONY: cards-cs-retain-negative-control
 cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 	@mkdir -p build/wire-fuzz
-	@if CARDS_CS_RETAIN_DROP=1 ./build/conformance-harness wire-fuzz \
+	@if CARDS_CS_RETAIN_DROP=1 ./build/conformance-harness wire-fuzz --leg cards-cs \
 		--timeout $(CARDS_CS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
 		--failed build/wire-fuzz/failed-cards-retain-neg-cs.bin \
@@ -1527,7 +1527,7 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 		echo 'NEGATIVE CONTROL FAILED: the Card retain arm stayed green with retention dropped'; cat build/cards-cs-retain-neg.log; exit 1; fi
 	@grep -qE 'FAILED after [1-9][0-9]* mutants: (the retention report|the decoded value) differs' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the retain arm did not go red on the retention report'; cat build/cards-cs-retain-neg.log; exit 1; }
 	@! grep -Eq 'driver exited|driver wrote nothing|panic|Unhandled exception' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the driver broke rather than diverged'; cat build/cards-cs-retain-neg.log; exit 1; }
-	@CARDS_CS_RETAIN_DROP=1 ./build/conformance-harness wire-fuzz \
+	@CARDS_CS_RETAIN_DROP=1 ./build/conformance-harness wire-fuzz --leg cards-cs \
 		--timeout $(CARDS_CS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
 		> build/cards-cs-retain-neg-plain.log 2>&1 || { echo 'NEGATIVE CONTROL FAILED: the plain arm went red too'; cat build/cards-cs-retain-neg-plain.log; exit 1; }

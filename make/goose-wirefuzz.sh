@@ -7,10 +7,11 @@
 # For every unit the goose target generated (a directory with a table
 # module), builds the leg for that unit and runs the harness's two arms over
 # it: --builder over its variable-class file roots, the region arm over its
-# value-only roots. An arm whose driver announces no root of this unit (the
-# harness's "the leg has a codec for none") is held by name: it passes only
-# when test/conformance/goose/wirefuzz-noroots.tsv carries the unit and the
-# arm, and a carried row whose arm runs, or whose unit is gone, fails. So a
+# value-only roots, each run asked about this unit alone (--unit). An arm
+# whose driver announces no root of this unit, or whose profile leaves the unit
+# no seeded root (the harness's "the leg has a codec for none" or "the roster
+# is empty"), is held by name: it passes only when
+# test/conformance/goose/wirefuzz-noroots.tsv carries the unit and the arm, and a carried row whose arm runs, or whose unit is gone, fails. So a
 # driver that stops presenting a unit's roots reads red, never as one arm
 # fewer. Every arm that ran is required green; the line printed per arm is the
 # harness's.
@@ -59,10 +60,10 @@ for u in $(cat "$work/units.txt"); do
         esac
 		log="$work/$u.$arm.log"
 		rc=0
-		"$harness" wire-fuzz $flag --driver "$work/$u/wirefuzz $u $driver_arm" --seed "$seed" --n "$n" \
+		"$harness" wire-fuzz --leg goose-unit --unit "$u" $flag --driver "$work/$u/wirefuzz $u $driver_arm" --seed "$seed" --n "$n" \
 			--failed "$work/failed-$u-$arm.bin" >"$log" 2>&1 || rc=$?
 		noroots=$(awk -F'\t' -v u="$u" -v a="$arm" '$1 == u && $2 == a { print $3 }' "$noroots_file")
-		if [ $rc -ne 0 ] && grep -q 'the leg has a codec for none' "$log"; then
+		if [ $rc -ne 0 ] && grep -qE 'the leg has a codec for none|the roster is empty' "$log"; then
 			if [ -n "$noroots" ]; then
 				echo "goose wire-fuzz: $u ($arm arm): no roots, carried: $noroots"
 				printf '%s\t%s\n' "$u" "$arm" >>"$work/noroots-seen.txt"
