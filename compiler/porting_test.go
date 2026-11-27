@@ -3,7 +3,8 @@
 // proves it — a Makefile target the tree RUNS (from `make test`, from a
 // `tables-<lang>-release` target, or by name from a workflow) or a Go test
 // that exists — and in a section with a Makefile-checkable form it must name
-// at least one; a not-yet cell cites its carry-across issue; a cannot cell
+// at least one; a not-yet cell cites its carry-across issue or the roadmap
+// entry that carries it (one that exists in docs/roadmap.sexp); a cannot cell
 // states its reason. The register's grammar is stated on the page.
 package compiler
 
@@ -40,6 +41,8 @@ var (
 	portingHeading  = regexp.MustCompile(`^### (.+)$`)
 	portingTargets  = regexp.MustCompile(`^\*\*Targets:\*\* (.+)$`)
 	portingIssue    = regexp.MustCompile(`#[0-9]+`)
+	portingRoadmap  = regexp.MustCompile("roadmap `([^`]+)`")
+	roadmapNodeID   = regexp.MustCompile(`:id "([^"]+)"`)
 	portingBacktick = regexp.MustCompile("`([^`]+)`")
 	portingTestName = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
 	makeRuleHeader  = regexp.MustCompile(`^([^\t#:=][^:=]*):(.*)$`)
@@ -398,6 +401,7 @@ type portingTree struct {
 	exists   map[string]bool
 	reached  map[string]bool
 	tests    map[string]bool
+	roadmap  map[string]bool // the node ids of docs/roadmap.sexp
 }
 
 // checkPortingRegister holds the register to the tree. Every finding is one
@@ -444,8 +448,14 @@ func checkPortingRegister(reg *portingRegister, tree portingTree) []string {
 					}
 				}
 			case strings.HasPrefix(cell, "❌"):
-				if !portingIssue.MatchString(cell) {
-					findings = append(findings, fmt.Sprintf("%s / %s: not yet, with no carry-across issue (#NNN)", row.Title, lang))
+				cited := portingRoadmap.FindAllStringSubmatch(cell, -1)
+				if !portingIssue.MatchString(cell) && len(cited) == 0 {
+					findings = append(findings, fmt.Sprintf("%s / %s: not yet, with no carry-across issue (#NNN) or roadmap entry (roadmap `<id>`)", row.Title, lang))
+				}
+				for _, m := range cited {
+					if !tree.roadmap[m[1]] {
+						findings = append(findings, fmt.Sprintf("%s / %s: cites roadmap %q, which is no node of docs/roadmap.sexp", row.Title, lang, m[1]))
+					}
 				}
 			case strings.HasPrefix(cell, "—"):
 				reason := strings.TrimSpace(strings.TrimPrefix(cell, "—"))
@@ -514,6 +524,13 @@ func readPortingInputs(t *testing.T) (register string, tree portingTree) {
 	tree.tests, err = goTestNames(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	tree.roadmap = map[string]bool{}
+	for _, m := range roadmapNodeID.FindAllStringSubmatch(read("docs/roadmap.sexp"), -1) {
+		tree.roadmap[m[1]] = true
+	}
+	if len(tree.roadmap) == 0 {
+		t.Fatal("docs/roadmap.sexp names no node")
 	}
 	return read("docs/PORTING.md"), tree
 }
@@ -600,16 +617,30 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 	plant("a carried cell naming no test that exists", "✅ `TestNoSuchGate`", "no Go test")
 	plant("a carried cell naming nothing, held to the convention", "✅ carried by hand", "has no target")
 	plant("a bare not-yet cell", "❌", "no carry-across issue")
+	plant("a not-yet cell citing a roadmap id that is no node", "❌ roadmap `port/planted/no-such-entry` owed", "which is no node")
+	// and its positive half: a not-yet cell citing a node that exists, with no
+	// issue number, is a cited cell
+	ids := slices.Sorted(maps.Keys(tree.roadmap))
+	cited := make([]portingRow, len(rows))
+	for i, r := range rows {
+		cells := map[string]string{}
+		maps.Copy(cells, r.Cells)
+		cited[i] = portingRow{Title: r.Title, Slugs: r.Slugs, Cells: cells}
+	}
+	cited[checkable].Cells[lang] = "❌ roadmap `" + ids[0] + "` owed"
+	if f := checkPortingRegister(&portingRegister{Languages: reg.Languages, Rows: cited}, tree); len(f) != 0 {
+		t.Errorf("a not-yet cell citing roadmap node %q: want no finding, got %q", ids[0], f)
+	}
 	plant("a cannot cell with no reason", "— ", "no stated reason")
 	plant("a cell with no marker", "carried", "starts with none of")
 
 	// the registry's own controls: a discovered language with no column, and a
 	// column no driver backs, each named by the finding
-	extra := portingTree{root: tree.root, registry: append(slices.Clone(tree.registry), "zig"), exists: tree.exists, reached: tree.reached, tests: tree.tests}
+	extra := portingTree{root: tree.root, registry: append(slices.Clone(tree.registry), "zig"), exists: tree.exists, reached: tree.reached, tests: tree.tests, roadmap: tree.roadmap}
 	if f := checkPortingRegister(reg, extra); len(f) != 1 || !strings.Contains(f[0], `"zig" has no column`) {
 		t.Errorf("a tenth driver with no column: want one finding naming it, got %q", f)
 	}
-	fewer := portingTree{root: tree.root, registry: tree.registry[1:], exists: tree.exists, reached: tree.reached, tests: tree.tests}
+	fewer := portingTree{root: tree.root, registry: tree.registry[1:], exists: tree.exists, reached: tree.reached, tests: tree.tests, roadmap: tree.roadmap}
 	if f := checkPortingRegister(reg, fewer); len(f) != 1 || !strings.Contains(f[0], `"`+tree.registry[0]+`" is no language`) {
 		t.Errorf("a column with no driver: want one finding naming it, got %q", f)
 	}
