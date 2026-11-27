@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE COOK SURFACE's half of the driver (docs/SPEC-TABLES.md §7, §7.5).
 //
 // The canonical NODE DUMP: the walk this leg makes through its OWN derefs,

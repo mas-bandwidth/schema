@@ -205,9 +205,6 @@ enum serialize_f64_bits
 enum serialize_fail
 { Zfirst, Zsecond, Zthird }
 
-enum serialize_fixed
-{ Zfirst, Zsecond, Zthird }
-
 enum serialize_packer_read
 { Zfirst, Zsecond, Zthird }
 
@@ -602,8 +599,6 @@ table NameTypes6
     many1 [..4]serialize_f64_bits
     one2  serialize_fail
     many2 [..4]serialize_fail
-    one3  serialize_fixed
-    many3 [..4]serialize_fixed
     one4  serialize_packer_read
     many4 [..4]serialize_packer_read
     one5  serialize_packer_write

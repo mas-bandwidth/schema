@@ -180,7 +180,7 @@ _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.s
 # ---- cs ----
 
 .PHONY: _verify-cs-conformance _verify-cs-bench
-_verify-cs-conformance: toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
+_verify-cs-conformance: announcement-entry-budget-cs toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
 	@rm -rf build/verify/conformance-cs && mkdir -p build/verify/conformance-cs $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/cs && $(DOTNET) run -c Release --nologo) & p1=$$!; \
@@ -196,7 +196,7 @@ _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-be
 # ---- unity ----
 
 .PHONY: _verify-unity-conformance _verify-unity-bench
-_verify-unity-conformance: toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
+_verify-unity-conformance: announcement-entry-budget-unity toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
 	@rm -rf build/verify/conformance-unity && mkdir -p build/verify/conformance-unity $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only unity --claims --work build/verify/conformance-unity --results $(VERIFY_RESULTS_DIR)/unity.json
 
