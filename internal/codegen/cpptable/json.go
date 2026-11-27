@@ -1155,20 +1155,20 @@ inline int TableJsonFormatG( char * text, size_t size, int digits, double value 
 #else
 inline locale_t TableJsonCLocale()
 {
-    static locale_t c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 );
+    static locale_t c = newlocale( LC_ALL_MASK, "C", locale_t() );
     return c;
 }
 struct TableJsonCNumbers
 {
     locale_t previous;
     bool swapped;
-    TableJsonCNumbers() : previous( (locale_t) 0 ), swapped( false )
+    TableJsonCNumbers() : previous( locale_t() ), swapped( false )
     {
         const locale_t c = TableJsonCLocale();
-        if ( c != (locale_t) 0 )
+        if ( c != locale_t() )
         {
             previous = uselocale( c );
-            swapped = previous != (locale_t) 0;
+            swapped = previous != locale_t();
         }
     }
     ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
