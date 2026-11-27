@@ -230,9 +230,17 @@ out.writeblob(reply);
 out.flush();
 
 // THE MUTANTS, one reply each, flushed before the next is read
+// THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+// EOF before the index's first byte is the clean close; EOF after it (1 to 3
+// index bytes) is a truncated frame, and so is a cut length or body.
 for (;;) {
-  local mh = take(8);
-  if (mh == null) break;
+  local first = null;
+  try { first = input.readn('b'); } catch (e) { break; }
+  local rest = take(7);
+  if (rest == null) throw "wirefuzz.nut: the stream ended inside a mutant header";
+  local mh = blob(8);
+  mh.writen(first, 'b');
+  for (local i = 0; i < 7; i++) mh.writen(rest[i], 'b');
   local index = u32At(mh, 0);
   local size = u32At(mh, 4);
   local wire = take(size);

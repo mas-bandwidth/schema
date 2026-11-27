@@ -1477,7 +1477,7 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	n := st.Name
 	typ := e.structType(st)
-	e.declare(n+"FixedMeasure", n+"FixedSave", n+"FixedLoad")
+	e.declare(n+"FixedMeasure", n+"FixedSave", n+"FixedLoad", "_"+n+"FixedLoadWalk")
 	e.p(0, "// %sFixedMeasure is a file of count records: the header, the layout, the records (§2).", n)
 	e.p(0, "fn %sFixedMeasure(count: i64) -> i64 {", n)
 	if st.Integrity == "crc32c" {

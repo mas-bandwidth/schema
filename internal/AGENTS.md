@@ -54,3 +54,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |
+| `wirealone/` | the framing rows decidable from the wire alone, read for each port's wire-walk control | `go test ./internal/wirealone` | `go test ./internal/wirealone` |
