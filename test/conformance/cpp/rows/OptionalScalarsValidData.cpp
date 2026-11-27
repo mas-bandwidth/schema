@@ -44,9 +44,9 @@
 // the -I the Makefile gives build/conformance-cpp for it (CONFORMANCE_INCLUDES,
 // Makefile:4651); the generated fixed form is header-only, so no source list:
 //
-//   c++ -std=c++17 -Wall -Ibuild/tables-generated/v1 \
-//       test/conformance/cpp/rows/OptionalScalarsValidData.cpp \
-//       -o build/rows-cpp-OptionalScalarsValidData && \
+//   c++ -std=c++17 -Wall -Ibuild/tables-generated/v1
+//       test/conformance/cpp/rows/OptionalScalarsValidData.cpp
+//       -o build/rows-cpp-OptionalScalarsValidData &&
 //       ./build/rows-cpp-OptionalScalarsValidData
 //
 // NEGATIVE CONTROL (behavioural, compiles): in
@@ -137,9 +137,11 @@ static void optional_case( bool tier_present, int32_t tier,
            "tier: the flag and the value land — content when present, the declared default when absent" );
     check( back.mark_present == read_mark_present && back.mark == read_mark,
            "mark: the flag and the ordinal land — content when present, None when absent" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
            "a clean optional read moves no counter" );
-    check( !r.refused && !r.malformed, "a clean optional read is not a refusal and not damage" );
+    check( !r.refused && !r.damaged, "a clean optional read is not a refusal and not damage" );
 
     // THE LAW'S OWN SENTENCE: read a file and save it back; the bytes must
     // be identical — a byte a port encodes differently is a byte that does

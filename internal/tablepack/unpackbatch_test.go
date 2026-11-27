@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const batchSchema = "package unpackbatch\n\nfixed table Player {\n\tlevel int32 | min = 0, max = 1000\n}\n"
@@ -222,20 +222,10 @@ func TestUnpackBatchRefusesOverlappingDestinations(t *testing.T) {
 }
 
 // The reviewer's fresh case-only alias on the volume itself: no seam. Runs
-// where the volume folds names and is skipped, named, where it does not.
+// on a volume that folds names (foldingWork: SCHEMA_CASEFOLD_DIR on Linux).
 func TestUnpackBatchRefusesFreshCaseAliasOnAFoldingVolume(t *testing.T) {
 	b := newBatch(t)
-	probe := filepath.Join(b.work, "Probe")
-	if err := os.Mkdir(probe, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	_, err := os.Lstat(filepath.Join(b.work, "probe"))
-	if rerr := os.Remove(probe); rerr != nil {
-		t.Fatal(rerr)
-	}
-	if err != nil {
-		t.Skipf("this volume keeps Probe and probe apart, so two names differing by case are two directories here: %v", err)
-	}
+	b.work = foldingWork(t)
 	x, y := filepath.Join(b.work, "Out"), filepath.Join(b.work, "out")
 	if err := b.unpack(x, y); err == nil || !strings.Contains(err.Error(), "nothing was written") {
 		t.Fatalf("unpacked two messages into %s and %s: %v", x, y, err)

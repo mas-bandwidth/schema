@@ -1,0 +1,8 @@
+[package]
+name = "packet-void-test"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+packetvoid = { path = "../../../build/packet-void/rust/generated" }
+serialize = { package = "serialize-official", path = "../../../../serialize.rs" }

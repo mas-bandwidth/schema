@@ -3,9 +3,9 @@ package unitytable_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // THE ANNOUNCEMENT WRITER REFUSES A VOCABULARY OF MORE THAN 4096 ENTRIES

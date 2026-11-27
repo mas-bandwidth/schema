@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum key_bytes_used
+{ Zfirst, Zsecond, Zthird }
+
+enum key_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum key_codec
+{ Zfirst, Zsecond, Zthird }
+
+enum key_compare
+{ Zfirst, Zsecond, Zthird }
+
+enum key_default
+{ Zfirst, Zsecond, Zthird }
+
+enum key_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum key_enum
+{ Zfirst, Zsecond, Zthird }
+
+enum key_enums
+{ Zfirst, Zsecond, Zthird }
+
+enum key_fits
+{ Zfirst, Zsecond, Zthird }
+
+enum key_heap
+{ Zfirst, Zsecond, Zthird }
+
+enum key_index_size
+{ Zfirst, Zsecond, Zthird }
+
+enum key_inline_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum key_inline_index
+{ Zfirst, Zsecond, Zthird }
+
+enum key_inline_length
+{ Zfirst, Zsecond, Zthird }
+
+enum key_inline_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum key_limit
+{ Zfirst, Zsecond, Zthird }
+
+enum key_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum key_max
+{ Zfirst, Zsecond, Zthird }
+
+enum key_name
+{ Zfirst, Zsecond, Zthird }
+
+enum key_names
+{ Zfirst, Zsecond, Zthird }
+
+enum key_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum key_order
+{ Zfirst, Zsecond, Zthird }
+
+enum key_over
+{ Zfirst, Zsecond, Zthird }
+
+enum key_seed
+{ Zfirst, Zsecond, Zthird }
+
+enum key_src_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum key_str
+{ Zfirst, Zsecond, Zthird }
+
+enum key_type_name
+{ Zfirst, Zsecond, Zthird }
+
+enum key_variants
+{ Zfirst, Zsecond, Zthird }
+
+enum key_wid
+{ Zfirst, Zsecond, Zthird }
+
+enum keycap
+{ Zfirst, Zsecond, Zthird }
+
+enum keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum keyedCounted
+{ Zfirst, Zsecond, Zthird }
+
+enum keyedElemKindClosed
+{ Zfirst, Zsecond, Zthird }
+
+enum keyedElementKindAllowed
+{ Zfirst, Zsecond, Zthird }
+
+enum keyedName
+{ Zfirst, Zsecond, Zthird }
+
+enum keyedTab
+{ Zfirst, Zsecond, Zthird }
+
+enum keyed_elem_kind_allowed
+{ Zfirst, Zsecond, Zthird }
+
+enum keyed_list
+{ Zfirst, Zsecond, Zthird }
+
+enum keyed_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum keyed_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum keyfd
+{ Zfirst, Zsecond, Zthird }
+
+enum keynode
+{ Zfirst, Zsecond, Zthird }
+
+enum keys
+{ Zfirst, Zsecond, Zthird }
+
+enum keysSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum keyvals
+{ Zfirst, Zsecond, Zthird }
+
+enum keyvs
+{ Zfirst, Zsecond, Zthird }
+
+enum keyword
+{ Zfirst, Zsecond, Zthird }
+
+enum keyword_pattern
+{ Zfirst, Zsecond, Zthird }
+
+enum kf
+{ Zfirst, Zsecond, Zthird }
+
+enum kg
+{ Zfirst, Zsecond, Zthird }
+
+enum kgood
+{ Zfirst, Zsecond, Zthird }
+
+enum khi
+{ Zfirst, Zsecond, Zthird }
+
+enum ki
+{ Zfirst, Zsecond, Zthird }
+
+enum kid
+{ Zfirst, Zsecond, Zthird }
+
+enum kids
+{ Zfirst, Zsecond, Zthird }
+
+enum kidsAreVariants
+{ Zfirst, Zsecond, Zthird }
+
+enum kidx
+{ Zfirst, Zsecond, Zthird }
+
+enum kindBad
+{ Zfirst, Zsecond, Zthird }
+
+enum kindBits
+{ Zfirst, Zsecond, Zthird }
+
+enum kindSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum kindWidens
+{ Zfirst, Zsecond, Zthird }
+
+enum kindWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum kind_changed
+{ Zfirst, Zsecond, Zthird }
+
+enum kind_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum kinds
+{ Zfirst, Zsecond, Zthird }
+
+enum kk1
+{ Zfirst, Zsecond, Zthird }
+
+enum kkind
+{ Zfirst, Zsecond, Zthird }
+
+enum kl
+{ Zfirst, Zsecond, Zthird }
+
+enum klen
+{ Zfirst, Zsecond, Zthird }
+
+enum klo
+{ Zfirst, Zsecond, Zthird }
+
+enum kn
+{ Zfirst, Zsecond, Zthird }
+
+enum known
+{ Zfirst, Zsecond, Zthird }
+
+enum knownKind
+{ Zfirst, Zsecond, Zthird }
+
+enum knownSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum knownTypes
+{ Zfirst, Zsecond, Zthird }
+
+enum known_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum knp
+{ Zfirst, Zsecond, Zthird }
+
+enum kok
+{ Zfirst, Zsecond, Zthird }
+
+enum kord
+{ Zfirst, Zsecond, Zthird }
+
+enum kp
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    key_bytes_used Inner
+    key_capacity Inner
+    key_codec Inner
+    key_compare Inner
+    key_default Inner
+    key_entry Inner
+    key_enum Inner
+    key_enums Inner
+    key_fits Inner
+    key_heap Inner
+}
+
+table NameTypes0
+{
+    one0  key_bytes_used
+    many0 [..4]key_bytes_used
+    one1  key_capacity
+    many1 [..4]key_capacity
+    one2  key_codec
+    many2 [..4]key_codec
+    one3  key_compare
+    many3 [..4]key_compare
+    one4  key_default
+    many4 [..4]key_default
+    one5  key_entry
+    many5 [..4]key_entry
+    one6  key_enum
+    many6 [..4]key_enum
+    one7  key_enums
+    many7 [..4]key_enums
+    one8  key_fits
+    many8 [..4]key_fits
+    one9  key_heap
+    many9 [..4]key_heap
+}
+
+table NameFields0
+{
+    key_bytes_used uint32
+    key_capacity uint32
+    key_codec uint32
+    key_compare uint32
+    key_default uint32
+    key_entry uint32
+    key_enum uint32
+    key_enums uint32
+    key_fits uint32
+    key_heap uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    key_index_size Inner
+    key_inline_bytes Inner
+    key_inline_index Inner
+    key_inline_length Inner
+    key_inline_offset Inner
+    key_limit Inner
+    key_mark Inner
+    key_max Inner
+    key_name Inner
+    key_names Inner
+}
+
+table NameTypes1
+{
+    one0  key_index_size
+    many0 [..4]key_index_size
+    one1  key_inline_bytes
+    many1 [..4]key_inline_bytes
+    one2  key_inline_index
+    many2 [..4]key_inline_index
+    one3  key_inline_length
+    many3 [..4]key_inline_length
+    one4  key_inline_offset
+    many4 [..4]key_inline_offset
+    one5  key_limit
+    many5 [..4]key_limit
+    one6  key_mark
+    many6 [..4]key_mark
+    one7  key_max
+    many7 [..4]key_max
+    one8  key_name
+    many8 [..4]key_name
+    one9  key_names
+    many9 [..4]key_names
+}
+
+table NameFields1
+{
+    key_index_size uint32
+    key_inline_bytes uint32
+    key_inline_index uint32
+    key_inline_length uint32
+    key_inline_offset uint32
+    key_limit uint32
+    key_mark uint32
+    key_max uint32
+    key_name uint32
+    key_names uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    key_offset Inner
+    key_order Inner
+    key_over Inner
+    key_seed Inner
+    key_src_ref Inner
+    key_str Inner
+    key_type_name Inner
+    key_variants Inner
+    key_wid Inner
+    keycap Inner
+}
+
+table NameTypes2
+{
+    one0  key_offset
+    many0 [..4]key_offset
+    one1  key_order
+    many1 [..4]key_order
+    one2  key_over
+    many2 [..4]key_over
+    one3  key_seed
+    many3 [..4]key_seed
+    one4  key_src_ref
+    many4 [..4]key_src_ref
+    one5  key_str
+    many5 [..4]key_str
+    one6  key_type_name
+    many6 [..4]key_type_name
+    one7  key_variants
+    many7 [..4]key_variants
+    one8  key_wid
+    many8 [..4]key_wid
+    one9  keycap
+    many9 [..4]keycap
+}
+
+table NameFields2
+{
+    key_offset uint32
+    key_order uint32
+    key_over uint32
+    key_seed uint32
+    key_src_ref uint32
+    key_str uint32
+    key_type_name uint32
+    key_variants uint32
+    key_wid uint32
+    keycap uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    keyed Inner
+    keyedCounted Inner
+    keyedElemKindClosed Inner
+    keyedElementKindAllowed Inner
+    keyedName Inner
+    keyedTab Inner
+    keyed_elem_kind_allowed Inner
+    keyed_list Inner
+    keyed_registry Inner
+    keyed_shape Inner
+}
+
+table NameTypes3
+{
+    one0  keyed
+    many0 [..4]keyed
+    one1  keyedCounted
+    many1 [..4]keyedCounted
+    one2  keyedElemKindClosed
+    many2 [..4]keyedElemKindClosed
+    one3  keyedElementKindAllowed
+    many3 [..4]keyedElementKindAllowed
+    one4  keyedName
+    many4 [..4]keyedName
+    one5  keyedTab
+    many5 [..4]keyedTab
+    one6  keyed_elem_kind_allowed
+    many6 [..4]keyed_elem_kind_allowed
+    one7  keyed_list
+    many7 [..4]keyed_list
+    one8  keyed_registry
+    many8 [..4]keyed_registry
+    one9  keyed_shape
+    many9 [..4]keyed_shape
+}
+
+table NameFields3
+{
+    keyed uint32
+    keyedCounted uint32
+    keyedElemKindClosed uint32
+    keyedElementKindAllowed uint32
+    keyedName uint32
+    keyedTab uint32
+    keyed_elem_kind_allowed uint32
+    keyed_list uint32
+    keyed_registry uint32
+    keyed_shape uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    keyfd Inner
+    keynode Inner
+    keys Inner
+    keysSeen Inner
+    keyvals Inner
+    keyvs Inner
+    keyword Inner
+    keyword_pattern Inner
+    kf Inner
+    kg Inner
+}
+
+table NameTypes4
+{
+    one0  keyfd
+    many0 [..4]keyfd
+    one1  keynode
+    many1 [..4]keynode
+    one2  keys
+    many2 [..4]keys
+    one3  keysSeen
+    many3 [..4]keysSeen
+    one4  keyvals
+    many4 [..4]keyvals
+    one5  keyvs
+    many5 [..4]keyvs
+    one6  keyword
+    many6 [..4]keyword
+    one7  keyword_pattern
+    many7 [..4]keyword_pattern
+    one8  kf
+    many8 [..4]kf
+    one9  kg
+    many9 [..4]kg
+}
+
+table NameFields4
+{
+    keyfd uint32
+    keynode uint32
+    keys uint32
+    keysSeen uint32
+    keyvals uint32
+    keyvs uint32
+    keyword uint32
+    keyword_pattern uint32
+    kf uint32
+    kg uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    kgood Inner
+    khi Inner
+    ki Inner
+    kid Inner
+    kids Inner
+    kidsAreVariants Inner
+    kidx Inner
+    kindBad Inner
+    kindBits Inner
+    kindSigned Inner
+}
+
+table NameTypes5
+{
+    one0  kgood
+    many0 [..4]kgood
+    one1  khi
+    many1 [..4]khi
+    one2  ki
+    many2 [..4]ki
+    one3  kid
+    many3 [..4]kid
+    one4  kids
+    many4 [..4]kids
+    one5  kidsAreVariants
+    many5 [..4]kidsAreVariants
+    one6  kidx
+    many6 [..4]kidx
+    one7  kindBad
+    many7 [..4]kindBad
+    one8  kindBits
+    many8 [..4]kindBits
+    one9  kindSigned
+    many9 [..4]kindSigned
+}
+
+table NameFields5
+{
+    kgood uint32
+    khi uint32
+    ki uint32
+    kid uint32
+    kids uint32
+    kidsAreVariants uint32
+    kidx uint32
+    kindBad uint32
+    kindBits uint32
+    kindSigned uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    kindWidens Inner
+    kindWidth Inner
+    kind_changed Inner
+    kind_wide Inner
+    kinds Inner
+    kk1 Inner
+    kkind Inner
+    kl Inner
+    klen Inner
+    klo Inner
+}
+
+table NameTypes6
+{
+    one0  kindWidens
+    many0 [..4]kindWidens
+    one1  kindWidth
+    many1 [..4]kindWidth
+    one2  kind_changed
+    many2 [..4]kind_changed
+    one3  kind_wide
+    many3 [..4]kind_wide
+    one4  kinds
+    many4 [..4]kinds
+    one5  kk1
+    many5 [..4]kk1
+    one6  kkind
+    many6 [..4]kkind
+    one7  kl
+    many7 [..4]kl
+    one8  klen
+    many8 [..4]klen
+    one9  klo
+    many9 [..4]klo
+}
+
+table NameFields6
+{
+    kindWidens uint32
+    kindWidth uint32
+    kind_changed uint32
+    kind_wide uint32
+    kinds uint32
+    kk1 uint32
+    kkind uint32
+    kl uint32
+    klen uint32
+    klo uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    kn Inner
+    known Inner
+    knownKind Inner
+    knownSlot Inner
+    knownTypes Inner
+    known_idx Inner
+    knp Inner
+    kok Inner
+    kord Inner
+    kp Inner
+}
+
+table NameTypes7
+{
+    one0  kn
+    many0 [..4]kn
+    one1  known
+    many1 [..4]known
+    one2  knownKind
+    many2 [..4]knownKind
+    one3  knownSlot
+    many3 [..4]knownSlot
+    one4  knownTypes
+    many4 [..4]knownTypes
+    one5  known_idx
+    many5 [..4]known_idx
+    one6  knp
+    many6 [..4]knp
+    one7  kok
+    many7 [..4]kok
+    one8  kord
+    many8 [..4]kord
+    one9  kp
+    many9 [..4]kp
+}
+
+table NameFields7
+{
+    kn uint32
+    known uint32
+    knownKind uint32
+    knownSlot uint32
+    knownTypes uint32
+    known_idx uint32
+    knp uint32
+    kok uint32
+    kord uint32
+    kp uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

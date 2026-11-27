@@ -188,7 +188,7 @@ int readDefaultArmBits(
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const DefaultChoiceType(int _value) implements int {
+extension type const DefaultChoiceType(int _value) {
   static const DefaultChoiceType none = DefaultChoiceType(0);
   static const DefaultChoiceType first = DefaultChoiceType(1);
   static const DefaultChoiceType second = DefaultChoiceType(2);
@@ -198,7 +198,7 @@ extension type const DefaultChoiceType(int _value) implements int {
 // enumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameDefaultChoiceType(int value) {
-  switch (value) {
+  switch (DefaultChoiceType(value)) {
     case DefaultChoiceType.none:
       return 'None';
     case DefaultChoiceType.first:
@@ -242,9 +242,9 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 2);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 2);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {
@@ -528,9 +528,9 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.choice.type >= 0);
-  assert(value.choice.type <= 2);
-  v = value.choice.type & 0x3;
+  assert((value.choice.type as int) >= 0);
+  assert((value.choice.type as int) <= 2);
+  v = (value.choice.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.choice.type) {
@@ -1036,7 +1036,7 @@ int readDefaultBulkArmBits(
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const DefaultBulkChoiceType(int _value) implements int {
+extension type const DefaultBulkChoiceType(int _value) {
   static const DefaultBulkChoiceType none = DefaultBulkChoiceType(0);
   static const DefaultBulkChoiceType first = DefaultBulkChoiceType(1);
   static const DefaultBulkChoiceType second = DefaultBulkChoiceType(2);
@@ -1046,7 +1046,7 @@ extension type const DefaultBulkChoiceType(int _value) implements int {
 // enumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameDefaultBulkChoiceType(int value) {
-  switch (value) {
+  switch (DefaultBulkChoiceType(value)) {
     case DefaultBulkChoiceType.none:
       return 'None';
     case DefaultBulkChoiceType.first:
@@ -1090,9 +1090,9 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 2);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 2);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {

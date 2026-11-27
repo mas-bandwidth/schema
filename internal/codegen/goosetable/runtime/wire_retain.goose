@@ -480,8 +480,11 @@ fn retain_reset(store: RetainStore&) {
 // the refusal, so no later save writes them. A fixed-class root carries no
 // retention (§6.6): it is refused (-1, report.refused). At a declared fixed
 // table past the record ceiling, which has no file form (§1, §3.4), a form-1
-// file is refused by name, previous_form, as load_table refuses it.
+// file is refused by name, previous_form, as load_table refuses it. Its
+// first act zeroes the caller's report in full, as load_with does, so the
+// fixed-class refusal leaves nothing a previous read put there (§6.5).
 fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&) -> i64 {
+    report = LoadReport { .. };
     retain_reset(store);
     for t in unit.tables {
         if t.name == root && !t.variable {

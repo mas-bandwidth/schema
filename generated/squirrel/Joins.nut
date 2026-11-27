@@ -99,9 +99,11 @@ _M.ReadArmsAgree <- function(stream, value) {
 
 // WriteArmsAgree writes value in declared order; false on a refused value.
 _M.WriteArmsAgree <- function(stream, value) {
+  if (!(value instanceof _M.ArmsAgree)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.Flag != "bool") return false;
   _h.value = value.Flag;
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
@@ -172,9 +174,11 @@ _M.ReadArmsDisagree <- function(stream, value) {
 
 // WriteArmsDisagree writes value in declared order; false on a refused value.
 _M.WriteArmsDisagree <- function(stream, value) {
+  if (!(value instanceof _M.ArmsDisagree)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.Flag != "bool") return false;
   _h.value = value.Flag;
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
@@ -238,9 +242,11 @@ _M.ReadArmEmpty <- function(stream, value) {
 
 // WriteArmEmpty writes value in declared order; false on a refused value.
 _M.WriteArmEmpty <- function(stream, value) {
+  if (!(value instanceof _M.ArmEmpty)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.Flag != "bool") return false;
   _h.value = value.Flag;
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
@@ -326,12 +332,15 @@ _M.ReadArmsNested <- function(stream, value) {
 
 // WriteArmsNested writes value in declared order; false on a refused value.
 _M.WriteArmsNested <- function(stream, value) {
+  if (!(value instanceof _M.ArmsNested)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 3) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 3)) return false;
+  if (typeof value.Outer != "bool") return false;
   _h.value = value.Outer;
   if (!stream.serializeBool(_h)) return false;
   if (value.Outer) {
+    if (typeof value.Inner != "bool") return false;
     _h.value = value.Inner;
     if (!stream.serializeBool(_h)) return false;
     if (value.Inner) {
@@ -417,9 +426,11 @@ _M.ReadArmAlign <- function(stream, value) {
 
 // WriteArmAlign writes value in declared order; false on a refused value.
 _M.WriteArmAlign <- function(stream, value) {
+  if (!(value instanceof _M.ArmAlign)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.Flag != "bool") return false;
   _h.value = value.Flag;
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
@@ -499,16 +510,21 @@ _M.ReadArmArray <- function(stream, value) {
 
 // WriteArmArray writes value in declared order; false on a refused value.
 _M.WriteArmArray <- function(stream, value) {
+  if (!(value instanceof _M.ArmArray)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.Flag != "bool") return false;
   _h.value = value.Flag;
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
     if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+    if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
     _h.value = value.ItemsCount;
     if (!stream.serializeBits(_h, 2)) return false;
     for (local _i = 0; _i < value.ItemsCount; _i++) {
+      if (typeof value.Items[_i] != "integer") return false;
+      if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
       _h.value = value.Items[_i];
       if (!stream.serializeInt(_h, 0, 8191)) return false;
     }
@@ -551,6 +567,7 @@ _M.ReadNarrow <- function(stream, value) {
 
 // WriteNarrow writes value in declared order; false on a refused value.
 _M.WriteNarrow <- function(stream, value) {
+  if (!(value instanceof _M.Narrow)) return false;
   if (typeof value.N != "integer" || (value.N >>> 3) != 0) return false;
   _h.value = value.N;
   if (!stream.serializeBits(_h, 3)) return false;
@@ -585,6 +602,7 @@ _M.ReadWide <- function(stream, value) {
 
 // WriteWide writes value in declared order; false on a refused value.
 _M.WriteWide <- function(stream, value) {
+  if (!(value instanceof _M.Wide)) return false;
   if (typeof value.W != "integer" || (value.W >>> 37) != 0) return false;
   _h.value = value.W;
   if (!stream.serializeBits64(_h, 37)) return false;
@@ -652,6 +670,7 @@ _M.ReadUneven <- function(stream, value) {
 
 // WriteUneven writes the tag, then the selected arm; false on a refused value.
 _M.WriteUneven <- function(stream, value) {
+  if (!(value instanceof _M.Uneven)) return false;
   if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
   _h.value = value.Type;
   if (!stream.serializeBits(_h, 2)) return false;
@@ -701,6 +720,7 @@ _M.ReadHoldsUneven <- function(stream, value) {
 
 // WriteHoldsUneven writes value in declared order; false on a refused value.
 _M.WriteHoldsUneven <- function(stream, value) {
+  if (!(value instanceof _M.HoldsUneven)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
@@ -753,10 +773,12 @@ _M.ReadArrUneven <- function(stream, value) {
 
 // WriteArrUneven writes value in declared order; false on a refused value.
 _M.WriteArrUneven <- function(stream, value) {
+  if (!(value instanceof _M.ArrUneven)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
@@ -835,13 +857,17 @@ _M.ReadRegainAfterAlign <- function(stream, value) {
 
 // WriteRegainAfterAlign writes value in declared order; false on a refused value.
 _M.WriteRegainAfterAlign <- function(stream, value) {
+  if (!(value instanceof _M.RegainAfterAlign)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
   }

@@ -466,14 +466,21 @@ end
 
 -- type Vec2 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteVec2(stream, v)
+  if type(v) ~= "table" then return false end
+  if math.type(v.X) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.X }) then return false end
+  if math.type(v.Y) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.Y }) then return false end
   return true
 end
 
 -- type SpanF64 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanF64(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
+    if math.type(v.Values[_i]) ~= "float" then return false end
     if not stream:serializeDouble({ value = v.Values[_i] }) then return false end
   end
   return true
@@ -481,6 +488,9 @@ end
 
 -- type SpanU64 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanU64(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if math.type(v.Values[_i]) ~= "integer" then return false end
     if not stream:serializeBits64({ value = v.Values[_i] }, 64) then return false end -- the storage width
@@ -490,6 +500,9 @@ end
 
 -- type SpanI64 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanI64(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if math.type(v.Values[_i]) ~= "integer" then return false end
     if not stream:serializeBits64({ value = v.Values[_i] }, 64) then return false end -- the storage width
@@ -499,6 +512,9 @@ end
 
 -- type SpanOne (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanOne(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 1 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 1 do
     if math.type(v.Values[_i]) ~= "integer" then return false end
     if not stream:serializeBits64({ value = v.Values[_i] }, 64) then return false end -- the storage width
@@ -508,6 +524,9 @@ end
 
 -- type SpanChunk (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanChunk(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 4 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 4 do
     -- the declared width (SPEC §5.1 row 11)
     if math.type(v.Values[_i]) ~= "integer" or v.Values[_i] < 0 or v.Values[_i] > 65535 then return false end
@@ -518,7 +537,11 @@ end
 
 -- type SpanTail (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanTail(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
+    if math.type(v.Values[_i]) ~= "float" then return false end
     if not stream:serializeDouble({ value = v.Values[_i] }) then return false end
   end
   -- the declared width (SPEC §5.1 row 11)
@@ -529,10 +552,17 @@ end
 
 -- type SpanTwice (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanTwice(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.A) ~= "table" then return false end
+  if type(v.A) ~= "table" or #v.A ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
+    if math.type(v.A[_i]) ~= "float" then return false end
     if not stream:serializeDouble({ value = v.A[_i] }) then return false end
   end
+  if type(v.B) ~= "table" then return false end
+  if type(v.B) ~= "table" or #v.B ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
+    if math.type(v.B[_i]) ~= "float" then return false end
     if not stream:serializeDouble({ value = v.B[_i] }) then return false end
   end
   return true
@@ -540,6 +570,7 @@ end
 
 -- type Trio (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrio(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 1048575 then return false end
   if not stream:serializeBits({ value = v.A }, 20) then return false end -- the declared bit width
   if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 1048575 then return false end
@@ -551,18 +582,21 @@ end
 
 -- type TrioSole (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrioSole(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteTrio(stream, v.Inner) then return false end
   return true
 end
 
 -- type Vec3Sole (SPEC §6.1: the wire order is the declared order)
 function _M.WriteVec3Sole(stream, v)
+  if type(v) ~= "table" then return false end
   if not Types_.WriteVec3(stream, v.V) then return false end
   return true
 end
 
 -- type TrioFirst (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrioFirst(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteTrio(stream, v.Inner) then return false end
   if math.type(v.Trailer) ~= "integer" or v.Trailer < 0 or v.Trailer > 65535 then return false end
   if not stream:serializeBits({ value = v.Trailer }, 16) then return false end -- the declared bit width
@@ -571,6 +605,7 @@ end
 
 -- type TrioStraddle (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrioStraddle(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Pad0) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Pad0 }, 64) then return false end -- the declared bit width
   if math.type(v.Pad1) ~= "integer" then return false end

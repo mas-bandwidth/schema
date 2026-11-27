@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // echoIntoGrep is a condition decided by a pipeline whose left side can die of
@@ -20,7 +21,7 @@ import (
 // (-q always; GNU grep with stdout on /dev/null too), echo is killed writing
 // the rest, `set -o pipefail` fails the pipeline, and the `if` or `||` takes
 // the branch for NO MATCH. PR 4445's 3011-file diff touched go.mod, Makefile,
-// compiler/ and ir/ and ci-fast.yml plan said `broad=no` (run 44914934707).
+// compiler/ and ir/ and ci-fast-nightly.yml plan said `broad=no` (run 44914934707).
 // A here-string, `grep -q ... <<<"$var"`, has no writer to kill.
 var echoIntoGrep = regexp.MustCompile(`echo\s+(?:-[neE]+\s+)?"?\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"?\s*\|\s*grep((?:\s+-[-A-Za-z]+)*)(.*)`)
 
@@ -90,18 +91,18 @@ func TestNoWorkflowDecidesOnEchoIntoGrep(t *testing.T) {
 		}
 		t.FailNow()
 	}
-	fast := files["workflows/ci-fast.yml"]
+	fast := files["workflows/ci-fast-nightly.yml"]
 	full := files["workflows/ci-full.yml"]
 	for _, tc := range []struct {
 		name, file, old, new string
 	}{
-		{"ci-fast broad rule back to echo | grep -qE", "workflows/ci-fast.yml",
+		{"ci-fast broad rule back to echo | grep -qE", "workflows/ci-fast-nightly.yml",
 			`if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp`,
 			`if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp`},
-		{"ci-fast codegen rule back to echo | grep -E >/dev/null", "workflows/ci-fast.yml",
+		{"ci-fast codegen rule back to echo | grep -E >/dev/null", "workflows/ci-fast-nightly.yml",
 			`|| grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$' <<<"$files"; then`,
 			`|| echo "$files" | grep -E '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$' >/dev/null; then`},
-		{"ci-fast lint rule back to echo | grep >/dev/null after ||", "workflows/ci-fast.yml",
+		{"ci-fast lint rule back to echo | grep >/dev/null after ||", "workflows/ci-fast-nightly.yml",
 			`|| grep -q 'schema-dart-generated-strict-analyze' <<<"$files"; then`,
 			`|| echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then`},
 		{"ci-full pr-select C# rule back to echo | grep -E >/dev/null", "workflows/ci-full.yml",
@@ -130,7 +131,7 @@ func TestNoWorkflowDecidesOnEchoIntoGrep(t *testing.T) {
 	}
 }
 
-// fastPlanSelector returns ci-fast.yml plan's selector, from THE BROAD RULE to
+// fastPlanSelector returns ci-fast-nightly.yml plan's selector, from THE BROAD RULE to
 // the output lines, reading the diff from $PLAN_FILES, with a printf of the
 // verdict appended.
 func fastPlanSelector(t *testing.T, wf, verdict string) string {
@@ -204,7 +205,7 @@ func largeDiffDirs(t *testing.T, root string, max int) []string {
 func TestFastPlanLargeDiff(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +233,7 @@ func TestFastPlanLargeDiff(t *testing.T) {
 	}
 	run := func(wf string) string {
 		t.Helper()
+		testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml", ".github/workflows/ci-full.yml")
 		cmd := exec.Command("bash", "-euo", "pipefail", "-c", fastPlanSelector(t, wf, `printf '%s|%s|%s' "$broad" "$packages" "$codegen_touched"`))
 		cmd.Env = append(scriptEnv(os.Environ()), "PLAN_FILES="+planFiles)
 		cmd.Dir = root

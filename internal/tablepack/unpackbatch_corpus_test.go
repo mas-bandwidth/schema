@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 )
 
 // THE UNPACK-BATCH CORPUS (F-012, F-013): committed destination layouts for
@@ -61,20 +61,12 @@ func TestUnpackBatchCorpus(t *testing.T) {
 
 	for _, tc := range c.Cases {
 		t.Run(tc.ID, func(t *testing.T) {
-			work, err := filepath.EvalSymlinks(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
+			var work string
+			var err error
 			if tc.FoldingVolume {
-				probe := filepath.Join(work, "Probe")
-				put(t, probe, "probe")
-				_, lerr := os.Lstat(filepath.Join(work, "probe"))
-				if err := os.Remove(probe); err != nil {
-					t.Fatal(err)
-				}
-				if lerr != nil {
-					t.Skipf("this volume keeps Probe and probe apart, so the case's two names are two directories here: %v", lerr)
-				}
+				work = foldingWork(t)
+			} else if work, err = filepath.EvalSymlinks(t.TempDir()); err != nil {
+				t.Fatal(err)
 			}
 			for rel, data := range tc.Layout.Files {
 				put(t, filepath.Join(work, rel), data)

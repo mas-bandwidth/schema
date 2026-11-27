@@ -3,7 +3,7 @@ package java
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // javaBackslashEscape is the Unicode escape of a backslash (U+005C). javac

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum ee
+{ Zfirst, Zsecond, Zthird }
+
+enum eend
+{ Zfirst, Zsecond, Zthird }
+
+enum eid
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_align
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_at
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_cache
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_default
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_len
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_size
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_zero
+{ Zfirst, Zsecond, Zthird }
+
+enum element_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum element_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum element_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum element_size
+{ Zfirst, Zsecond, Zthird }
+
+enum emit_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum encode_array
+{ Zfirst, Zsecond, Zthird }
+
+enum encode_value
+{ Zfirst, Zsecond, Zthird }
+
+enum end_byte
+{ Zfirst, Zsecond, Zthird }
+
+enum endpos
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_count
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_size
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_widened
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_name
+{ Zfirst, Zsecond, Zthird }
+
+enum eref
+{ Zfirst, Zsecond, Zthird }
+
+enum exp_negative
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_at
+{ Zfirst, Zsecond, Zthird }
+
+enum f32_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum f32scratch
+{ Zfirst, Zsecond, Zthird }
+
+enum fat
+{ Zfirst, Zsecond, Zthird }
+
+enum field_by_id
+{ Zfirst, Zsecond, Zthird }
+
+enum field_id
+{ Zfirst, Zsecond, Zthird }
+
+enum field_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum field_name
+{ Zfirst, Zsecond, Zthird }
+
+enum field_of
+{ Zfirst, Zsecond, Zthird }
+
+enum fields_by_id
+{ Zfirst, Zsecond, Zthird }
+
+enum file_hash
+{ Zfirst, Zsecond, Zthird }
+
+enum fill_count
+{ Zfirst, Zsecond, Zthird }
+
+enum find_field
+{ Zfirst, Zsecond, Zthird }
+
+enum first_children
+{ Zfirst, Zsecond, Zthird }
+
+enum first_key
+{ Zfirst, Zsecond, Zthird }
+
+enum first_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum first_size
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum float_is_default
+{ Zfirst, Zsecond, Zthird }
+
+enum float_text
+{ Zfirst, Zsecond, Zthird }
+
+enum float_value
+{ Zfirst, Zsecond, Zthird }
+
+enum format_g
+{ Zfirst, Zsecond, Zthird }
+
+enum frac_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum frac_len
+{ Zfirst, Zsecond, Zthird }
+
+enum frac_part
+{ Zfirst, Zsecond, Zthird }
+
+enum frac_start
+{ Zfirst, Zsecond, Zthird }
+
+enum fraction_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fraction_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum framed_level
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_count
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_index
+{ Zfirst, Zsecond, Zthird }
+
+enum has_cycle
+{ Zfirst, Zsecond, Zthird }
+
+enum has_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum has_range
+{ Zfirst, Zsecond, Zthird }
+
+enum hend
+{ Zfirst, Zsecond, Zthird }
+
+enum hlo
+{ Zfirst, Zsecond, Zthird }
+
+enum hok
+{ Zfirst, Zsecond, Zthird }
+
+enum hole_n
+{ Zfirst, Zsecond, Zthird }
+
+enum id_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum id_count
+{ Zfirst, Zsecond, Zthird }
+
+enum id_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum id_used
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_start
+{ Zfirst, Zsecond, Zthird }
+
+enum index_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum index_path
+{ Zfirst, Zsecond, Zthird }
+
+enum inner_argw
+{ Zfirst, Zsecond, Zthird }
+
+enum int_at
+{ Zfirst, Zsecond, Zthird }
+
+enum int_bounds
+{ Zfirst, Zsecond, Zthird }
+
+enum int_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum int_len
+{ Zfirst, Zsecond, Zthird }
+
+enum int_part
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    ee Inner
+    eend Inner
+    eid Inner
+    elem_align Inner
+    elem_at Inner
+    elem_bytes Inner
+    elem_cache Inner
+    elem_default Inner
+    elem_depth Inner
+    elem_kind Inner
+}
+
+table NameTypes0
+{
+    one0  ee
+    many0 [..4]ee
+    one1  eend
+    many1 [..4]eend
+    one2  eid
+    many2 [..4]eid
+    one3  elem_align
+    many3 [..4]elem_align
+    one4  elem_at
+    many4 [..4]elem_at
+    one5  elem_bytes
+    many5 [..4]elem_bytes
+    one6  elem_cache
+    many6 [..4]elem_cache
+    one7  elem_default
+    many7 [..4]elem_default
+    one8  elem_depth
+    many8 [..4]elem_depth
+    one9  elem_kind
+    many9 [..4]elem_kind
+}
+
+table NameFields0
+{
+    ee uint32
+    eend uint32
+    eid uint32
+    elem_align uint32
+    elem_at uint32
+    elem_bytes uint32
+    elem_cache uint32
+    elem_default uint32
+    elem_depth uint32
+    elem_kind uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    elem_len Inner
+    elem_size Inner
+    elem_zero Inner
+    element_bytes Inner
+    element_kind Inner
+    element_shape Inner
+    element_size Inner
+    emit_payload Inner
+    encode_array Inner
+    encode_value Inner
+}
+
+table NameTypes1
+{
+    one0  elem_len
+    many0 [..4]elem_len
+    one1  elem_size
+    many1 [..4]elem_size
+    one2  elem_zero
+    many2 [..4]elem_zero
+    one3  element_bytes
+    many3 [..4]element_bytes
+    one4  element_kind
+    many4 [..4]element_kind
+    one5  element_shape
+    many5 [..4]element_shape
+    one6  element_size
+    many6 [..4]element_size
+    one7  emit_payload
+    many7 [..4]emit_payload
+    one8  encode_array
+    many8 [..4]encode_array
+    one9  encode_value
+    many9 [..4]encode_value
+}
+
+table NameFields1
+{
+    elem_len uint32
+    elem_size uint32
+    elem_zero uint32
+    element_bytes uint32
+    element_kind uint32
+    element_shape uint32
+    element_size uint32
+    emit_payload uint32
+    encode_array uint32
+    encode_value uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    end_byte Inner
+    endpos Inner
+    entry_count Inner
+    entry_size Inner
+    entry_widened Inner
+    enum_name Inner
+    eref Inner
+    exp_negative Inner
+    extent_at Inner
+    f32_bits Inner
+}
+
+table NameTypes2
+{
+    one0  end_byte
+    many0 [..4]end_byte
+    one1  endpos
+    many1 [..4]endpos
+    one2  entry_count
+    many2 [..4]entry_count
+    one3  entry_size
+    many3 [..4]entry_size
+    one4  entry_widened
+    many4 [..4]entry_widened
+    one5  enum_name
+    many5 [..4]enum_name
+    one6  eref
+    many6 [..4]eref
+    one7  exp_negative
+    many7 [..4]exp_negative
+    one8  extent_at
+    many8 [..4]extent_at
+    one9  f32_bits
+    many9 [..4]f32_bits
+}
+
+table NameFields2
+{
+    end_byte uint32
+    endpos uint32
+    entry_count uint32
+    entry_size uint32
+    entry_widened uint32
+    enum_name uint32
+    eref uint32
+    exp_negative uint32
+    extent_at uint32
+    f32_bits uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    f32scratch Inner
+    fat Inner
+    field_by_id Inner
+    field_id Inner
+    field_kind Inner
+    field_name Inner
+    field_of Inner
+    fields_by_id Inner
+    file_hash Inner
+    fill_count Inner
+}
+
+table NameTypes3
+{
+    one0  f32scratch
+    many0 [..4]f32scratch
+    one1  fat
+    many1 [..4]fat
+    one2  field_by_id
+    many2 [..4]field_by_id
+    one3  field_id
+    many3 [..4]field_id
+    one4  field_kind
+    many4 [..4]field_kind
+    one5  field_name
+    many5 [..4]field_name
+    one6  field_of
+    many6 [..4]field_of
+    one7  fields_by_id
+    many7 [..4]fields_by_id
+    one8  file_hash
+    many8 [..4]file_hash
+    one9  fill_count
+    many9 [..4]fill_count
+}
+
+table NameFields3
+{
+    f32scratch uint32
+    fat uint32
+    field_by_id uint32
+    field_id uint32
+    field_kind uint32
+    field_name uint32
+    field_of uint32
+    fields_by_id uint32
+    file_hash uint32
+    fill_count uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    find_field Inner
+    first_children Inner
+    first_key Inner
+    first_kind Inner
+    first_size Inner
+    fixed_kind Inner
+    float_is_default Inner
+    float_text Inner
+    float_value Inner
+    format_g Inner
+}
+
+table NameTypes4
+{
+    one0  find_field
+    many0 [..4]find_field
+    one1  first_children
+    many1 [..4]first_children
+    one2  first_key
+    many2 [..4]first_key
+    one3  first_kind
+    many3 [..4]first_kind
+    one4  first_size
+    many4 [..4]first_size
+    one5  fixed_kind
+    many5 [..4]fixed_kind
+    one6  float_is_default
+    many6 [..4]float_is_default
+    one7  float_text
+    many7 [..4]float_text
+    one8  float_value
+    many8 [..4]float_value
+    one9  format_g
+    many9 [..4]format_g
+}
+
+table NameFields4
+{
+    find_field uint32
+    first_children uint32
+    first_key uint32
+    first_kind uint32
+    first_size uint32
+    fixed_kind uint32
+    float_is_default uint32
+    float_text uint32
+    float_value uint32
+    format_g uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    frac_digits Inner
+    frac_len Inner
+    frac_part Inner
+    frac_start Inner
+    fraction_bits Inner
+    fraction_digits Inner
+    framed_level Inner
+    guard_count Inner
+    guard_holds Inner
+    guard_index Inner
+}
+
+table NameTypes5
+{
+    one0  frac_digits
+    many0 [..4]frac_digits
+    one1  frac_len
+    many1 [..4]frac_len
+    one2  frac_part
+    many2 [..4]frac_part
+    one3  frac_start
+    many3 [..4]frac_start
+    one4  fraction_bits
+    many4 [..4]fraction_bits
+    one5  fraction_digits
+    many5 [..4]fraction_digits
+    one6  framed_level
+    many6 [..4]framed_level
+    one7  guard_count
+    many7 [..4]guard_count
+    one8  guard_holds
+    many8 [..4]guard_holds
+    one9  guard_index
+    many9 [..4]guard_index
+}
+
+table NameFields5
+{
+    frac_digits uint32
+    frac_len uint32
+    frac_part uint32
+    frac_start uint32
+    fraction_bits uint32
+    fraction_digits uint32
+    framed_level uint32
+    guard_count uint32
+    guard_holds uint32
+    guard_index uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    has_cycle Inner
+    has_extent Inner
+    has_range Inner
+    hend Inner
+    hlo Inner
+    hok Inner
+    hole_n Inner
+    id_capacity Inner
+    id_count Inner
+    id_mark Inner
+}
+
+table NameTypes6
+{
+    one0  has_cycle
+    many0 [..4]has_cycle
+    one1  has_extent
+    many1 [..4]has_extent
+    one2  has_range
+    many2 [..4]has_range
+    one3  hend
+    many3 [..4]hend
+    one4  hlo
+    many4 [..4]hlo
+    one5  hok
+    many5 [..4]hok
+    one6  hole_n
+    many6 [..4]hole_n
+    one7  id_capacity
+    many7 [..4]id_capacity
+    one8  id_count
+    many8 [..4]id_count
+    one9  id_mark
+    many9 [..4]id_mark
+}
+
+table NameFields6
+{
+    has_cycle uint32
+    has_extent uint32
+    has_range uint32
+    hend uint32
+    hlo uint32
+    hok uint32
+    hole_n uint32
+    id_capacity uint32
+    id_count uint32
+    id_mark uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    id_used Inner
+    ids_start Inner
+    index_bits Inner
+    index_path Inner
+    inner_argw Inner
+    int_at Inner
+    int_bounds Inner
+    int_digits Inner
+    int_len Inner
+    int_part Inner
+}
+
+table NameTypes7
+{
+    one0  id_used
+    many0 [..4]id_used
+    one1  ids_start
+    many1 [..4]ids_start
+    one2  index_bits
+    many2 [..4]index_bits
+    one3  index_path
+    many3 [..4]index_path
+    one4  inner_argw
+    many4 [..4]inner_argw
+    one5  int_at
+    many5 [..4]int_at
+    one6  int_bounds
+    many6 [..4]int_bounds
+    one7  int_digits
+    many7 [..4]int_digits
+    one8  int_len
+    many8 [..4]int_len
+    one9  int_part
+    many9 [..4]int_part
+}
+
+table NameFields7
+{
+    id_used uint32
+    ids_start uint32
+    index_bits uint32
+    index_path uint32
+    inner_argw uint32
+    int_at uint32
+    int_bounds uint32
+    int_digits uint32
+    int_len uint32
+    int_part uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -892,6 +892,7 @@ public final class BenchPacketVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "BenchPacket: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
@@ -940,6 +941,9 @@ public final class BenchPacketVariable {
         assert (v.bits7 & 0xffffffffL) <= 0x7fL : "BenchPacket.bits7";
         assert (v.bits13 & 0xffffffffL) <= 0x1fffL : "BenchPacket.bits13";
         assert (v.bits23 & 0xffffffffL) <= 0x7fffffL : "BenchPacket.bits23";
+        for (int i = 0, n = java.lang.Math.min(v.blob.size(), 17); i < n; i++) {
+            assert v.blob.get(i) != null : "BenchPacket.blob";
+        }
         for (int i = 0, n = java.lang.Math.min(v.blob.size(), 17); i < n; i++) {
             int e = v.blob.get(i);
             assert (e & 0xffffffffL) <= 0xffL : "BenchPacket.blob";
@@ -1327,6 +1331,10 @@ public final class BenchPacketVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -1460,6 +1468,10 @@ public final class BenchPacketVariable {
         {
             java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 17; j++) padded.add(j < v.blob.size() ? v.blob.get(j) : 0);
+            if (depth > TableJson.In.MAX_JSON_DEPTH) {
+                throw new TableJson.Refused(
+                        "a container past the cap: the write counts every container the read does");
+            }
             if (padded.size() > 17) {
                 throw new TableJson.Refused("count_over_bound");
             }

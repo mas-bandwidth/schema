@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestDistPythonStagesTheFleetSDK holds make/python-toolchain.mk's SDK branch:
@@ -70,6 +71,7 @@ func TestDistPythonStagesTheFleetSDK(t *testing.T) {
 	}
 	run := func(t *testing.T, root string, env []string, vars ...string) (string, error) {
 		t.Helper()
+		testinputs.Make(t)
 		cmd := exec.Command("make", append([]string{"--no-print-directory", "dist-python"}, vars...)...)
 		cmd.Dir, cmd.Env = root, env
 		out, err := cmd.CombinedOutput()

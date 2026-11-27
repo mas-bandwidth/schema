@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestJsFlatWriteRefusesNonFiniteFloats pins SPEC §5.1 row 7 on the JavaScript
@@ -27,7 +27,7 @@ func TestJsFlatWriteRefusesNonFiniteFloats(t *testing.T) {
 	for _, name := range []string{"WriteProbeFlat", "WritePackedFlat"} {
 		write := emittedFunction(t, flat, name)
 		for _, want := range []string{
-			"if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) {",
+			"if (typeof x !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) {",
 			"if (!globalThis.Number.isFinite(value.f64)) {",
 			"return -1;",
 		} {

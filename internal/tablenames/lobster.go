@@ -114,7 +114,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"JsonWriter", "j_array_count", "j_b64", "j_b64_alphabet", "j_b64_table", "j_bn_add", "j_bn_add_small",
 		"j_bn_cmp", "j_bn_copy", "j_bn_divmod_small", "j_bn_from_dec", "j_bn_lanes", "j_bn_low", "j_bn_mask",
 		"j_bn_mul_pow10", "j_bn_mul_pow5", "j_bn_mul_small", "j_bn_norm", "j_bn_of_lanes", "j_bn_pow2", "j_bn_shl",
-		"j_bn_shr", "j_bn_sub", "j_bn_to_dec", "j_bn_u64", "j_byte_strings", "j_bytes", "j_cmp_token_float",
+		"j_bn_shr", "j_bn_sub", "j_bn_to_dec", "j_bn_u64", "j_byte_strings", "j_bytes", "j_cmp_token_float", "j_container_cap",
 		"j_count_admitted", "j_count_cell", "j_count_field", "j_count_graph", "j_count_node", "j_count_record", "j_days", "j_decimal", "j_decode_utf8",
 		"j_digit", "j_element_shape", "j_entry_order", "j_enum_value", "j_escape", "j_exp_digits", "j_f32frombits",
 		"j_fail", "j_field_index", "j_find_label", "j_float_text", "j_floor_div", "j_flt_max", "j_format_g",

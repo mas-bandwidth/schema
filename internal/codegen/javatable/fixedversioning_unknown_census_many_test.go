@@ -11,14 +11,14 @@ package javatable
 // three records of the same endpoint owe the same one, never 3 and never >=.
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // Execute the actual workflow shell, including its logging pipeline: a failed
@@ -99,6 +101,7 @@ func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
 					}
 					identityEnv = []string{"SHARED_FIXED_REFERENCE=" + reference, "SHARED_FIXED_RECEIPT=" + receipt}
 				}
+				testinputs.Files(t, ".github/workflows/nightly-conformance.yml", "test/conformance/fixed-corpus-identity.py")
 				cmd := exec.Command("bash", "-c", script)
 				cmd.Dir = dir
 				cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))

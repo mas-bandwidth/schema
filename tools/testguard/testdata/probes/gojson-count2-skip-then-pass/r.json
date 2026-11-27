@@ -1,0 +1,4 @@
+{"Action":"run","Package":"s","Test":"TestA"}
+{"Action":"skip","Package":"s","Test":"TestA"}
+{"Action":"run","Package":"s","Test":"TestA"}
+{"Action":"pass","Package":"s","Test":"TestA"}

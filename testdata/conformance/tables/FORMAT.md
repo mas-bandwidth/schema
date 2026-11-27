@@ -14,6 +14,7 @@ section is cited rather than restated.
 
 ```
 MANIFEST.txt          the registry: every case, by kind
+WIRE-ALONE.txt        the framing rows a wire-alone walk owns, by class (hand-written)
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
@@ -62,7 +63,7 @@ refusal      <forgery> <reason>
 write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
-write-refusal-cook, write-refusal-block: the write-refusal columns
+write-refusal-cook, write-refusal-block, write-refusal-shape: the write-refusal columns
 announce     <case> <unit> <root> <mode> <input> <verdict>
 read-into    <case> <unit> <root> <form> <lawful> <damaged> <count>
 json-write-into <case> <instance>
@@ -111,10 +112,15 @@ json-write-into <case> <instance>
   declared defaults when it was not the taken arm — and continues into its
   payload. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
-  count of the array at `<path>` (a new element is a copy of element 0, or the
-  element's declared default when the array was empty),
-  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
-  an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
+  count of the array at `<path>` (preserve the original prefix, dropping the
+  tail on shrink; on growth append copies of element 0, or the element's
+  declared default when the array was empty),
+  `length` the used length at `<path>`. Fill text with `a`. For a
+  `bytes(N)` field the length is a byte count and the fill byte is `0x61`.
+  With fixed-capacity backing storage, set the used length to the requested
+  number and fill only the available bytes. The `wref_bytes_length_ok` and
+  `wref_bytes_length` cases request 16 and 17 bytes for a 16-byte buffer.
+  `ordinal` sets an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
   the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
   arm's declared defaults, and a tag past the last arm holds no payload and is
   the value the writer refuses (rows `wref_union_tag_none`, `fref_`, `mref_`,
@@ -124,6 +130,11 @@ json-write-into <case> <instance>
   and the derived manifest withholds it. The driver writes `refused`, `wrote`
   or, where the leg's own types cannot hold the value at all, `unrepresentable`,
   which answers a `refused` row and no other.
+  A `write-refusal` row whose verdict is `wrote` may name an expected saved
+  wire after the verdict. The derived manifest withholds the verdict and
+  expected path and adds `save-wire` after the caller value. The driver
+  also writes its actual saved bytes to `<case>.wire`; the harness requires
+  byte identity with the expected saved wire.
   **The same row drives three more writers, one line kind and one surface
   each**: `write-refusal-fixed` saves the value through the fixed form's
   `FixedSave` as a batch of one; `write-refusal-message` saves it through
@@ -139,7 +150,20 @@ json-write-into <case> <instance>
   at path `<value>` points at. `float` also takes a decimal number. A
   `<wire>` of `-` is the root's fresh value. `write-refusal-cook` writes
   through the cook writer and `write-refusal-block` through the block
-  builder.
+  builder. **`write-refusal-shape`** (docs/SPEC-CONFORMANCE.md
+  DW-TABLE-SHAPE) writes through the root's own form's writer, as
+  `write-refusal` does, and adds one kind: `shape`, whose `<value>` is a
+  token naming a value of the WRONG KIND for the place `<path>` names —
+  `int`, `float`, `numtext` (the text "1.5"), `text`, `bool`, `null`, `map`
+  (an empty map or object), `seq` (a one-element list) or `improper` (an
+  improper list) — and whose verdict is always `refused`. A `<path>` of `.`
+  is the whole value; one ending `f[i]` makes the array `f` its first `i`
+  elements as loaded, then the value; one ending in an arm's name selects
+  that arm with the value as its payload. The writer must refuse by its
+  answer: a raised error, an exception or a crash is red against either
+  verdict. A leg whose types cannot hold the token (a static leg, or a
+  dynamic one where the token is that place's own spelling) answers
+  `unrepresentable`. Every group carries a lawful twin of an ordinary kind.
 - **`announce`** asks a unit's announcement writer and reader
   (docs/SPEC-TABLES.md §3.3). `<mode>` `write` (root, input `-`; `wrote`,
   owing `announce/<case>.bin`, or `refused`); `strict` and `lenient` (root
@@ -151,8 +175,20 @@ json-write-into <case> <instance>
 - **`read-into`** hands one report and `<count>` caller values to a read of
   `<lawful>`, a read of `<damaged>` and a read of `<lawful>` again
   (docs/SPEC-TABLES.md §6.5). `<form>` is `variable`, `json`, `fixed`,
-  `message` (`<unit>` a connection key) or `fixed-nocap` (damaged `-`, the
-  count the answer). The answer owed is `read-into/<case>.txt`, which `make
+  `message` (`<unit>` a connection key), `fixed-nocap` (damaged `-`, the
+  count the answer) or `retain` (the retaining load, `LoadRetain`, §6.6, into
+  a report the driver pre-filled; the answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md),
+  `region` (the plain region `Load` under the same protocol and answer) or
+  `retain-fixed` (damaged `-`: `LoadRetain` on a fixed-class root into a
+  pre-filled report, owing `refused\nzeroed\n`, or `unrepresentable\n` where
+  the refusal is at compile time). In a `fixed` row with count `1` that the manifest marks
+  `lawful-second` (a trailing word the driver never sees), `<damaged>` is a
+  LAWFUL older writer's record that the engine reads through the lineage (the
+  harness fails when the engine's verdict differs from the mark); the
+  answer then owes that read's value as a fresh value holds it (§3.4: a field
+  the writer did not supply holds its declared default, never the first
+  read's). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.
@@ -351,6 +387,22 @@ order and nothing else: a text surface skips a `no-text` instance, and the
 wire surface answers a `wire-refused` instance's refused load as
 `<case>.absent` holding the read's reason. Any other refused load of an
 instance stays a failure.
+
+## WIRE-ALONE.txt
+
+```
+# comment
+<class> <framing row>
+```
+
+The framing rows whose condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE
+FROM THE WIRE ALONE, one per line, tagged with the clause they break:
+`id-table`, `inert-bytes`, `element-kind`, `depth`, `node-table`, `graph`,
+`blob-shared` or `text`. A port's wire-walk control derives from it the rows
+its walk alone refuses and states only its own exceptions, each with a
+reason. `internal/wirealone` reads it, refuses an unknown class or a repeated
+row, and holds every row to a `framing` row of MANIFEST.txt pinned `refused`.
+Hand-written; a new wire-alone framing row is added here with its class.
 
 ## reports.txt
 

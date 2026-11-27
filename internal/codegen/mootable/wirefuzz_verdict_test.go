@@ -27,10 +27,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // mooFuzzPipeUnits is the subset of the corpus the verdict-pipe tests stage:
@@ -149,6 +150,7 @@ func mooFuzzHost(t *testing.T) string {
 			mooHostPath = host
 			return
 		}
+		testinputs.Build(t)
 		cmd := testproc.Command(t, "make", "build/moofuzzhost/moofuzzhost")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {

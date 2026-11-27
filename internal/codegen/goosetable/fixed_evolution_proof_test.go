@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // 1. port/goose/fixed/file-envelope (F1, F2, F3, F4, F7, F8, F12).
@@ -201,9 +201,12 @@ fixed table T {
 
 	t.Run("R5_digest_sensitivities", func(t *testing.T) {
 		t.Parallel()
-		base := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
-		diffRange := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 11\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
-		diffRes := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.25\n f1 F\n f2 F\n s string(8)\n}\n")
+		// The package is `probe`, never `p`: a unit `schema check` accepts builds in
+		// every target, and `p` is a binding in the Lobster runtime, so the checker
+		// refuses `package p` for every target (SPEC §4.6, package-name safety).
+		base := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
+		diffRange := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 11\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
+		diffRes := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.25\n f1 F\n f2 F\n s string(8)\n}\n")
 		_, hBase, _ := fixedRootFacts(fixedRootStruct(t, base, "T"))
 		_, hRange, _ := fixedRootFacts(fixedRootStruct(t, diffRange, "T"))
 		_, hRes, _ := fixedRootFacts(fixedRootStruct(t, diffRes, "T"))

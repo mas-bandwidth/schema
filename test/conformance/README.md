@@ -278,7 +278,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
-| `retain-refusal` | `retain-refusal` | ONE roomy store through LoadRetain of the first wire, SaveRetain into `<case>.before`, LoadRetain of the refused wire into the same store, then SaveRetain of the first value into `<case>.wire`; `<case>` is `read\nrefused\nsaved\n`, or `...save-refused\n` with no `.wire` where the store is bound to the root it loaded | `retain-refusal/<case>.before.bin`, then `<case>.after.bin` (the first value alone); a ledgered row in `retain-refusal-owed.txt` is owed, and red once it passes |
+| `retain-refusal` | `retain-refusal` | ONE roomy store through LoadRetain of the first wire, SaveRetain into `<case>.before`, LoadRetain of the refused wire into the same store, then SaveRetain of the first value into `<case>.wire`; `<case>` is `read\nrefused\nsaved\n`, or `...save-refused\n` with no `.wire` from python and ruby alone, whose store is bound to the root it loaded (save-refused from any other leg is red) | `retain-refusal/<case>.before.bin`, then `<case>.after.bin` (the first value alone); a ledgered row in `retain-refusal-owed.txt` is owed, and red once it passes; a ledger line naming a leg off the roster is refused |
 | `json-read` | `instance` | the single text read of `json/<name>.json`, then Save of the accepted value | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | the single text read of `<tree>/<root>.json`, then `read\n` and the complete value in `<case>` plus the wire in `<case>.wire`, or `refused\n` alone | the standard verdict for every port, then `<tree>.value.json` and `save-wire/<case>.bin` on acceptance |
@@ -290,12 +290,13 @@ One process per surface, so a runtime starts once rather than once per case.
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
-| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, `Measure` then variable-form `Save`; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
+| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, variable-form `Save`, using `Measure` where the driver calls it separately; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
 | `write-refusal-fixed` | `write-refusal-fixed` | the same through the fixed form's `FixedSave` | the verdict in the manifest |
 | `write-refusal-message` | `write-refusal-message` | the same through `SaveMessages` against the connection's vocabulary | the verdict in the manifest |
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
 | `write-refusal-cook` | `write-refusal-cook` | the same through the cook writer (`CookMeasure` then `Cook`, little-endian) | the verdict in the manifest |
 | `write-refusal-block` | `write-refusal-block` | the same through the block builder, which builds the root's block from the value | the verdict in the manifest |
+| `write-refusal-shape` | `write-refusal-shape` | the same through the root's own form's writer, with a value of the WRONG KIND (kind `shape`) where the path names; a raise is answered `raised` | `refused`, with a lawful twin per group (DW-TABLE-SHAPE) |
 | `announce` | `announce` | the unit's announcement writer, a strict or lenient announcement read, or a `SaveMessages` with no announcement in hand (below) | the engine's bytes, or the verdict in the manifest |
 | `read-into` | `read-into` | one report and one set of caller values through a lawful read, a refused read and the lawful read again (below) | `read-into/<case>.txt`, from the engine |
 | `json-write-into` | `json-write-into` | the text writer in a comma-decimal process locale, into a caller buffer longer than the text (below) | `json/<instance>.json` |
@@ -343,7 +344,9 @@ leg answers from its DEBUG build, where the check is active — C and C++ fork
 one child per case and read an abort as the refusal, C# installs a throwing
 `TraceListener`, Rust catches the panic, the Java driver runs those surfaces
 under `-ea` and the Dart leg builds a second binary with `--enable-asserts` —
-and every other leg answers from its ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
+and every other leg answers from its ordinary build. A derived `save-wire`
+flag also asks for the actual saved bytes in `<case>.wire`. The harness holds
+the expected file for the byte comparison. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
@@ -378,6 +381,19 @@ an answer the runtime did not give.
   through the leg's block builder (the counts and used lengths it is handed
   are the value's); `wrote` when the block is built. A count or a used length
   past its maximum is refused by name in every build (SF-31).
+- **`write-refusal-shape`** puts a value of the wrong kind where the row's
+  path names (an integer as a record, a union or an array element; a string
+  as a float; null as a bool; a bare map as a union; an improper list as an
+  array; a number as the whole value) and writes it through the root's own
+  form's writer. Every refuse-every-build leg (Go, JS, Elixir, Lua, Luau,
+  Squirrel, moo, Goose, Python, Ruby) answers every row, and the harness
+  refuses a missing answer from one of them; a leg whose types cannot hold
+  the value answers `unrepresentable`. The writer refuses by its answer, never by raising: a
+  raised error is answered `raised` and is red (DW-TABLE-SHAPE). The assert
+  legs, whose writers hold these values with debug asserts only, answer the
+  lawful twins, `unrepresentable` for a shape row their types cannot hold,
+  and their debug build's own refusal for one they can (a null in a C#, Unity
+  or Java class place).
 - **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
   `write` (root and input `-`): the unit's announcement writer
   (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,
@@ -406,12 +422,49 @@ an answer the runtime did not give.
   `read\nrefused\n<defaults × count>read\n`: every read zeroes the report it
   is handed (FL-02), and a refusal leaves every value the call was handed at
   its declared defaults, a fixed batch checking every record before any lands
-  (FL-03). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
+  (FL-03). A `fixed` row's second file may instead be LAWFUL, an older
+  writer's one record read through the lineage (`ri_fixed_lineage`), and
+  the manifest row says so with a trailing `lawful-second` (the driver is
+  not told; `generate` fails when the engine's verdict on the file differs
+  from the mark, either way): the
+  driver runs the same three reads, and the owed answer is
+  `read\nread\n<that record's value>read\n`, the value being what a FRESH
+  value reads from the second file, so every field that writer did not supply
+  holds its declared default and never what the first read left (SPEC-TABLES
+  §3.4). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
   with NO stated capacity and answers `read\n` and the record count it
   returned (FL-17: the omitted capacity is the file's own 5000 records, never
   a default the port invented). A leg whose fixed load cannot omit the
   capacity answers `unrepresentable\n`, which the harness credits on that
-  form alone.
+  form alone. The `retain` form (count 1) is the RETAINING load
+  (`<Root>LoadRetain`, SPEC-TABLES §6.6) of a variable root, with a roomy
+  retention buffer, and it checks the report rather than the value. Make ONE
+  report and PRE-FILL it: every counter nonzero (`unknown`, `widened`,
+  `retained`, `retain_lost` and every other counter the report has), the
+  refusal set, and the reason and its detail set where the language has them;
+  a field the language does not let a caller set is filled by a refused read
+  first. Read `<lawful>` into it and write the read's line, then `zeroed` when
+  every field of that report equals the field the same read leaves in a FRESH
+  report, or any other line (naming the field) when one differs. Then read
+  `<damaged>` into the same report (one line), read `<lawful>` once more (one
+  line) and compare again (one line). The owed answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`: §6.5 zeroes a supplied report in
+  full on every read path, the retain family included. The `region` form
+  (count 1) is the same protocol and the same owed answer through the PLAIN
+  `<Root>Load` of a variable root: the region read (`Load(region, wire,
+  report)`) where the leg has one, and the leg's plain value `Load` where it
+  has no region read. The `retain-fixed` form (damaged `-`, count 1) calls
+  `<Root>LoadRetain` on a FIXED-class root, which §6.6 refuses by name, with
+  a pre-filled report and a roomy retention buffer, and answers the step line
+  and then `zeroed` (or a line naming the field that differs) against the
+  same call into a fresh report; the owed answer is `refused\nzeroed\n`. A
+  leg whose fixed-root `LoadRetain` is refused at COMPILE time (a named
+  constant, macro, template or missing method, so no call can be written)
+  answers `unrepresentable\n`, which the harness credits on this form; so
+  does a dynamic leg whose generated fixed-root entry point raises a named
+  error UNCONDITIONALLY, before it touches the report or the input (that
+  language's nearest form of a compile-time refusal). A leg whose call takes
+  the report and refuses through it owes `refused\nzeroed\n`.
 - **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
   driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
   harness also sets where the host has none). The driver makes it the
@@ -429,18 +482,22 @@ an answer the runtime did not give.
 §5.1): a generated packet type carries one field per row, and the surface runs
 the packet `Write` over each refused value and its lawful twin at the same
 boundary. The Go leg is `TestWriteRefusalPacket` in `test/conformance/harness`: it
-generates the unit, compiles it against serialize.go and runs the battery behind
-`slowtest.Gate`, then runs a negative control that changes the emitter's
-upper-bound comparison and requires the boundary row to go red. The assert legs
-(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the shared
-schema and cases in `test/packet-write-refusal/`, in their debug build, where
+generates the shared schema in `test/packet-write-refusal/`, compiles it against
+serialize.go and runs every case of its `cases.txt` behind `slowtest.Gate` (a
+panic fails the case; a case without a setter, or a setter the file does not
+name, fails), then runs two negative controls: one changes the emitter's
+upper-bound comparison and requires the boundary row to go red, the other drops
+the generated 128-bit and fixed-point refusals and requires `int128_high`,
+`fixed_high` and `ufixed_high` red. The assert legs
+(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the same
+schema and cases, in their debug build, where
 the assert firing is the refusal: `packet-write-refusal-<lang>`, each with a
 `-negative-control` that removes one emitted check and requires a named case to
 go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,
-`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`test/conformance/write-refusal-packet/` (`RefusalPacket.schema`,
 `rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
 `writerefusalpacket_test.go` and its own probe: the test generates the unit,
 runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal
@@ -830,6 +887,8 @@ make tables-wire-fuzz-retain               the same mutants through the RETAININ
 make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
 ./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
+./build/conformance-harness wire-eof --driver <cmd>   the stream cut at EOF: every truncation refuses
+make tables-wire-eof                       wire-eof over every leg's driver (tables-wire-eof-<leg>)
 ```
 
 **The stream, little-endian throughout.** The working directory is the
@@ -840,7 +899,7 @@ driver is.
 |---|---|---|
 | in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM, `u8` RETAIN | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
-| in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
+| in | per mutant: `u32` roster index, `u32` length, the bytes | until the harness closes the stream, which it does only between frames: EOF before an index's first byte ends the run (exit 0); EOF inside a frame (1 to 3 index bytes, a cut length, a cut body) refuses, with a non-zero exit, the cut named on stderr and no reply (docs/SPEC-TABLES.md §4.2) |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
 The reply header remains 47 bytes for transport compatibility. Its semantic

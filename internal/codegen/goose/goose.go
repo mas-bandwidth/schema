@@ -31,8 +31,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const ext = "goose"
@@ -98,8 +98,17 @@ func Register(name string, fn Part) {
 // unit, plus the runtime modules. Declarations emit in ir.EmissionOrder per
 // file.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	out, _, err := GenerateClaimed(u)
+	return out, err
+}
+
+// GenerateClaimed is Generate, and also the names it claimed: every name the
+// type surface's modules declared into the unit's namespace, valued by the
+// declaring module. A name in it is one a second declaration refuses (Declare),
+// so a test can hold the emitted text to the claim from one generation.
+func GenerateClaimed(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 	if err := CheckUnit(u, Runtime()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names := map[string]string{}
 	out := map[string][]byte{}
@@ -109,16 +118,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+				return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
 			}
 		}
 		if g.err != nil {
-			return nil, g.err
+			return nil, nil, g.err
 		}
 		out[f.Base+"."+ext] = g.Assemble()
 	}
 	maps.Copy(out, Runtime())
-	return out, nil
+	return out, names, nil
 }
 
 // DeclaredNames is every top-level name the type surface declares into the
@@ -171,15 +180,15 @@ func Namespace(u *ir.Unit) string { return u.Package }
 func CheckUnit(u *ir.Unit, runtime map[string][]byte) error {
 	ns := Namespace(u)
 	if !isIdent(ns) {
-		return fmt.Errorf("goose: package %q is no Goose identifier, and it is the namespace every module declares into; rename the package", ns)
+		return NameErr(fmt.Errorf("goose: package %q is no Goose identifier, and it is the namespace every module declares into; rename the package", ns))
 	}
 	if Keywords[ns] || ns == RuntimeNamespace {
-		return fmt.Errorf("goose: package %q is reserved in Goose (a keyword, a scalar type, std, main or the runtime's namespace %s), and it is the namespace every module declares into; rename the package", ns, RuntimeNamespace)
+		return NameErr(fmt.Errorf("goose: package %q is reserved in Goose (a keyword, a scalar type, std, main or the runtime's namespace %s), and it is the namespace every module declares into; rename the package", ns, RuntimeNamespace))
 	}
 	for _, f := range u.Files {
 		for name := range runtime {
 			if strings.EqualFold(f.Base+"."+ext, name) {
-				return fmt.Errorf("schema file %s.schema collides with the Goose runtime module %s the target emits beside the generated modules; rename the file", f.Base, name)
+				return NameErr(fmt.Errorf("schema file %s.schema collides with the Goose runtime module %s the target emits beside the generated modules; rename the file", f.Base, name))
 			}
 		}
 	}
@@ -263,7 +272,7 @@ func (g *Gen) Imports() []string {
 // by name (docs/PORT-GOOSE.md, THE TYPE MAPPING).
 func (g *Gen) Declare(name string) {
 	if prev, ok := g.names[name]; ok && g.err == nil {
-		g.err = fmt.Errorf("goose: %s declares %s in namespace %s, which %s already declares; rename the schema declaration", g.Module(), name, Namespace(g.Unit), prev)
+		g.err = NameErr(fmt.Errorf("goose: %s declares %s in namespace %s, which %s already declares; rename the schema declaration", g.Module(), name, Namespace(g.Unit), prev))
 		return
 	}
 	g.names[name] = g.Module()
@@ -852,3 +861,18 @@ func FormatFloat(v float64) string {
 func FormatFloat32(v float64) string {
 	return FormatFloat(float64(float32(v)))
 }
+
+// NameError is a refusal by name: two names the target writes into one
+// namespace (or one output directory) are one spelling, or a name is one Goose
+// reserves. Every such refusal of the type and table surfaces is one, so the
+// checker can lift it: compiler/emitter_names.go runs the target's whole
+// generate at check and refuses, for every target, a unit that ends in a
+// NameError (SPEC §4.6, Emitter name rules). A refusal of a construct the
+// target does not carry yet is no NameError and is not lifted.
+type NameError struct{ Err error }
+
+func (e *NameError) Error() string { return e.Err.Error() }
+func (e *NameError) Unwrap() error { return e.Err }
+
+// NameErr marks err as a refusal by name.
+func NameErr(err error) error { return &NameError{err} }

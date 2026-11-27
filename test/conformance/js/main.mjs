@@ -851,6 +851,7 @@ const wireRows = [
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Variable.js"],
   ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureVariable.js"],
+  ["writebounds", "TortureVarWref", "writebounds/WriteboundsVariable.js"],
   ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
   // string, bytes and flags defaults in every carried field shape (SPEC §4.2)
   ["tblvaluedefaults", "VarDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
@@ -1079,6 +1080,7 @@ const textUnits = {
   tblvarevo2: "varevo2/Tblvarevo2Variable.js",
   tblvarevo3: "varevo3/Tblvarevo3Variable.js",
   cooktorture: "cooktorture/CookTortureVariable.js",
+  writebounds: "writebounds/WriteboundsVariable.js",
   cooktorturewide: "cooktorturewide/CookTortureWideVariable.js",
   packetunions: "packetunions/TblpacketunionsVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
@@ -1195,12 +1197,13 @@ async function surfaceFraming(lines, outDir) {
 }
 
 async function surfaceJsonRead(lines, outDir) {
+  const jsonDir = process.env.SCHEMA_CONFORMANCE_JSON_INPUT_DIR || "testdata/conformance/tables/json";
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = (codec.variableReport ?? codec.report)(); // the text read reports on the variable form
-    const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
+    const text = readJsonTextFile(join(jsonDir, f[1] + ".json"));
     if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
     const v = codec.fromJson(text, r);
     if (v === null || v === undefined || r.damaged || r.refused) { fail(f[1] + ": FromJson refused the text"); }
@@ -1500,12 +1503,20 @@ const args = process.argv.slice(2);
 // region measure and the saved bytes. The protocol is the twin of the Go and C
 // legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
 async function wireFuzz() {
-  const readExact = (n) => {
+  // THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+  // null is EOF before the first byte, which only a caller that names no
+  // `where` may take as the end. EOF after a first byte is a truncated frame,
+  // and so is EOF where `where` names a part that must be there: it fails
+  // loudly and the cut bytes never reach a codec.
+  const readExact = (n, where) => {
     const buf = Buffer.alloc(n);
     let off = 0;
     while (off < n) {
       const r = readSync(0, buf, off, n - off, null);
-      if (r === 0) { return null; }
+      if (r === 0) {
+        if (off === 0 && where === undefined) { return null; }
+        fail("wire-fuzz: the stream ended inside " + (where ?? "a frame") + " (" + off + " of " + n + " bytes)");
+      }
       off += r;
     }
     return buf;
@@ -1707,12 +1718,11 @@ async function wireFuzz() {
   writeSync(1, known);
 
   for (;;) {
-    const head = readExact(8);
-    if (head === null) { break; }
+    const head = readExact(4);
+    if (head === null) { break; } // the harness closed the stream between frames
     const index = head.readUInt32LE(0);
-    const size = head.readUInt32LE(4);
-    const wireBuf = readExact(size);
-    if (wireBuf === null) { break; }
+    const size = readExact(4, "a mutant length").readUInt32LE(0);
+    const wireBuf = readExact(size, "a mutant");
     const wire = new Uint8Array(wireBuf.buffer, wireBuf.byteOffset, wireBuf.byteLength);
     const codec = roster[index];
 
@@ -1814,7 +1824,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n");
   // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
   process.stdout.write("unit shapes\n");
   process.exit(0);
@@ -1856,6 +1866,7 @@ switch (surface) {
   case "write-refusal-json":
   case "write-refusal-cook":
   case "write-refusal-block":
+  case "write-refusal-shape":
     await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView, fixedValueOf, blockUnit);
     break;
   case "announce": await surfaceAnnounce(lines, outDir, load, messageVerbs, fixedValueOf); break;

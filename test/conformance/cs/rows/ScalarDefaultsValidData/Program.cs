@@ -1,21 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Serialize
-{
-    public class WriteStream
-    {
-        public bool SerializeFixed(ref long x, int bits, int frac, long min, long max) { return true; }
-        public bool SerializeFixed(ref uint x, int bits, int frac, long min, long max) { return true; }
-    }
-
-    public class ReadStream
-    {
-        public bool SerializeFixed(ref long x, int bits, int frac, long min, long max) { return true; }
-        public bool SerializeFixed(ref uint x, int bits, int frac, long min, long max) { return true; }
-    }
-}
-
 // cell-cs-scalar-defaults-valid-data — Scalar and enum defaults: valid-data write/read acceptance
 //
 // The law (docs/FIXED-FORM-ALGORITHM.md:1682): the assertion that

@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedDeadMeta records the wire extents that close dead spans. A union tag

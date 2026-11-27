@@ -1,7 +1,9 @@
 package lobster
 
 import (
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -37,13 +39,29 @@ func TestLobsterRuntimeGlobalNamesAreRefused(t *testing.T) {
 	if len(names) == 0 {
 		t.Fatal("names is empty: the loop below would check nothing")
 	}
+	generated := 0
 	for i, n := range names {
 		dir := t.TempDir()
 		writeFile(t, dir, "Probe.schema", "package probe\n\n"+shapes[i%len(shapes)](n))
-		_, err := Generate(unitFromDir(t, dir))
+		// A name the checker already refuses for every leg (a serialize.h
+		// macro the generated C++ would expand, SPEC §4.6) never reaches this
+		// emitter: it is refused, which is all this test asks, so the
+		// checker's refusal must name the declaration.
+		u, errs := checkDir(t, dir)
+		if len(errs) != 0 {
+			if !strings.Contains(fmt.Sprint(errs), strconv.Quote(n)) {
+				t.Errorf("%s: the checker refused something else: %v", n, errs)
+			}
+			continue
+		}
+		generated++
+		_, err := Generate(u)
 		if err == nil || !strings.Contains(err.Error(), "packet runtime declares globally") {
 			t.Errorf("%s: %v, want refused as a packet runtime global", strings.TrimSpace(shapes[i%len(shapes)](n)), err)
 		}
+	}
+	if generated < len(names)/2 {
+		t.Fatalf("only %d of %d runtime globals reached the Lobster emitter: the checker refusal took the test over", generated, len(names))
 	}
 	dir := t.TempDir()
 	writeFile(t, dir, "Probe.schema", "package probe\n\nconst align_bits = 3\n")

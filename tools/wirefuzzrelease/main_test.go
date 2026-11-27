@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 const (
@@ -131,6 +133,7 @@ exit 1
 
 	for _, status := range []string{"0", "42"} {
 		t.Run(status, func(t *testing.T) {
+			testinputs.Files(t, runner)
 			cmd := exec.Command("bash", runner, "go", "plain", "1", "1", "rows")
 			cmd.Dir = dir
 			cmd.Env = append(cmd.Environ(), "WFR_TOOL=./scorer", "WFR_DRIVER=fixture", "WFR_FLAGS=", "WFR_ENV=", "HARNESS_STATUS="+status)

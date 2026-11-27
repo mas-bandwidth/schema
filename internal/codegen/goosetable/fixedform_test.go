@@ -27,12 +27,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const fixedRoot = "../../.."
@@ -1014,6 +1014,11 @@ fn in_bound(v: const probe::Host&) -> bool {
     return true;
 }
 
+// at_defaults: a Host as its declared defaults leave it (Small 5, Tail 7, the rest zero).
+fn at_defaults(v: const probe::Host&) -> bool {
+    return v.Small == 5 && v.Tail == 7 && v.MarksCount == 0 && v.Marks[0] == 0 && v.Marks[1] == 0 && v.Marks[2] == 0 && v.Marks[3] == 0 && v.Note == 0 && !v.NotePresent;
+}
+
 fn main() {
     var v = probe::Host {
         Small: 5,
@@ -1078,8 +1083,10 @@ fn main() {
     let clamped_n = probe::_HostFixedClamp(raw_v);
     print("control2 ", raw_unclamped, " ", raw_v.Small == 1000 && clamped_n == 1);
 
-    // Multi-record batch: a bad hash on the LAST record refuses no_layout with
-    // nothing landed into record 0.
+    // Multi-record batch: a bad hash on the LAST record refuses no_layout, and
+    // after the refusal EVERY row handed in holds its declared defaults, record 0
+    // included (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL):
+    // nothing landed, and the caller's 777s are gone too.
     var two: u8[>..] = [];
     let saved2 = probe::HostFixedSave([v, v], two);
     two[two.len - probe::HostFixedRecordBytes] ^= 0x01;
@@ -1089,7 +1096,7 @@ fn main() {
     ];
     var rep2 = schema_rt::FixedReport { .. };
     let n2 = probe::HostFixedLoad(pair, two, rep2);
-    print("last_record_nolayout ", saved2 > 0 && n2 == -1 && schema_rt::fixed_refusal_name(rep2.reason) == "no_layout" && rep2.oor == 0 && pair[0].Small == 777);
+    print("last_record_nolayout ", saved2 > 0 && n2 == -1 && schema_rt::fixed_refusal_name(rep2.reason) == "no_layout" && rep2.oor == 0 && at_defaults(pair[0]) && at_defaults(pair[1]));
 }
 `, nil)
 		wantLines := []string{

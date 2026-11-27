@@ -2,7 +2,7 @@ package ctable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 	"slices"
 )
 
@@ -223,14 +223,18 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		// there is never followed (docs/SPEC-TABLES.md §7.2;
 		// docs/rulings.json fixed-dead-bytes-are-zero)
 		count := fmt.Sprint(f.ArrayBound)
+		if cArmMin(f) {
+			// the cook is a writer too: a count below A is never produced,
+			// a field or an arm, a debug assert in this leg (ruling R10). It
+			// comes BEFORE the release-build guard below: C refuses a bad
+			// write through its debug assert (SPEC §4.6, the ruling
+			// `write-refusal`), and a guard that returned first would turn
+			// the debug build's abort into a quiet failed cook
+			g.writeCountBound(f, src+"_count", ind)
+		}
 		if f.Array == ir.ArrayCounted {
 			g.pf("%sif(%s_count<%d || %s_count>%d) { return 0; }\n", ind, src, f.ArrayMin, src, f.ArrayBound)
 			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
-		}
-		if cArmMin(f) {
-			// the cook is a writer too: a count below A is never produced,
-			// a field or an arm, a debug assert in this leg (ruling R10)
-			g.writeCountBound(f, src+"_count", ind)
 		}
 		stride := int64(0)
 		if f.ArrayBound > 0 {

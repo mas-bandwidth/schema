@@ -1570,14 +1570,14 @@ public final class Clauses {
 
     // enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameEmptyUnionType(long value) {
-        if (value == EmptyUnionType.NONE) {
+    public static java.lang.String enumNameEmptyUnionType(long schema_value) {
+        if (schema_value == EmptyUnionType.NONE) {
             return "None";
         }
-        if (value == EmptyUnionType.A) {
+        if (schema_value == EmptyUnionType.A) {
             return "A";
         }
-        if (value == EmptyUnionType.B) {
+        if (schema_value == EmptyUnionType.B) {
             return "B";
         }
         return "???";

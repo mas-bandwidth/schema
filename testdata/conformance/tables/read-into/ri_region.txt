@@ -1,0 +1,5 @@
+read
+zeroed
+refused
+read
+zeroed

@@ -235,7 +235,21 @@ var platformNames = func() map[string]string {
 	put("the buffer library the generated code calls unqualified (Luau, moo)", "buffer")
 	put("System.Diagnostics.Debug, which the generated C# calls unqualified (C#)", "Debug")
 	put("the 128-bit support library the Dart and Java emitters write beside a 128-bit unit (Dart, Java)", "Int128", "UInt128")
+	// Dart's built-in identifiers may name a member or a local but never a
+	// type (the Dart spec's builtInIdentifier production), and every
+	// declaration is a Dart class or extension type
+	put("a Dart built-in identifier, which can name no class or extension type (Dart)",
+		"abstract", "as", "covariant", "deferred", "dynamic", "export", "extension", "external", "factory", "Function",
+		"get", "implements", "import", "interface", "late", "library", "mixin", "operator", "part", "required",
+		"set", "static", "typedef")
 	put("the support module the Elixir emitter writes beside the unit, Package.PacketRuntime (Elixir)", "PacketRuntime")
+	// every macro serialize.h defines (the pinned runtime, SIBLINGS): the
+	// generated C++ includes it, a function-like one expands at the `(` of a
+	// value-initialised `E()` or a conversion `E( v )`, and an object-like one
+	// everywhere, so a declaration of that name cannot be spelled; a field or
+	// an arm can, being only ever a member after `.` or a declarator
+	put("a macro of the serialize runtime header serialize.h, which the generated C++ includes, so the name expands as the macro wherever the code spells the declaration (C++)",
+		serializeMacros...)
 	return m
 }()
 
@@ -282,4 +296,33 @@ func (c *checker) checkPlatformNames() {
 		d := c.astDecls[name]
 		c.errf(d.DeclPos(), "declaration name %q is %s — rename at the source (SPEC §4.6)", name, why)
 	}
+}
+
+// serializeMacros are the macros serialize.h defines (serialize v2.1.6, the
+// pin in SIBLINGS), every one of them: TestSerializeMacrosMatchTheRuntime
+// holds this list equal to the header's #defines when the sibling is staged.
+var serializeMacros = []string{
+	"_CRT_SECURE_NO_WARNINGS",
+	"SERIALIZE_ALWAYS_INLINE", "SERIALIZE_BIG_ENDIAN", "SERIALIZE_BULK_COPY", "SERIALIZE_DEBUG",
+	"SERIALIZE_FLOAT_FORCE_ROUND", "SERIALIZE_H", "SERIALIZE_HAS_COMPILE_TIME_SURFACE",
+	"SERIALIZE_LITTLE_ENDIAN", "SERIALIZE_RELEASE", "SERIALIZE_RUN_TEST", "SERIALIZE_TEST_FP_CONTRACT",
+	"SERIALIZE_TEST_NOINLINE", "SERIALIZE_UINT128_DEFINED", "SERIALIZE_VERSION", "SERIALIZE_VERSION_MAJOR",
+	"SERIALIZE_VERSION_MINOR", "SERIALIZE_VERSION_PATCH",
+	"read_align", "read_bits", "read_bool", "read_bytes", "read_double", "read_end", "read_fixed",
+	"read_float", "read_int", "read_int128", "read_int64", "read_int_relative", "read_object",
+	"read_string", "read_uint128", "read_uint16", "read_uint32", "read_uint64", "read_uint8",
+	"serialize_align", "serialize_assert", "serialize_bits", "serialize_bits64_compile_time",
+	"serialize_bits_compile_time", "serialize_bool", "serialize_bool_compile_time", "serialize_bytes",
+	"serialize_check", "serialize_compressed_float", "serialize_compressed_float_precomputed",
+	"serialize_decoded_bits_fit_destination", "serialize_decoded_fits_destination",
+	"serialize_differential_check", "serialize_differential_next_lcg", "serialize_double",
+	"serialize_end", "serialize_fixed", "serialize_float", "serialize_int", "serialize_int128",
+	"serialize_int64", "serialize_int64_compile_time", "serialize_int_compile_time",
+	"serialize_int_relative", "serialize_object", "serialize_reject", "serialize_restrict",
+	"serialize_static_assert", "serialize_static_assert_join", "serialize_static_assert_join2",
+	"serialize_string", "serialize_test_next_lcg", "serialize_uint128", "serialize_uint16",
+	"serialize_uint32", "serialize_uint64", "serialize_uint8",
+	"write_align", "write_bits", "write_bool", "write_bytes", "write_double", "write_end", "write_fixed",
+	"write_float", "write_int", "write_int128", "write_int64", "write_int_relative", "write_object",
+	"write_string", "write_uint128", "write_uint16", "write_uint32", "write_uint64", "write_uint8",
 }

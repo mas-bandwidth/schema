@@ -860,6 +860,12 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tblfixedevo, EvoRoot, EvoRootRow, evo_root_cook_write, evo_root_fixed_save, evo_root_fixed_measure);
                 Some($body)
             }
+            ("writebounds", "TortureVarWref") => {
+                #[allow(unused_imports)]
+                use writebounds::{torture_var_wref_from_json_bytes as $from_json, torture_var_wref_load as $load,
+                    torture_var_wref_save_checked as $save, torture_var_wref_to_json_checked as $to_json};
+                Some($body)
+            }
             ("tblvarevo1", "EvoDoc") => {
                 #[allow(unused_imports)]
                 use tblvarevo1::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
@@ -2073,11 +2079,15 @@ fn surface_retain_refusal(manifest: &Manifest, out: &str) {
     }
 }
 fn surface_json_read(manifest: &Manifest, out: &str) {
+    let json_dir = std::env::var("SCHEMA_CONFORMANCE_JSON_INPUT_DIR")
+        .ok()
+        .filter(|dir| !dir.is_empty())
+        .unwrap_or_else(|| "testdata/conformance/tables/json".into());
     for f in manifest.of_kind("instance") {
         if no_text(f) {
             continue;
         }
-        let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
+        let path = format!("{json_dir}/{}.json", f[1]);
         if instance_is_fixed(f) {
             if let Some(value) = fixed_text_read(&f[2], &f[3], &slurp(&path)) {
                 let bytes = value.unwrap_or_else(|| fail(&format!("{}: fixed text read refused", f[1])));
@@ -3132,6 +3142,23 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        // THE DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15 WRITE): the Row
+        // holds the ordinal as plain storage, so the generated FixedSave's own
+        // debug assert is the refusal; the driver adds no check of its own.
+        ("tabledemo", "Moods") => {
+            let mut row = wref_fixed_row!(tabledemo, moods_fixed_load, MoodsRow, case, wire, data);
+            match wref_moods_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |_| {}, tabledemo::moods_fixed_measure, tabledemo::moods_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
+        ("tabledemo", "MoodField") => {
+            let mut row = wref_fixed_row!(tabledemo, mood_field_fixed_load, MoodFieldRow, case, wire, data);
+            match wref_mood_field_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |_| {}, tabledemo::mood_field_fixed_measure, tabledemo::mood_field_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         ("tabledemo", "CountedMin") => {
             let mut row = wref_fixed_row!(tabledemo, counted_min_fixed_load, CountedMinRow, case, wire, data);
             if (path, kind) != ("few", "count") {
@@ -3167,12 +3194,30 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
     }
 }
 
-fn surface_write_refusal(manifest: &Manifest, out: &str) {
-    for f in manifest.of_kind("write-refusal") {
+// Apply the caller's assignment. The generated writer owns the bounds checks.
+fn wref_writebounds(v: &mut writebounds::TortureVarWref, path: &str, kind: &str, value: &str) -> Mutation {
+    match writebounds_cases::mutate(v, path, kind, value).unwrap_or_else(|msg| fail(&msg)) {
+        writebounds_cases::WriteBoundsMutation::Done => Mutation::Done,
+        writebounds_cases::WriteBoundsMutation::Unrepresentable => Mutation::Unrepresentable,
+    }
+}
+
+// `surface` is write-refusal, or write-refusal-shape, whose lawful twins are
+// written as write-refusal writes them
+fn surface_write_refusal(manifest: &Manifest, out: &str, surface: &str) {
+    for f in manifest.of_kind(surface) {
         if f.len() < 8 {
-            fail(&format!("write-refusal line has {} fields", f.len()));
+            fail(&format!("{surface} line has {} fields", f.len()));
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+        // DW-TABLE-SHAPE) is one Rust's types cannot hold: every field,
+        // element, arm payload and root is its declared type, and Rust has no
+        // null. The compiler refuses it before any writer runs.
+        if kind == "shape" {
+            spill(out, case, b"unrepresentable\n");
+            continue;
+        }
         // the 2026-11-22 rows (surfaces1122.rs)
         if let Some(answer) = surfaces1122::write_refusal(manifest, "", f) {
             surfaces1122::spill_answer(out, case, &answer);
@@ -3201,6 +3246,22 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = tabledemo::loadout_config_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_loadout_config(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| tabledemo::loadout_config_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("writebounds", "TortureVarWref") => {
+                let mut report = writebounds::TableReport::default();
+                let Some(mut v) = writebounds::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_writebounds(&mut v, path, kind, value) {
+                    Mutation::Done => match wref_run(|| writebounds::torture_var_wref_save_checked(&v)) {
+                        Ok(saved) => {
+                            if f.get(8).map(String::as_str) == Some("save-wire") {
+                                spill(out, &format!("{case}.wire"), &saved);
+                            }
+                            "wrote\n"
+                        }
+                        Err(_) => "refused\n",
+                    },
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
@@ -3657,7 +3718,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes"
+            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes"
         );
         return;
     }
@@ -3688,7 +3749,8 @@ fn main() {
         "cook-reason" => surface_reason(&manifest, out, "cook"),
         "message" => surface_message(&manifest, out, false),
         "message-prior" => surface_message(&manifest, out, true),
-        "write-refusal" => surface_write_refusal(&manifest, out),
+        "write-refusal" => surface_write_refusal(&manifest, out, "write-refusal"),
+        "write-refusal-shape" => surface_write_refusal(&manifest, out, "write-refusal-shape"),
         "write-refusal-fixed" => surface_write_refusal_fixed(&manifest, out),
         "write-refusal-message" => surface_write_refusal_message(&manifest, out),
         "write-refusal-json" => surface_write_refusal_json(&manifest, out),
@@ -3704,3 +3766,4 @@ fn main() {
 // THE 2026-11-22 SURFACES: announce, read-into, json-write-into,
 // write-refusal-cook, write-refusal-block and the new write-refusal kinds.
 mod surfaces1122;
+mod writebounds_cases;

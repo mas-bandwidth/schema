@@ -47,6 +47,18 @@ static void set_const_wrong( value_t * v ) { v->fixed_constant = 6; }
 static void set_const_at( value_t * v ) { v->fixed_constant = 5; }
 static void set_reserved_wrong( value_t * v ) { v->reserved_zero = 1; }
 static void set_reserved_at( value_t * v ) { v->reserved_zero = 0; }
+static void set_int128_high( value_t * v ) { v->wide = serialize_int128_make( 5ULL, 0x6bc75e2d63100001ULL ); }
+static void set_int128_low( value_t * v ) { v->wide = serialize_int128_from_int64( -11 ); }
+static void set_int128_at_max( value_t * v ) { v->wide = serialize_int128_make( 5ULL, 0x6bc75e2d63100000ULL ); }
+static void set_int128_at_min( value_t * v ) { v->wide = serialize_int128_from_int64( -10 ); }
+static void set_fixed_high( value_t * v ) { v->fx = 655361; }
+static void set_fixed_low( value_t * v ) { v->fx = -655361; }
+static void set_fixed_at_max( value_t * v ) { v->fx = 655360; }
+static void set_fixed_at_min( value_t * v ) { v->fx = -655360; }
+static void set_ufixed_high( value_t * v ) { v->ufx = 0xee6b280000000001ULL; }
+static void set_ufixed_low( value_t * v ) { v->ufx = 0xffffffffULL; }
+static void set_ufixed_at_max( value_t * v ) { v->ufx = 0xee6b280000000000ULL; }
+static void set_ufixed_at_min( value_t * v ) { v->ufx = 0x100000000ULL; }
 
 static const struct
 {
@@ -64,6 +76,12 @@ static const struct
     { "text_zero", set_text_zero }, { "text_at_max", set_text_at_max },
     { "const_wrong", set_const_wrong }, { "const_at", set_const_at },
     { "reserved_wrong", set_reserved_wrong }, { "reserved_at", set_reserved_at },
+    { "int128_high", set_int128_high }, { "int128_low", set_int128_low },
+    { "int128_at_max", set_int128_at_max }, { "int128_at_min", set_int128_at_min },
+    { "fixed_high", set_fixed_high }, { "fixed_low", set_fixed_low },
+    { "fixed_at_max", set_fixed_at_max }, { "fixed_at_min", set_fixed_at_min },
+    { "ufixed_high", set_ufixed_high }, { "ufixed_low", set_ufixed_low },
+    { "ufixed_at_max", set_ufixed_at_max }, { "ufixed_at_min", set_ufixed_at_min },
 };
 #define SETTER_COUNT ( (int) ( sizeof( setters ) / sizeof( setters[0] ) ) )
 
@@ -98,7 +116,8 @@ static int run_case( int setter )
     if ( decoded.scalar != value.scalar || decoded.narrow != value.narrow || decoded.grade != value.grade
          || decoded.window_count != value.window_count || decoded.text_length != value.text_length
          || memcmp( decoded.text, value.text, (size_t) value.text_length ) != 0 || decoded.shot.type != value.shot.type
-         || decoded.fixed_constant != value.fixed_constant || decoded.reserved_zero != value.reserved_zero ) { return 12; }
+         || decoded.fixed_constant != value.fixed_constant || decoded.reserved_zero != value.reserved_zero 
+         || serialize_int128_compare( decoded.wide, value.wide ) != 0 || decoded.fx != value.fx || decoded.ufx != value.ufx ) { return 12; }
     /* the read ends at the byte boundary the final-padding check consumes */
     if ( serialize_read_bits_processed( &reader ) != (serialize_int64_t) ( ( serialize_write_bits_processed( &writer ) + 7 ) / 8 ) * 8 ) { return 13; }
     return 0;

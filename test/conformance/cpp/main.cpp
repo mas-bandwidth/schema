@@ -35,6 +35,7 @@
 #include <type_traits>
 #include <vector>
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 #include "TablesTable.h"
 #include "WideTable.h"
 #include "FeaturesTable.h"
@@ -63,6 +64,9 @@
 #include "ShapesTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
+#endif
+#include "TableWriteBoundsTable.h"
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -129,6 +133,7 @@
 #include "announce4096/AnnounceTable.h"
 #include "announce4097/AnnounceTable.h"
 #include "BackendBlock.h"
+#endif
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -285,7 +290,7 @@ struct Erase
 // read of that form (-1 refuses the whole load), and FixedSave the writer whose
 // bytes the wire goldens hold. The plan storage is the caller's (§3.4), roomy
 // enough for any writer's layout the corpus carries; no cache is shared.
-static const int32_t kFixedPlanCapacity = 4096;
+[[maybe_unused]] static const int32_t kFixedPlanCapacity = 4096; // unused by the writebounds-only driver
 
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
@@ -367,6 +372,7 @@ static const int32_t kFixedPlanCapacity = 4096;
         }                                                                                      \
     }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, RootConfig ),
     CODEC( "tabledemo", tabledemo, ProfileConfig ),
@@ -421,6 +427,7 @@ static const Codec codecs[] = {
     CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
     CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
+#endif
 
 // ---------------------------------------------------------------------------
 // the VARIABLE class's rows (docs/SPEC-TABLES.md §6.2)
@@ -502,6 +509,7 @@ struct VarCodec
     }
 
 static const VarCodec var_codecs[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "mapdemo", mapdemo, Cells ),
     VARCODEC( "mapdemo", mapdemo, Chunks ),
     VARCODEC( "mapdemo", mapdemo, Crews ),
@@ -533,7 +541,9 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
-
+#endif
+    VARCODEC( "writebounds", writebounds, TortureVarWref ),
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
     VARCODEC( "tblp2", tblp2, Chain ),
@@ -549,8 +559,10 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblsurf", surfaces, Chain ),
     VARCODEC( "tblsurf", surfaces, Holder ),
     VARCODEC( "tblsurf", surfaces, Counted ),
+#endif
 };
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // the MESSAGE FORM's rows (docs/SPEC-TABLES.md §3.3)
 // ---------------------------------------------------------------------------
@@ -753,6 +765,7 @@ static const MsgCodec * find_msg_codec( const std::string & unit, const std::str
     }
     return NULL;
 }
+#endif
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
 {
@@ -765,13 +778,20 @@ static const VarCodec * find_var_codec( const std::string & unit, const std::str
 
 static const Codec * find_codec( const std::string & unit, const std::string & root )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    (void) unit;
+    (void) root;
+    return NULL;
+#else
     for ( size_t i = 0; i < sizeof( codecs ) / sizeof( codecs[0] ); i++ )
     {
         if ( unit == codecs[i].unit && root == codecs[i].root ) return &codecs[i];
     }
     return NULL;
+#endif
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // blocks
 // ---------------------------------------------------------------------------
@@ -1079,6 +1099,7 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
     storage.destroy();
     return ok;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // the surfaces
@@ -1093,6 +1114,7 @@ static bool spill_refusal( const std::string & out, const std::string & name )
     return spill( out, name, refused, sizeof( refused ) - 1 );
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // THE VERDICT LINE of a `report`, `framing` and `json-hostile` answer: the
 // legacy seven fields the harness still reads, with the retired counters at
 // zero and the refusal flag the only thing that selects the verdict
@@ -1104,6 +1126,7 @@ static std::vector<char> verdict_line( const Report & report, bool read )
                             report.unknown, report.widened, read ? "read" : "refused" );
     return std::vector<char>( text, text + n );
 }
+#endif
 
 static int surface_wire( const std::string & out )
 {
@@ -1151,6 +1174,7 @@ static int surface_wire( const std::string & out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // THE MESSAGE SURFACE (docs/SPEC-TABLES.md §3.3): read the message against the
 // connection's announced table, and write it back. The expectation is the
 // message golden itself, exactly as the wire surface's is the wire golden.
@@ -1491,6 +1515,7 @@ static int surface_framing( const std::string & out )
     return 0;
 }
 
+#endif
 // an instance the corpus carries on the wire alone: past the text form's depth
 // cap by the form's own rule (§16.7), so no leg is asked for its text
 static bool no_text( const std::vector<std::string> & f )
@@ -1500,13 +1525,15 @@ static bool no_text( const std::vector<std::string> & f )
 
 static int surface_json_read( const std::string & out )
 {
+    const char * json_dir = getenv( "SCHEMA_CONFORMANCE_JSON_INPUT_DIR" );
+    if ( json_dir == NULL || json_dir[0] == '\0' ) json_dir = "testdata/conformance/tables/json";
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
         if ( no_text( f ) ) continue;
         std::vector<uint8_t> text;
-        std::string path = "testdata/conformance/tables/json/" + f[1] + ".json";
+        std::string path = std::string( json_dir ) + "/" + f[1] + ".json";
         if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
         const VarCodec * variable = find_var_codec( f[2], f[3] );
         if ( variable != NULL )
@@ -1574,6 +1601,7 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // A VALUE THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the line names
 // a wire that reads, and the damage the driver puts into it afterwards, which no
 // read can deliver: the bytes 61 FF 62 in a narrow text field, the units 0061
@@ -2131,6 +2159,7 @@ static int emit_block_forgeries()
     storage.destroy();
     return 0;
 }
+#endif
 
 // THE WRITE CONTRACT's batteries (docs/SPEC.md §5.1; FORMAT.md, `write-refusal`
 // and the three surfaces beside it): load the wire, set ONE field out of (or at
@@ -2153,6 +2182,7 @@ enum
     // the value is past the storage's own width (§5.1 row 11): C++'s typed
     // storage cannot hold it, so there is nothing for the writer to refuse
     kUnrepresentableExit = 12,
+    kRowWireExit = 2, // the row's own wire did not load: a corpus fault, never a verdict
 };
 
 // The hex of a `bytes` or `units` value: two digits a byte, or four a unit.
@@ -2202,6 +2232,7 @@ static bool write_refusal_text( char * storage, int32_t capacity, int32_t & leng
     return false;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // Sets the one field the row names. The set is EXACTLY the rows' (root, path,
 // kind) triples: an unknown one is an error that names itself, so a new row
 // cannot pass by being skipped.
@@ -2247,6 +2278,7 @@ static bool write_refusal_bytes_field( uint8_t * storage, int32_t capacity, int3
     }
     return false;
 }
+#endif
 
 // A decimal integer as __int128, saturating far past any storage, so a value
 // past 64 bits still compares as past it.
@@ -2294,6 +2326,7 @@ template <typename E> static bool wref_store_enum( E & field, const std::string 
 // The `real` kind (FORMAT.md): a decimal parsed as a double, then rounded to the
 // float storage the way any caller's assignment rounds it, so a row can name
 // the float32 one step past a bound exactly.
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static bool parse_wref_real_f32( const std::string & text, float & out )
 {
     char * end = NULL;
@@ -2357,12 +2390,37 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
     }
     return false;
 }
+#endif
 
 // The REVIEW-1121 rows on PLAIN VARIABLE roots (MANIFEST.txt, R1): the value is
 // the region the load left, set in place.
 static bool write_refusal_set_variable( const std::string & root, void * value, const std::string & path,
                                         const std::string & kind, const std::string & text )
 {
+    if ( root == "TortureVarWref" )
+    {
+        writebounds::TortureVarWref & v = *(writebounds::TortureVarWref *) value;
+        if ( path == "opt_arr" && kind == "count" )
+        {
+            const int32_t count = wref_count( text );
+            const int32_t capacity = (int32_t) ( sizeof( v.opt_arr ) / sizeof( v.opt_arr[0] ) );
+            for ( int32_t i = v.opt_arr_count; i < count && i < capacity; i++ ) v.opt_arr[i] = v.opt_arr[0];
+            v.opt_arr_count = count;
+            v.opt_arr_present = true;
+            return true;
+        }
+        if ( path == "arm_str.a_str" && v.arm_str.type == writebounds::WrefArmType::AStr )
+        {
+            const int32_t capacity = (int32_t) sizeof( v.arm_str.a_str.value ) - 1;
+            return write_refusal_text( v.arm_str.a_str.value, capacity, v.arm_str.a_str.value_length, kind, text );
+        }
+        if ( kind != "int" ) return false;
+        if ( path == "arm_bits.a_bits" && v.arm_bits.type == writebounds::WrefArmType::ABits ) return wref_store_int( v.arm_bits.a_bits, text );
+        if ( path == "arm_range.a_range" && v.arm_range.type == writebounds::WrefArmType::ARange ) return wref_store_int( v.arm_range.a_range, text );
+        if ( path == "chan_lim[1]" ) return wref_store_int( v.chan_lim.slots[1], text );
+        return false;
+    }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( root == "Scene" )
     {
         graphdemo::Scene & v = *(graphdemo::Scene *) value;
@@ -2451,9 +2509,11 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "wide" && kind == "float" ) return parse_wref_f64( text, v.wide );
         return write_refusal_shapes_common( v, v.tones, v.tones_count, path, kind, text );
     }
+#endif
     return false;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
                                const std::string & kind, const std::string & text )
 {
@@ -2624,6 +2684,8 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
     if ( root == "CountedMin" ) { wrote = tabledemo::CountedMinFixedSave( (const tabledemo::CountedMin *) value, 1, buffer, capacity ); return true; }
     if ( root == "RootConfig" ) { wrote = tabledemo::RootConfigFixedSave( (const tabledemo::RootConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
+    if ( root == "Moods" ) { wrote = tabledemo::MoodsFixedSave( (const tabledemo::Moods *) value, 1, buffer, capacity ); return true; }
+    if ( root == "MoodField" ) { wrote = tabledemo::MoodFieldFixedSave( (const tabledemo::MoodField *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
     if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
     if ( root == "FixedBounds" ) { wrote = shapes::FixedBoundsFixedSave( (const shapes::FixedBounds *) value, 1, buffer, capacity ); return true; }
@@ -2699,11 +2761,6 @@ static bool write_refusal_json_holds_zero( const std::string & json, const std::
 // answered `unrepresentable`, never `refused` on the runtime's behalf: a native
 // `[N]T` holds exactly N elements, an `int8_t` holds no 128. The child exits
 // with this code for it.
-enum
-{
-    kRowWireExit = 2, // the row's own wire did not load: a corpus fault, never a verdict
-};
-
 enum WrefSet
 {
     kWrefNotMine, // a (root, path, kind) this setter does not know: the older setter's
@@ -2918,7 +2975,8 @@ static int write_refusal_write( const std::string & surface, const std::string &
     scratch.assign( (size_t) 1 << 20, 0 );
     const int64_t capacity = (int64_t) scratch.size();
     int64_t wrote = -1;
-    if ( surface == "write-refusal" ) wrote = codec->save( value, scratch.data(), capacity );
+    // the shape rows' lawful twins are written as write-refusal writes them
+    if ( surface == "write-refusal" || surface == "write-refusal-shape" ) wrote = codec->save( value, scratch.data(), capacity );
     else if ( surface == "write-refusal-fixed" )
     {
         if ( !write_refusal_fixed_save( root, value, scratch.data(), capacity, wrote ) ) return kNoSetterExit;
@@ -2939,17 +2997,22 @@ static int write_refusal_write( const std::string & surface, const std::string &
     }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
+#endif
 
 // sets the one field a row names: the 2026-11-22 kinds first, then the older
 // setter; answers 0 or the child's exit code
 static int write_refusal_set_any( const std::string & root, void * value, const std::string & path,
                                   const std::string & kind, const std::string & text )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    return write_refusal_set_variable( root, value, path, kind, text ) ? 0 : kNoSetterExit;
+#else
     const WrefSet set = write_refusal_set_1122( root, value, path, kind, text );
     if ( set == kWrefSet ) return 0;
     if ( set == kWrefUnrep ) return kUnrepresentableExit;
     if ( set == kWrefBad ) return kNoSetterExit;
     return write_refusal_set( root, value, path, kind, text ) ? 0 : kNoSetterExit;
+#endif
 }
 
 // A row whose <wire> is `-` starts from the root's FRESH value (SF-05, SF-06:
@@ -2994,24 +3057,34 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( child == 0 )
         {
             alarm( kWrefChildSeconds );
+            // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+            // DW-TABLE-SHAPE) is one C++'s types cannot hold: the compiler
+            // refuses it before any writer runs
+            if ( surface == "write-refusal-shape" && f[6] == "shape" ) _exit( kUnrepresentableExit );
             if ( var_codec != NULL )
             {
                 std::vector<uint8_t> region;
                 Report report;
                 const void * cval = var_codec->load( region, wire.data(), (int64_t) wire.size(), &report );
                 if ( cval == NULL ) _exit( kRowWireExit );
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+                const int set = write_refusal_set_any( f[3], const_cast<void *>( cval ), f[5], f[6], f[7] );
+#else
                 const int set = f[6] == "dupkey" ? write_refusal_dupkey( f[3], region, cval, f[5], f[7] )
                                                  : write_refusal_set_any( f[3], const_cast<void *>( cval ), f[5], f[6], f[7] );
+#endif
                 if ( set != 0 ) _exit( set );
                 const void * mval = cval;
                 const int quiet = open( "/dev/null", O_WRONLY );
                 if ( quiet >= 0 ) dup2( quiet, 2 );
-                if ( surface == "write-refusal" )
+                if ( surface == "write-refusal" || surface == "write-refusal-shape" )
                 {
                     scratch.assign( (size_t) 1 << 20, 0 );
                     const int64_t sz = var_codec->measure( mval );
                     if ( sz < 0 ) _exit( kRefusedExit );
                     const int64_t wr = var_codec->save( mval, scratch.data(), (int64_t) scratch.size() );
+                    if ( wr >= 0 && f.size() > 8 && f[8] == "save-wire" &&
+                         !spill( out, f[1] + ".wire", scratch.data(), (size_t) wr ) ) _exit( 1 );
                     _exit( wr < 0 ? kRefusedExit : kWroteExit );
                 }
                 if ( surface == "write-refusal-json" )
@@ -3019,9 +3092,12 @@ static int surface_write_refusal( const std::string & surface, const std::string
                     std::vector<char> jtxt;
                     _exit( var_codec->to_json( mval, jtxt ) ? kWroteExit : kRefusedExit );
                 }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
                 if ( surface == "write-refusal-cook" ) _exit( write_refusal_cook( var_codec->cook_measure, var_codec->cook, mval ) );
+#endif
                 _exit( kNoSetterExit );
             }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
             void * value = codec->make();
             codec->reset( value );
             if ( !fresh )
@@ -3034,6 +3110,9 @@ static int surface_write_refusal( const std::string & surface, const std::string
             const int quiet = open( "/dev/null", O_WRONLY );
             if ( quiet >= 0 ) dup2( quiet, 2 );
             _exit( write_refusal_write( surface, unit, f[3], f[5], codec, value, announcement ) );
+#else
+            _exit( kNoSetterExit );
+#endif
         }
         int status = 0;
         if ( waitpid( child, &status, 0 ) != child ) { fprintf( stderr, "driver: waitpid failed\n" ); return 1; }
@@ -3071,6 +3150,7 @@ static int surface_write_refusal( const std::string & surface, const std::string
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // THE ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3; test/conformance/README.md,
 // `announce`): a unit's announcement writer, and its reader with the strict
@@ -3303,10 +3383,149 @@ struct ReadIntoCodec
         }                                                                                                           \
     }
 
+// THE RETAINING LOAD's row (README, "The `retain` form"): ONE report, which
+// the driver PRE-FILLS with every member set, through NodeLoadRetain of the
+// lawful file, the damaged one and the lawful one again. After each lawful
+// load the report must equal, MEMBER BY MEMBER, the report the same load
+// leaves in a fresh report (docs/SPEC-TABLES.md §6.5: every read zeroes a
+// supplied report in full as its first act, the retain family included).
+// Every member of TableReport is public, so the pre-fill sets each directly.
+static const char * retain_into_step( bool ok, bool refused )
+{
+    if ( ok && !refused ) return "read\n";
+    if ( !ok && refused ) return "refused\n";
+    return ok ? "read-with-refused-report\n" : "refused-with-clean-report\n";
+}
+
+static bool retain_into_load( const std::vector<uint8_t> & wire, tblrt1::TableReport & report )
+{
+    int64_t need = tblrt1::NodeLoadMeasure( wire.data(), (int64_t) wire.size() );
+    if ( need < 0 ) need = 0;
+    std::vector<uint8_t> raw( (size_t) need + 64, 0 );
+    uint8_t * region = raw.data() + ( ( 64 - ( (uintptr_t) raw.data() & 63 ) ) & 63 );
+    std::vector<uint8_t> bytes( (size_t) kRetainRoomy, 0 );
+    std::vector<tblrt1::TableRetain::Id> ids( (size_t) ( kRetainRoomy / 8 ) );
+    tblrt1::TableRetain retain;
+    retain.bytes = bytes.data();
+    retain.capacity = kRetainRoomy;
+    retain.ids = ids.data();
+    retain.id_capacity = (int32_t) ids.size();
+    return tblrt1::NodeLoadRetain( region, need, wire.data(), (int64_t) wire.size(), &retain, &report ) != NULL;
+}
+
+template <typename R>
+static std::string retain_into_compare( const R & r, const R & fresh )
+{
+    std::string kept;
+    char line[512];
+#define RETAIN_INTO_MEMBER( m )                                                                                   \
+    if ( r.m != fresh.m )                                                                                         \
+    {                                                                                                             \
+        snprintf( line, sizeof( line ), "kept " #m " %lld want %lld\n", (long long) r.m, (long long) fresh.m );    \
+        kept += line;                                                                                             \
+    }
+    RETAIN_INTO_MEMBER( unknown )
+    RETAIN_INTO_MEMBER( widened )
+    RETAIN_INTO_MEMBER( missing_required )
+    RETAIN_INTO_MEMBER( damaged )
+    RETAIN_INTO_MEMBER( refused )
+    RETAIN_INTO_MEMBER( reason.value )
+    RETAIN_INTO_MEMBER( damage_reason )
+    RETAIN_INTO_MEMBER( retained )
+    RETAIN_INTO_MEMBER( retain_lost )
+    RETAIN_INTO_MEMBER( refuse_reason )
+    RETAIN_INTO_MEMBER( non_finite_floats )
+    RETAIN_INTO_MEMBER( build_version_remote )
+    RETAIN_INTO_MEMBER( build_version_own )
+    RETAIN_INTO_MEMBER( layout_hash )
+#undef RETAIN_INTO_MEMBER
+    if ( strcmp( r.missing_required_fields, fresh.missing_required_fields ) != 0 )
+    {
+        kept += std::string( "kept missing_required_fields \"" ) + r.missing_required_fields + "\" want \"" +
+                fresh.missing_required_fields + "\"\n";
+    }
+    return kept.empty() ? "zeroed\n" : kept;
+}
+
+// THE ZEROING PROTOCOL shared by the `retain` and `region` forms: a fresh
+// report from the lawful load, then ONE pre-filled report through the lawful
+// load, the damaged one and the lawful one again, compared after each lawful
+// load. Every member of TableReport is public, so the pre-fill sets each one.
+template <typename R, typename RR, typename Load>
+static int read_into_zeroing( const char * what, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                              std::string & answer, Load load )
+{
+    R fresh;
+    if ( !load( lawful, fresh ) || fresh.refused )
+    {
+        fprintf( stderr, "driver: read-into: the lawful %s load refused into a fresh report\n", what );
+        return 2;
+    }
+    R report;
+    report.unknown = 7;
+    report.widened = 7;
+    report.missing_required = 7;
+    snprintf( report.missing_required_fields, sizeof( report.missing_required_fields ), "stale" );
+    report.damaged = true;
+    report.refused = true;
+    report.reason = RR::malformed;
+    report.damage_reason = RR::integrity_mismatch;
+    report.retained = 7;
+    report.retain_lost = 7;
+    report.refuse_reason = RR::malformed;
+    report.non_finite_floats = 7;
+    report.build_version_remote = 7;
+    report.build_version_own = 7;
+    report.layout_hash = 7;
+    auto step = [&]( const std::vector<uint8_t> & in ) {
+        try
+        {
+            const bool ok = load( in, report );
+            answer += retain_into_step( ok, read_into_refused( report ) );
+        }
+        catch ( ... )
+        {
+            answer += "threw\n";
+        }
+    };
+    step( lawful );
+    answer += retain_into_compare( report, fresh );
+    step( damaged );
+    step( lawful );
+    answer += retain_into_compare( report, fresh );
+    return 0;
+}
+
+static int read_into_retain( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                             int64_t count, const std::vector<uint8_t> &, std::string & answer )
+{
+    if ( form != "retain" || count != 1 ) return 1;
+    return read_into_zeroing<tblrt1::TableReport, tblrt1::TableRefuseReason>( "retaining", lawful, damaged, answer, retain_into_load );
+}
+
+// THE PLAIN REGION READ (README, "The `region` form"): surfaces::CountedLoad
+// into a 64-aligned region of its measured size, under the protocol above.
+static bool region_into_load( const std::vector<uint8_t> & wire, surfaces::TableReport & report )
+{
+    int64_t need = surfaces::CountedLoadMeasure( wire.data(), (int64_t) wire.size() );
+    if ( need < 0 ) need = 0;
+    std::vector<uint8_t> raw( (size_t) need + 64, 0 );
+    uint8_t * region = raw.data() + ( ( 64 - ( (uintptr_t) raw.data() & 63 ) ) & 63 );
+    return surfaces::CountedLoad( region, need, wire.data(), (int64_t) wire.size(), &report ) != NULL;
+}
+
+static int read_into_region( const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged, int64_t count, std::string & answer )
+{
+    if ( count != 1 ) return 1;
+    return read_into_zeroing<surfaces::TableReport, surfaces::TableRefuseReason>( "region", lawful, damaged, answer, region_into_load );
+}
+
 static const ReadIntoCodec read_into_codecs[] = {
+    { "tblrt1", "Node", read_into_retain },
     READINTO_VAR( "tblsurf", surfaces, Counted ),
     READINTO_FIXED( "tblsurf", surfaces, Narrow ),
     READINTO_FIXED( "backenddemo", backenddemo, StorePurchase ),
+    READINTO_FIXED( "tblfixedevo", tblfixedevo, EvoRoot ),
 };
 
 // read-into <case> <unit> <root> <form> <lawful> <damaged> <count or -> <announcement or ->
@@ -3326,6 +3545,19 @@ static int surface_read_into( const std::string & out )
             if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
             continue;
         }
+        if ( f[4] == "retain-fixed" )
+        {
+            // NO CALL TO HOLD (docs/SPEC-TABLES.md §6.6): C++ refuses
+            // <Root>LoadRetain on a FIXED-class root at COMPILE time. The
+            // generator declares it as a variadic function template whose
+            // body is a static_assert that always fails
+            // (internal/codegen/cpptable/retain.go:1686, emitRetainRefusals),
+            // so surfaces::NarrowLoadRetain( ... ) does not compile and no
+            // call can be handed a report
+            const char * none = "unrepresentable\n";
+            if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
+            continue;
+        }
         const ReadIntoCodec * rc = NULL;
         for ( size_t j = 0; j < sizeof( read_into_codecs ) / sizeof( read_into_codecs[0] ); j++ )
         {
@@ -3340,7 +3572,11 @@ static int surface_read_into( const std::string & out )
         const long long count = strtoll( f[7].c_str(), &end, 10 );
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f[1].c_str(), f[7].c_str() ); return 1; }
         std::string answer;
-        const int ran = rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
+        // the `region` form is the plain region read, which the builder codec
+        // above does not make: tblsurf.Counted's is answered here
+        const int ran = f[4] == "region" && f[2] == "tblsurf" && f[3] == "Counted"
+                            ? read_into_region( lawful, damaged, (int64_t) count, answer )
+                            : rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
         if ( ran == 1 ) { fprintf( stderr, "driver: read-into %s: no %s form for %s.%s\n", f[1].c_str(), f[4].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
         if ( ran == 2 ) { fprintf( stderr, "driver: read-into %s: unanswered\n", f[1].c_str() ); continue; }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
@@ -3396,13 +3632,16 @@ static int surface_json_write_into( const std::string & out )
     setlocale( LC_ALL, "C" );
     return 0;
 }
+#endif
 
 int main( int argc, char ** argv )
 {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( argc >= 2 && strcmp( argv[1], "emit-block-forgeries" ) == 0 )
     {
         return emit_block_forgeries();
     }
+#endif
     if ( argc < 3 )
     {
         fprintf( stderr, "usage: %s <manifest> list\n       %s <manifest> <surface> <outdir>\n", argv[0], argv[0] );
@@ -3413,10 +3652,14 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+        printf( "wire\njson-read\njson-write\nwrite-refusal\n" );
+#else
         printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
-                "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
+                "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );
+#endif
         return 0;
     }
     if ( argc < 4 )
@@ -3427,6 +3670,11 @@ int main( int argc, char ** argv )
     const std::string out = argv[3];
 
     if ( surface == "wire" ) return surface_wire( out );
+    if ( surface == "json-read" ) return surface_json_read( out );
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "write-refusal" ) return surface_write_refusal( surface, out );
+#else
     if ( surface == "message" ) return surface_message( out, false );
     if ( surface == "message-prior" ) return surface_message( out, true );
     if ( surface == "report" ) return surface_report( out );
@@ -3434,7 +3682,6 @@ int main( int argc, char ** argv )
     if ( surface == "retain" ) return surface_retain( out );
     if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "retain-refusal" ) return surface_retain_refusal( out );
-    if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out ) || surface_json_write_refusal( out );
     if ( surface == "json-text" ) return surface_json_text( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
@@ -3445,12 +3692,14 @@ int main( int argc, char ** argv )
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
     if ( surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" ||
-         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" )
+         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" ||
+         surface == "write-refusal-shape" )
     {
         return surface_write_refusal( surface, out );
     }
     if ( surface == "announce" ) return surface_announce( out );
     if ( surface == "read-into" ) return surface_read_into( out );
     if ( surface == "json-write-into" ) return surface_json_write_into( out );
+#endif
     return 2;
 }
