@@ -264,7 +264,7 @@ const myHashHi = 0x9abcdef0;
 // ---- assertion 5: never a throw — the load path with a bad hash ----
 //
 // Exercise the full Select → RefuseHash path with a hash that is not in the
-// lineage (layout_newer) and verify it does not throw.
+// lineage (layout_unknown) and verify it does not throw.
 
 {
   const report = new TableFixedReport();
@@ -273,13 +273,13 @@ const myHashHi = 0x9abcdef0;
   try {
     const pick = TableFixedSelect(known, 0xffffffff, 0xffffffff);
     if (pick < 0) {
-      TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, 0xffffffff, 0xffffffff);
+      TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, 0xffffffff, 0xffffffff);
     }
   } catch (e) { threw = true; }
 
-  assert(!threw, "layout_newer: must NOT throw");
-  assert(report.refused === TableFixedRefusal.LayoutNewer,
-    "layout_newer: reports LayoutNewer, got " + TableFixedRefusalName(report.refused));
+  assert(!threw, "layout_unknown: must NOT throw");
+  assert(report.refused === TableFixedRefusal.LayoutUnknown,
+    "layout_unknown: reports LayoutUnknown, got " + TableFixedRefusalName(report.refused));
 }
 
 // ---- done ----

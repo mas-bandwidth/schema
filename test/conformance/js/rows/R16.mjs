@@ -1,8 +1,13 @@
-// R16 — §5.4's counters exactly: unknown once per peer at COMPILE and never
-// per record; widened once per entry per record, a folded element run is ONE;
-// clamped once per entry per record for count/text; the bounds pass counts a
-// forged ordinal remapped to None on BOTH plans; copy/const/present/ordinal
-// move nothing.
+// R16 — §5.4's counter and refusals exactly (docs/FIXED-FORM-ALGORITHM.md
+// §5.4, line ~1364): "`widened` is the one counter; every other row is a
+// refusal." widened once per entry per record; a count or length past the
+// plan's bound refuses count_over_bound / length_over_bound (§4.5); a forged
+// ordinal or tag refuses out_of_range on BOTH plans (§4.6); copy, const,
+// present and an in-range ordinal move nothing. This row was written when
+// count, text and the forged ordinal CLAMPED and counted `clamped`; the
+// ruling of 2026-10-16 (a count or length past its bound refuses by name) and
+// §4.6's bounds pass turned each of those into a refusal, and the row now
+// asserts that, case for case.
 //
 // Production path: CellFixedLoad → TableFixedRun → each op code. Every counter
 // assertion hits the generated JS emitter (build/tables-generated-js/v1/Tblv1Table.js).
@@ -26,6 +31,8 @@ const {
   TableFixedRun,
   TableFixedPlan,
   TableFixedLanes,
+  TableFixedRefusal: R,
+  TableFixedRefusalName,
 } = tbl;
 
 // Lanes matching Tblv1Table.js
@@ -81,87 +88,78 @@ function test_widen() {
   ok(dv.getInt32(0, true) === -1, "widen: value sign-extended to -1");
 }
 
-// ---- TEST 3: clamped — count negative (high-bit set u32) ----
-function test_count_clamp_negative() {
+// ---- TESTS 3..7: what COUNTED A CLAMP when this row was written now REFUSES ----
+//
+// §5.4 as it stands (docs/FIXED-FORM-ALGORITHM.md, "### 5.4", line ~1367):
+// "`widened` is the one counter; every other row is a refusal." A count or a
+// length past the plan's bound refuses `count_over_bound` / `length_over_bound`
+// (§4.5, ruling 2026-10-16), and a forged ordinal or tag past the writer's set
+// refuses `out_of_range` "on the COMPILED plan exactly as on the identity one"
+// (§4.6). Each refuses BY NAME, before any destination byte is written, and
+// moves no counter. Every case the row carried is kept; each now asserts the
+// refusal by name, a zero clamp counter, and an untouched (poisoned) image.
+
+const POISON = 0x5a;
+function refuses(entry, src, dstLen, remap, want, label) {
   const report = new TableFixedReport();
-  // source[0..3] = 0xFFFFFFFF = -1 signed, source[4..7] = junk data
+  const dst = new Uint8Array(dstLen).fill(POISON);
+  const dv = new DataView(dst.buffer);
+  TableFixedRun(entry, 1, src, new DataView(src.buffer), 0, dst, dv, remap, report);
+  ok(report.refused === want, label + ": refuses " + TableFixedRefusalName(want) +
+    " (got " + TableFixedRefusalName(report.refused) + ")");
+  ok(report.oor === 0 && report.widened === 0 && report.unknown === 0 && report.mismatch === 0,
+    label + ": a refusal moves no counter (clamped " + report.oor + ")");
+  ok(dst.every((b) => b === POISON), label + ": not one destination byte written");
+  return report;
+}
+
+// ---- TEST 3: a NEGATIVE count (0xFFFFFFFF read signed) ----
+function test_count_negative() {
   const src = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xaa, 0xbb, 0xcc, 0xdd]);
-  const dst = new Uint8Array(8);
-  const dv = new DataView(dst.buffer);
-  TableFixedRun(mk(O.Count, 0, 0, 4, 0, 0, 0, 1),
-    1, src, dv, 0, dst, dv, null, report);
-  ok(report.oor >= 1, "count negative: clamped >= 1 (u32 > bound 4)");
-  ok(dv.getUint32(0, true) <= 4, "count negative: value clamped to ≤ 4");
-  ok(report.widened === 0, "count negative: widened === 0");
+  refuses(mk(O.Count, 0, 0, 4, 0, 0, 0, 1), src, 8, null, R.CountOverBound, "count negative (-1 against bound 4)");
 }
 
-// ---- TEST 4: clamped — count above bound ----
-function test_count_clamp_above() {
-  const report = new TableFixedReport();
+// ---- TEST 4: a count ABOVE the bound ----
+function test_count_above() {
   const src = new Uint8Array([0x64, 0x00, 0x00, 0x00, 0xaa, 0xbb, 0xcc, 0xdd]);
-  const dst = new Uint8Array(8);
-  const dv = new DataView(dst.buffer);
-  TableFixedRun(mk(O.Count, 0, 0, 2, 0, 0, 0, 1),
-    1, src, dv, 0, dst, dv, null, report);
-  ok(report.oor === 1, "count above: clamped === 1 (100 > 2)");
-  ok(dv.getUint32(0, true) === 2, "count above: clamped to 2");
-}
-
-// ---- TEST 5: text clamped ----
-function test_text_clamp() {
+  refuses(mk(O.Count, 0, 0, 2, 0, 0, 0, 1), src, 8, null, R.CountOverBound, "count above (100 > 2)");
+  // AT the bound is lawful: the count lands and nothing moves.
   const report = new TableFixedReport();
-  // source[0..3] = huge count, [4..5] = "Hi" payload
-  const src = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0x48, 0x69, 0xAA, 0xBB]);
-  const dst = new Uint8Array(10);
-  const dv = new DataView(dst.buffer);
-  // Text: UTF8, cap=size=3, count=overflow → clamped to 3
-  TableFixedRun(mk(O.Text, 0, 4, 3, 7, 0, 0, 1),
-    1, src, dv, 0, dst, dv, null, report);
-  ok(report.oor === 1, "text clamp: clamped === 1");
-}
-
-// ---- TEST 6: forged ordinal clamped on compiled plan ----
-function test_forged_ordinal_compiled() {
-  const report = new TableFixedReport();
-  const src = new Uint8Array([0x05, 0x00, 0x00, 0x00]);  // ordinal 5
+  const at = new Uint8Array([0x02, 0x00, 0x00, 0x00]);
   const dst = new Uint8Array(4);
   const dv = new DataView(dst.buffer);
-  const remap = new Int32Array(4);
-  remap[0] = 2; // writer extent = 2 (valid ordinals: 0,1,2)
-  TableFixedRun(mk(O.Ordinal, 0, 0, 4, 0, 0, 0, 4),
-    1, src, dv, 0, dst, dv, remap, report);
-  ok(report.oor === 1, "forged ordinal: clamped === 1 (5 > 2)");
-  ok(dv.getUint32(0, true) === 0, "forged ordinal: remapped to None (0)");
-  ok(report.widened === 0, "forged ordinal: widened === 0");
+  TableFixedRun(mk(O.Count, 0, 0, 2, 0, 0, 0, 1), 1, at, new DataView(at.buffer), 0, dst, dv, null, report);
+  ok(report.refused === 0 && report.oor === 0 && dv.getUint32(0, true) === 2, "count at the bound (2 of 2): lands 2, nothing moves");
 }
 
-// ---- TEST 7: forged ordinal clamped on identity-equivalent path (Const) ----
-// The unguarded Const entry reads ordinal bytes and checks raw > arms (meta).
-// Same forged bytes land clamped == 1 on both paths (§5.4).
+// ---- TEST 5: a text length past its cap ----
+function test_text_over() {
+  // source[0..3] = 0xFFFFFFFF (-1 signed), [4..5] = "Hi"
+  const src = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0x48, 0x69, 0xAA, 0xBB]);
+  refuses(mk(O.Text, 0, 4, 3, 7, 0, 1, 1), src, 10, null, R.LengthOverBound, "text length -1 against cap 3");
+  const big = new Uint8Array([0x04, 0x00, 0x00, 0x00, 0x48, 0x69, 0x21, 0x21]);
+  refuses(mk(O.Text, 0, 4, 3, 7, 0, 1, 1), big, 10, null, R.LengthOverBound, "text length 4 against cap 3");
+}
+
+// ---- TEST 6: a forged ordinal on the COMPILED plan ----
+function test_forged_ordinal_compiled() {
+  const src = new Uint8Array([0x05, 0x00, 0x00, 0x00]);  // ordinal 5
+  const remap = new Int32Array(4);
+  remap[0] = 2; // writer extent = 2 (valid ordinals: 0,1,2)
+  refuses(mk(O.Ordinal, 0, 0, 4, 0, 0, 4, 4), src, 4, remap, R.OutOfRange, "forged ordinal 5 > extent 2 (compiled)");
+}
+
+// ---- TEST 7: the SAME forged bytes refuse the same on the const (None) path ----
+// The unguarded None Const entry carries the writer's arm count in meta and
+// holds the raw tag to it: §4.6's "on the COMPILED plan exactly as on the
+// identity one" — one name, both plans.
 function test_forged_ordinal_const_path() {
-  const reportCompiled = new TableFixedReport();
-  const reportConst = new TableFixedReport();
   const src = new Uint8Array([0x05, 0x00, 0x00, 0x00, 0xaa, 0xbb, 0xcc, 0xdd]);
-  const dstC = new Uint8Array(4);
-  const dstA = new Uint8Array(4);
   const remapC = new Int32Array(4);
-  remapC[0] = 2; // writer extent
-  const revC = new DataView(dstC.buffer);
-  const revA = new DataView(dstA.buffer);
-
-  // Compiled plan: Ordinal op with remap extent = 2
-  TableFixedRun(mk(O.Ordinal, 0, 0, 4, 0, 0, 0, 4),
-    1, src, revC, 0, dstC, revC, remapC, reportCompiled);
-
-  // Identity-equivalent: unguarded Const reads same ordinal, meta = writer arm count
-  // The Const op checks: if raw > arms, clamped++
-  TableFixedRun(mk(O.Const, 0, 0, 4, 0, 0, 2, 1),
-    1, src, revA, 0, dstA, revA, remapC, reportConst);
-
-  ok(reportCompiled.oor >= 1, "forged ordinal (compiled): clamped >= 1");
-  ok(reportConst.oor >= 1, "forged ordinal (const): clamped >= 1");
-  ok(reportCompiled.oor === reportConst.oor,
-     "forged ordinal: CLAMPED EQUAL ON BOTH PLANS");
+  remapC[0] = 2;
+  const a = refuses(mk(O.Ordinal, 0, 0, 4, 0, 0, 4, 4), src, 4, remapC, R.OutOfRange, "forged tag 5 (ordinal op)");
+  const b = refuses(mk(O.Const, 0, 0, 4, 0, 0, 2, 1), src, 4, remapC, R.OutOfRange, "forged tag 5 > 2 arms (const op)");
+  ok(a.refused === b.refused, "forged ordinal: THE SAME REFUSAL ON BOTH PLANS");
 }
 
 // ---- TEST 8: valid ordinal moves no counter ----
@@ -209,9 +207,9 @@ function test_const_in_range() {
 console.log("R16: §5.4 counters exactly");
 test_copy();
 test_widen();
-test_count_clamp_negative();
-test_count_clamp_above();
-test_text_clamp();
+test_count_negative();
+test_count_above();
+test_text_over();
 test_forged_ordinal_compiled();
 test_forged_ordinal_const_path();
 test_valid_ordinal();

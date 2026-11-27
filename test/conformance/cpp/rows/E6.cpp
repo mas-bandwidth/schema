@@ -149,7 +149,7 @@ int main()
         const int64_t n = tblv1::CfgFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(),
             plan.data(), (int32_t) plan.size(), NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "v1: the reader accepts its own wire" );
         check( back.name_length == 2 && back.name[0] == 'h' && back.name[1] == 'i',
                "v1: `name` reads back through the production load path" );
@@ -174,7 +174,7 @@ int main()
         const int64_t n = tblv2::CfgFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(),
             plan.data(), (int32_t) plan.size(), NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "v2: the reader accepts its own wire" );
         check( back.title_length == 2 && back.title[0] == 'h' && back.title[1] == 'i',
                "v2: `title` reads back through the production load path" );
@@ -185,9 +185,17 @@ int main()
     // and V2's reader, seeing that id in the layout (from `was = "name"`),
     // must land the bytes in `title`. V1->V2 is the lineage direction:
     // the wire matches V1's known layout, so V2 compiles a plan from
-    // V1's layout. The counters will have `unknown` for fields V1 has
-    // that V2 dropped (e.g. `b`) and `widened` for fields whose kind changed,
-    // but the `name`->`title` rename moves no counter because it IS the same identity.
+    // V1's layout.
+    //
+    // THE LAW MOVED for this pair (docs/rulings.json strict-only-read;
+    // docs/plans/strict-only.md): V1 -> V2 also changes `a` from int32 to
+    // float32, which is not a widening inside a family but a kind mismatch,
+    // and a kind mismatch now refuses the WHOLE load `kind_mismatch` (it once
+    // counted and the read went on). So the cross read cannot land `title`
+    // any more: it refuses on `a`, and every value is left at its declared
+    // defaults (R4). The rename's identity is held by (1) and (2) above —
+    // V2's layout carries fnv1a64("name") and never fnv1a64("title") — and the
+    // refusal here is checked to be a kind_mismatch (the rename is no kind change).
     {
         tblv1::Cfg v1;
         tblv1::CfgReset( v1 );
@@ -201,18 +209,21 @@ int main()
 
         tblv2::Cfg v2;
         tblv2::CfgReset( v2 );
+        v2.title_length = 9; // poison: a refused load leaves the declared default
+        v2.a = -3.0f;
         tblv2::TableReport r;
         std::vector<tblv2::TableFixedEntry> plan( 8192 );
         const int64_t n = tblv2::CfgFixedLoad(
             &v2, 1, wire.data(), (int64_t) wire.size(),
             plan.data(), (int32_t) plan.size(), NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed,
-               "cross: V2 reads V1's wire without refusal" );
-        check( v2.title_length == 3 && v2.title[0] == 'h' && v2.title[1] == 'e' && v2.title[2] == 'y',
-               "cross: V1's `name` lands in V2's `title` — the declared identity matched" );
-        // The V1->V2 read has unknown/widened counters for other fields
-        // (e.g. `b` removed, `a` widened int32->float32), but the rename
-        // field itself does not contribute to any counter — it pairs cleanly.
+        // strict-only-read: was "n == 1, not refused, not damaged, and
+        // V1's `name` lands in V2's `title`".
+        check( n == -1 && r.refused && !r.damaged && r.refuse_reason == tblv2::kind_mismatch,
+               "cross: V2 refuses V1's wire kind_mismatch (`a` int32 -> float32), the whole load" );
+        tblv2::Cfg fresh;
+        tblv2::CfgReset( fresh );
+        check( v2.title_length == fresh.title_length && v2.a == fresh.a,
+               "cross: the refused load lands nothing — `title` and `a` hold their declared defaults (R4)" );
     }
 
     if ( failures != 0 ) {
