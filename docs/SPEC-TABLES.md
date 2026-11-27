@@ -6870,7 +6870,11 @@ well as about work, and this is where that memory lives.
   after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.** The bound
+  is applied as the entries are read: once the bound's count of entries is
+  placed, ANOTHER ENTRY STARTING is `vocabulary_too_large`, and that entry and
+  every byte after it is neither decoded nor compared, so damage past the
+  bound never turns the verdict into a malformed announcement. The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
@@ -10055,7 +10059,10 @@ that answers the stream `test/conformance/README.md` states, forty lines of
 `Load`, `Save` and a report copied out — because the mutators, the oracle and
 the comparison live in the harness once, for every language. A port with no
 variable class answers the roster with a `0` for every variable root and is
-fuzzed over the fixed ones, and the line says how many seeds were absent.
+fuzzed over the fixed ones, and the line says how many seeds were absent and
+names the roots they belong to, each with its count: `N seeds absent (roots
+the leg has no codec for: unit.Root (n seeds), ...)`. A count alone sends
+whoever reads a red to rebuild the harness to learn its cause.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it

@@ -368,7 +368,8 @@ build/tables-generated-rust/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) $(SCH
 	@# Each unit is its own crate directory, so the units generate in parallel:
 	@# serial, this loop was ~35 s of the 2-minute input-family
 	@# (conformance-corpus, rust) job (run 45423487593). A failed unit fails
-	@# the stamp: `wait` returns its status under set -e.
+	@# the stamp, after every unit has been waited on (the loop never stops at
+	@# the first failed wait, which would leave the rest running).
 	@set -e; pids=""; for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
 		{ rm -rf build/tables-generated-rust/$$name/src && \
@@ -376,7 +377,7 @@ build/tables-generated-rust/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) $(SCH
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
 			> build/tables-generated-rust/$$name/Cargo.toml; } & pids="$$pids $$!"; \
 	done; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	@rm -rf build/tables-generated-rust/benchfixed/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
 	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \

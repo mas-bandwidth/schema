@@ -206,10 +206,31 @@ func TestMooWritersRefuseOffContractNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	ranged := []writerMutation{writerMutations[0], writerMutations[1]}
-	got := strings.Split(g.run(t, writerContractProgram(g, ranged), nil), "\n")
-	if len(got) != len(ranged) {
-		t.Fatalf("the patched probe returned %d rows for %d mutations:\n%s", len(got), len(ranged), strings.Join(got, "\n"))
+	run := func() []string {
+		got := strings.Split(g.run(t, writerContractProgram(g, ranged), nil), "\n")
+		if len(got) != len(ranged) {
+			t.Fatalf("the patched probe returned %d rows for %d mutations:\n%s", len(got), len(ranged), strings.Join(got, "\n"))
+		}
+		return got
 	}
+	// With the range check gone, the MESSAGE writer still refuses range-below:
+	// its packed offset (-6 - lo = -1) is past the field's packed width, and
+	// the message form refuses a value above its width and never masks it
+	// (SPEC.md §5.1 row 9; SPEC-TABLES §3.3; SF-18). That second guard is
+	// lawful, so the control holds it live here, then takes it out too.
+	if got := run(); got[1] != "range-below\twritten\twritten\trefused\twritten\twritten" {
+		t.Errorf("range check removed: range-below answered %q, want only the message writer's width guard refusing", got[1])
+	}
+	const widthGuard = "\t\tif overflow or x[3] ~= 0 or x[4] ~= 0 then\n\t\t\treturn fail(c, \"invalid_value\", named)\n\t\tend\n"
+	msgPath := filepath.Join(g.dir, "table_message.moo")
+	msgSrc := string(g.files["table_message.moo"])
+	if strings.Count(msgSrc, widthGuard) != 1 {
+		t.Fatalf("the message writer's width guard anchor matched %d times, want once", strings.Count(msgSrc, widthGuard))
+	}
+	if err := os.WriteFile(msgPath, []byte(strings.Replace(msgSrc, widthGuard, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := run()
 	for i, m := range ranged {
 		f := strings.Split(got[i], "\t")
 		if len(f) != 6 {
@@ -218,7 +239,7 @@ func TestMooWritersRefuseOffContractNegativeControl(t *testing.T) {
 		}
 		for _, verdict := range f[1:] {
 			if verdict != "written" {
-				t.Errorf("%s: removing the emitted range check did not make every writer accept it: %q", m.name, got[i])
+				t.Errorf("%s: removing the emitted range check and the message width guard did not make every writer accept it: %q", m.name, got[i])
 				break
 			}
 		}
