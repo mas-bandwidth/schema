@@ -267,7 +267,7 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
 // authoring allocation callback knows about the arena's chunk representation.
 const tableJSONListSource = `
 func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
- count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
+ if depth>tableJSONMaxDepth{return false};count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
