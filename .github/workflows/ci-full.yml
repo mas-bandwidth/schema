@@ -2569,10 +2569,10 @@ jobs:
   # fixed-form corpus for Dart beyond R27's; a cached Rust probe target; the
   # Elixir fixed modules built in the agreement shards).
   conformance-rows:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs nightly and on a dispatch: this file has no pull-request trigger.
+    # The one condition is the fork guard, which no label or branch name moves
+    # (internal/ci TestNoJobRunsOnABranchName, docs/CI-TIERS.md).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: conformance-rows (${{ matrix.leg }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:

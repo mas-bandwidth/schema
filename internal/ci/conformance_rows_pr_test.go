@@ -10,11 +10,10 @@ import (
 	"testing"
 )
 
-// THE TEN PER-PR ROWS (2026-11-24). The whole legs' rows run nightly
-// (conformance_rows_nightly_test.go), but ten rows ran per-PR before that move,
-// through five verify targets ci-fast.yml's verify-leg job runs, and they keep
-// running there: a per-PR verify target that loses one of them loses per-PR
-// coverage nobody decided to give up. This test reads make's own database
+// THE TEN VERIFY-TARGET ROWS (2026-11-24). The whole legs' rows run nightly
+// (conformance_rows_nightly_test.go), and ten rows also run through five
+// verify targets (nightly since #5052, like every verify target): a verify
+// target that loses one of them loses coverage nobody decided to give up. This test reads make's own database
 // (make -p, nothing built) and holds, for each verify target:
 //
 //   - it has conformance-rows-pr-<leg> among its prerequisites;
@@ -33,7 +32,7 @@ var conformanceRowsPR = []struct {
 	rows        []string
 }{
 	{"_verify-c-conformance", "c", []string{"F4", "F10", "F12"}},
-	{"_verify-cpp-conformance", "cpp", []string{"R15"}},
+	{"_verify-cpp-conformance-1", "cpp", []string{"R15"}},
 	{"_verify-dart-packets", "dart", []string{"E8", "R8", "R13"}},
 	{"_verify-java-conformance", "java", []string{"F10", "R8"}},
 	{"_verify-rust-conformance", "rust", []string{"F8"}},

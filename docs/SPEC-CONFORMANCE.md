@@ -170,9 +170,8 @@ OWES) and is repeated here as the rule for the suite:
   non-zero exit or return from main, throw, raise or assert) checked
   nothing and is red when it exits 0, the twin of a Rust row whose test
   binary ran no test. The rows run nightly (ci-full.yml `conformance-rows`,
-  every leg); a leg's rows come back per pull request once they fit in 60 s
-  on a CI runner. Ten rows run per pull request already, the ones the verify
-  targets ran by hand list before (c F4 F10 F12, cpp R15, dart E8 R8 R13,
+  every leg; per pull request CI is the happy path only, #5052). Ten rows
+  also run in the legs' verify targets, the ones those targets ran by hand list before (c F4 F10 F12, cpp R15, dart E8 R8 R13,
   java F10 R8, rust F8): `make conformance-rows-pr-<leg>` runs them through the
   same runner, ledger and cause match (`-rows`), each against only the units
   it reads, as a prerequisite of the leg's verify target, and
