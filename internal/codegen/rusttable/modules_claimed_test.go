@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rust"
 )
 
 // modDecl matches a module lib.rs declares at the crate root.

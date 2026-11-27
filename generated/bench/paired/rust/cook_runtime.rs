@@ -280,31 +280,31 @@ unsafe fn table_cook_raw(schema_p: *const u8, schema_at: i64, schema_width: u32)
 // Check only live enum slots of the caller's fixed row (§2.15).
 #[cfg(debug_assertions)]
 #[doc(hidden)]
-pub unsafe fn table_cook_check_enum_variants(p: *const u8, t: &TableCookInfo) {
-    for f in &t.fields[..t.num_fields as usize] {
-        if f.is_pointer || f.deprecated_field || (f.deprecated_variants.is_empty() && f.record.is_none()) {
+pub unsafe fn table_cook_check_enum_variants(schema_p: *const u8, schema_t: &TableCookInfo) {
+    for schema_f in &schema_t.fields[..schema_t.num_fields as usize] {
+        if schema_f.is_pointer || schema_f.deprecated_field || (schema_f.deprecated_variants.is_empty() && schema_f.record.is_none()) {
             continue;
         }
-        if f.present_offset >= 0 && unsafe { table_cook_raw(p, f.present_offset as i64, 1) } == 0 {
+        if schema_f.present_offset >= 0 && unsafe { table_cook_raw(schema_p, schema_f.present_offset as i64, 1) } == 0 {
             continue;
         }
-        let count = if f.count_offset >= 0 {
-            let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) } as i32;
-            used.clamp(0, f.array_bound)
-        } else if f.is_array {
-            f.array_bound
+        let schema_count = if schema_f.count_offset >= 0 {
+            let schema_used = unsafe { table_cook_raw(schema_p, schema_f.count_offset as i64, 4) } as i32;
+            schema_used.clamp(0, schema_f.array_bound)
+        } else if schema_f.is_array {
+            schema_f.array_bound
         } else {
             1
         };
-        for k in 0..count as i64 {
-            let at = f.offset as i64 + k * f.elem_size as i64;
-            if let Some(record) = f.record {
-                unsafe { table_cook_check_enum_variants(p.add(at as usize), record()); }
+        for schema_k in 0..schema_count as i64 {
+            let schema_at = schema_f.offset as i64 + schema_k * schema_f.elem_size as i64;
+            if let Some(schema_record) = schema_f.record {
+                unsafe { table_cook_check_enum_variants(schema_p.add(schema_at as usize), schema_record()); }
             } else {
-                let value = unsafe { table_cook_raw(p, at, f.elem_size as u32) };
-                for &(ordinal, name) in f.deprecated_variants {
-                    debug_assert!(value != ordinal,
-                        "invalid_value: {}.{} holds deprecated variant {}", t.name, f.name, name);
+                let schema_value = unsafe { table_cook_raw(schema_p, schema_at, schema_f.elem_size as u32) };
+                for &(schema_ordinal, schema_name) in schema_f.deprecated_variants {
+                    debug_assert!(schema_value != schema_ordinal,
+                        "invalid_value: {}.{} holds deprecated variant {}", schema_t.name, schema_f.name, schema_name);
                 }
             }
         }
