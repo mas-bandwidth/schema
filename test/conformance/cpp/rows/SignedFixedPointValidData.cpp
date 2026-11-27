@@ -3,15 +3,18 @@
 //
 // THE LAW (docs/SPEC-TABLES.md §3.4 record, fixed(I,F)): a fixed(I,F) field
 // stores a signed raw scaled integer of I+F bits; the reader copies the raw
-// value at its declared storage width and then clamps it to the declared
-// [min, max] bounds in VALUE UNITS (docs/FIXED-FORM-ALGORITHM.md §4.6).
+// value at its declared storage width and then holds it to the declared
+// [min, max] bounds in VALUE UNITS (docs/FIXED-FORM-ALGORITHM.md §4.6). THE
+// LAW MOVED (docs/rulings.json strict-only-read; plans/strict-only.md decision
+// 1): no read clamps; a value past a bound refuses the whole load out_of_range
+// (the retired `clamped`, renamed in place) and lands nothing.
 //
 // WHAT THIS ASSERTS:
 //   1. A signed fixed-point scalar written through the production FixedSave
 //      reads back through FixedLoad with the SAME raw value (round-trip).
 //   2. Values at the declared min and at the declared max round-trip exactly.
-//   3. A forged value past the declared max clamps to max and counts ONE.
-//   4. A forged value below the declared min clamps to min and counts ONE.
+//   3. A forged value past the declared max refuses the whole load out_of_range.
+//   4. A forged value below the declared min refuses the whole load out_of_range.
 //   5. The NEW build (fixed(12,4)) reads what the OLD build (fixed(4,4))
 //      wrote with the same value, because F is equal and the raw scaled
 //      value is identical (the widen path, not a kind mismatch).
@@ -32,8 +35,8 @@
 // so the vector derivation is the law the writer implements.
 //
 // NEGATIVE CONTROL (`-DSFPVD_CONTROL`): flips the body's 'v' byte for record 0
-// to a value past the declared max (0x7F = 127, past max 7), proving the clamp
-// assertion bites. Restoring the byte returns GREEN.
+// to a value past the declared max (0x7F = 127, past max 7) in the GREEN case,
+// whose clean-read assertion then goes RED. Restoring the byte returns GREEN.
 //
 // BUILD/RUN (from ./repo):
 //   c++ -std=c++17 -Wall -Ibuild/tables-generated/vnum -I$(SERIALIZE)
@@ -86,11 +89,13 @@ static void vold_case()
         const int64_t n = vold_fixed_i_grow::FixedIGrowFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
         check( n == 1, "VOLD: the production reader reads one record" );
-        check( !r.refused && !r.malformed, "VOLD: not refused, not malformed" );
+        check( !r.refused && !r.damaged, "VOLD: not refused, not malformed" );
         check( back.lead == one.lead && back.trail == one.trail,
                "VOLD: the bracket fields survive the round-trip" );
         check( back.v == one.v, "VOLD: fixed(4,4) v=3 round-trips exactly" );
-        check( r.clamped == 0 && r.widened == 0 && r.unknown == 0 && r.kind_mismatch == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.widened == 0 && r.unknown == 0,
                "VOLD: no counters moved for an in-range value" );
     }
 
@@ -114,7 +119,8 @@ static void vold_case()
         const int64_t n = vold_fixed_i_grow::FixedIGrowFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
         check( n == 1 && back.v == -8, "VOLD: v=-8 (the declared min) round-trips" );
-        check( r.clamped == 0, "VOLD: the declared min does not clamp" );
+        // strict-only-read: was "clamped == 0"
+        check( !r.refused && !r.damaged, "VOLD: the declared min is not refused" );
     }
 
     // 3. Value at the DECLARED MAX: v = 7
@@ -137,10 +143,11 @@ static void vold_case()
         const int64_t n = vold_fixed_i_grow::FixedIGrowFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
         check( n == 1 && back.v == 7, "VOLD: v=7 (the declared max) round-trips" );
-        check( r.clamped == 0, "VOLD: the declared max does not clamp" );
+        // strict-only-read: was "clamped == 0"
+        check( !r.refused && !r.damaged, "VOLD: the declared max is not refused" );
     }
 
-    // 4. NEGATIVE CONTROL: forge a byte past the max to prove the clamp bites.
+    // 4. NEGATIVE CONTROL: forge a byte past the max to prove the clean-read check bites.
     //    The 'v' field is at body offset 4 (lead is 4 bytes). Flip it to 0x7F (127, past max 7).
     {
         vold_fixed_i_grow::FixedIGrow one;
@@ -169,11 +176,45 @@ static void vold_case()
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
 
 #ifdef SFPVD_CONTROL
-        check( back.v == 7, "VOLD CONTROL: forged 127 clamps to max 7" );
-        check( r.clamped == 1, "VOLD CONTROL: one clamped counted" );
+        // strict-only-read: was "back.v == 7 (clamped to max), clamped == 1"
+        check( r.refused && r.refuse_reason == vold_fixed_i_grow::out_of_range,
+               "VOLD CONTROL: forged 127 refuses out_of_range" );
+        check( !r.refused && !r.damaged && back.v == 3, "VOLD green: no sabotage, no refusal (RED under the control)" );
 #else
-        check( back.v == 3 && r.clamped == 0, "VOLD green: no sabotage, no clamp" );
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && back.v == 3, "VOLD green: no sabotage, no clamp" );
 #endif
+    }
+
+    // 5. A FORGED VALUE PAST THE DECLARED MAX (assertion 3): raw 127 in the
+    //    int8 at body offset 4 refuses the whole load out_of_range and lands
+    //    nothing. (Below the min is not reachable in VOLD's int8 storage, whose
+    //    raw min -128 is the declared min; VNEW's int16 carries that case.)
+    {
+        vold_fixed_i_grow::FixedIGrow one;
+        vold_fixed_i_grow::FixedIGrowReset( one );
+        one.lead = 1;
+        one.v = 3;
+        one.trail = 2;
+        std::vector<uint8_t> wire( (size_t) vold_fixed_i_grow::FixedIGrowFixedMeasure( 1 ) );
+        vold_fixed_i_grow::FixedIGrowFixedSave( &one, 1, wire.data(), (int64_t) wire.size() );
+        const size_t body_off = (size_t) vold_fixed_i_grow::kTableFixedHeaderBytes + 4
+                              + (size_t) vold_fixed_i_grow::FixedIGrowFixedLayoutBytes + 8;
+        wire[body_off + 4] = 0x7F;
+
+        vold_fixed_i_grow::FixedIGrow back;
+        vold_fixed_i_grow::FixedIGrowReset( back );
+        back.lead = 77; // poison
+        std::vector<vold_fixed_i_grow::TableFixedEntry> plan( 1024 );
+        vold_fixed_i_grow::TableReport r;
+        const int64_t n = vold_fixed_i_grow::FixedIGrowFixedLoad(
+            &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
+        vold_fixed_i_grow::FixedIGrow fresh;
+        vold_fixed_i_grow::FixedIGrowReset( fresh );
+        check( n == -1 && r.refused && !r.damaged && r.refuse_reason == vold_fixed_i_grow::out_of_range,
+               "VOLD: a forged raw 127 past the declared max refuses the whole load out_of_range" );
+        check( back.v == fresh.v && back.lead == fresh.lead, "VOLD: the refused load lands nothing (declared defaults)" );
     }
 }
 
@@ -204,7 +245,8 @@ static void vnew_case()
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
         check( n == 1, "VNEW: the production reader reads one record" );
         check( back.v == one.v, "VNEW: fixed(12,4) v=3 round-trips exactly" );
-        check( r.clamped == 0, "VNEW: no clamp for in-range value" );
+        // strict-only-read: was "clamped == 0"
+        check( !r.refused && !r.damaged, "VNEW: an in-range value is not refused" );
     }
 
     // 2. Value at DECLARED MIN and MAX
@@ -224,7 +266,9 @@ static void vnew_case()
         vnew_fixed_i_grow::TableReport r;
         vnew_fixed_i_grow::FixedIGrowFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( back.v == -8 && r.clamped == 0, "VNEW: v=-8 (declared min) round-trips, no clamp" );
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && back.v == -8, "VNEW: v=-8 (declared min) round-trips, no clamp" );
 
         one.v = 7;
         wire.assign( (size_t) vnew_fixed_i_grow::FixedIGrowFixedMeasure( 1 ), 0 );
@@ -232,7 +276,37 @@ static void vnew_case()
         vnew_fixed_i_grow::FixedIGrowReset( back );
         vnew_fixed_i_grow::FixedIGrowFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( back.v == 7 && r.clamped == 0, "VNEW: v=7 (declared max) round-trips, no clamp" );
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && back.v == 7, "VNEW: v=7 (declared max) round-trips, no clamp" );
+    }
+
+    // 3. A FORGED VALUE BELOW THE DECLARED MIN (assertion 4): raw -129 in the
+    //    int16 at body offset 4, one under the raw min -128 (value -8 shifted
+    //    by F = 4), refuses the whole load out_of_range and lands nothing.
+    {
+        vnew_fixed_i_grow::FixedIGrow one;
+        vnew_fixed_i_grow::FixedIGrowReset( one );
+        one.lead = 1;
+        one.v = 3;
+        one.trail = 2;
+        std::vector<uint8_t> wire( (size_t) vnew_fixed_i_grow::FixedIGrowFixedMeasure( 1 ) );
+        vnew_fixed_i_grow::FixedIGrowFixedSave( &one, 1, wire.data(), (int64_t) wire.size() );
+        vnew_fixed_i_grow::TableFixedPut16( wire.data() + vnew_fixed_i_grow::kTableFixedHeaderBytes + 4
+            + vnew_fixed_i_grow::FixedIGrowFixedLayoutBytes + 8 + 4, (uint16_t) (int16_t) -129 );
+
+        vnew_fixed_i_grow::FixedIGrow back;
+        vnew_fixed_i_grow::FixedIGrowReset( back );
+        back.lead = 77; // poison
+        std::vector<vnew_fixed_i_grow::TableFixedEntry> plan( 1024 );
+        vnew_fixed_i_grow::TableReport r;
+        const int64_t n = vnew_fixed_i_grow::FixedIGrowFixedLoad(
+            &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
+        vnew_fixed_i_grow::FixedIGrow fresh;
+        vnew_fixed_i_grow::FixedIGrowReset( fresh );
+        check( n == -1 && r.refused && !r.damaged && r.refuse_reason == vnew_fixed_i_grow::out_of_range,
+               "VNEW: a forged raw -129 under the declared min refuses the whole load out_of_range" );
+        check( back.v == fresh.v && back.lead == fresh.lead, "VNEW: the refused load lands nothing (declared defaults)" );
     }
 }
 
@@ -266,9 +340,13 @@ static void cross_build_case()
            "cross: the bracket fields survive" );
     check( new_back.v == old_val.v,
            "cross: fixed(4,4) v=-5 lands exactly in fixed(12,4) (F equal, widen)" );
-    check( r.kind_mismatch == 0 && r.widened == 1,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.widened == 1,
            "cross: widened, not kind_mismatch — the element's I widened with F held" );
-    check( r.clamped == 0 && r.unknown == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && !r.damaged && !r.refused,
            "cross: nothing else fired" );
 }
 

@@ -50,8 +50,10 @@ int main()
     tblp3::Chain c3;
     bool ok = tblp3::ChainLoad(c3, chain_value.data(), (int64_t)chain_value.size(), &r3);
     check(ok, "P3 loads P1's chain_value.bin");
-    check(r3.unknown == 0 && r3.kind_mismatch == 0 && r3.widened == 0 &&
-          r3.clamped == 0 && r3.duplicate == 0 && !r3.malformed && !r3.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check(r3.unknown == 0 && r3.widened == 0 &&
+          !r3.damaged && !r3.refused,
           "P3 reads P1's wire with zero counters and no refusal");
     check(c3.link_present == true, "P3 reads link_present == true from P1's wire");
 
@@ -60,8 +62,10 @@ int main()
     tblp1::Chain c1;
     ok = tblp1::ChainLoad(c1, chain_optional.data(), (int64_t)chain_optional.size(), &r1);
     check(ok, "P1 loads P3's chain_optional.bin");
-    check(r1.unknown == 0 && r1.kind_mismatch == 0 && r1.widened == 0 &&
-          r1.clamped == 0 && r1.duplicate == 0 && !r1.malformed && !r1.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check(r1.unknown == 0 && r1.widened == 0 &&
+          !r1.damaged && !r1.refused,
           "P1 reads P3's wire with zero counters and no refusal");
 
     // ---- (4) save under each schema and compare ----
@@ -98,7 +102,9 @@ int main()
     ok = tblp3::ChainLoad(c3b, chain_optional.data(), (int64_t)chain_optional.size(), &r3b);
     check(ok, "P3 loads its own chain_optional.bin");
     check(c3b.link_present == true, "P3 reads link_present == true from own wire");
-    check(r3b.unknown == 0 && r3b.kind_mismatch == 0 && !r3b.malformed,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r3b.refused && !r3b.damaged &&r3b.unknown == 0 && !r3b.damaged,
           "P3 reads own wire with zero counters");
 
     // ----  end ----
