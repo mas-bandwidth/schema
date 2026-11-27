@@ -32,8 +32,9 @@ func TestWriterRangeHostile(t *testing.T) {
  if n := %[2]sFixedLoad(back, data, plan, &report); n >= 0 || report.Err() == nil {
   t.Fatalf("forged writer range accepted: n=%%d report=%%+v", n, report)
  }
+ // EVERY row handed in holds its declared defaults after a refusal (SPEC-TABLES §6.5, R4)
  expected := make([]%[2]s, 8)
- %[2]sReset(&expected[0])
+ for i := range expected { %[2]sReset(&expected[i]) }
  if !reflect.DeepEqual(back, expected) { t.Fatal("refusal retained a partial value") }
 }
 `, filepath.Join(corpus, vec.File), table)
