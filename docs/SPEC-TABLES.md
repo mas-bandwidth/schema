@@ -11018,7 +11018,10 @@ the class. A Go fixed refusal is a typed
   wire's count of them, and answers a count of `0`; a fixed batch read resets
   EVERY row it was handed, and the same holds for a refusal of the bounds
   pass after the records landed. No partial value survives a refusal, and no
-  value keeps what the caller held before the call. A language whose read
+  value keeps what the caller held before the call: a reset row holds EVERY
+  field a fresh value holds, a counted array's element slots past its count
+  included, so a language whose element slots are objects resets each slot in
+  place and does not stop at the count. A language whose read
   hands back a fresh collection rather than filling the caller's answers a
   refusal with one shape for every reason (a framing refusal and a body
   refusal look alike to the caller), and a read that fills a caller's list

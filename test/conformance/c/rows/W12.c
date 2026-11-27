@@ -97,18 +97,18 @@ int main( void )
        count-stripped number would equal the static constant's
        layout-only half, and this inequality would FAIL. */
     {
-        uint64_t whole = fnv1a64( vessel_fixed_layout,
-                                  (int64_t) sizeof( vessel_fixed_layout ) );
-        uint64_t skip4 = fnv1a64( vessel_fixed_layout + 4,
-                                  (int64_t) sizeof( vessel_fixed_layout ) - 4 );
+        uint64_t whole = fnv1a64( tblw1_vessel_fixed_layout,
+                                  (int64_t) sizeof( tblw1_vessel_fixed_layout ) );
+        uint64_t skip4 = fnv1a64( tblw1_vessel_fixed_layout + 4,
+                                  (int64_t) sizeof( tblw1_vessel_fixed_layout ) - 4 );
         check( whole != skip4,
                "fnv1a64(layout_with_count) != fnv1a64(layout_minus_count) — the 4-byte count rides the hash" );
         printf( "  whole = 0x%016llx, vessel_fixed_layout_only_hash = 0x%016llx, "
                 "vessel_fixed_hash = 0x%016llx\n",
                 (unsigned long long) whole,
-                (unsigned long long) table_fixed_hash_of( vessel_fixed_layout,
-                                                          (int64_t) sizeof( vessel_fixed_layout ) ),
-                (unsigned long long) vessel_fixed_hash );
+                (unsigned long long) tblw1_table_fixed_hash_of( tblw1_vessel_fixed_layout,
+                                                          (int64_t) sizeof( tblw1_vessel_fixed_layout ) ),
+                (unsigned long long) tblw1_vessel_fixed_hash );
     }
 
     /* A LANE-ONLY DIFF on the leading count byte, holding every other
@@ -117,11 +117,11 @@ int main( void )
        read it would land the same layout at two counts onto the same
        number, ruling nothing out. */
     {
-        uint8_t lt[ (int64_t) sizeof( vessel_fixed_layout ) ];
-        uint8_t gt[ (int64_t) sizeof( vessel_fixed_layout ) ];
-        memcpy( lt, vessel_fixed_layout, sizeof( lt ) );
-        memcpy( gt, vessel_fixed_layout, sizeof( gt ) );
-        gt[0] = (uint8_t) ( vessel_fixed_layout[0] + 1 ); /* perturb the count byte */
+        uint8_t lt[ (int64_t) sizeof( tblw1_vessel_fixed_layout ) ];
+        uint8_t gt[ (int64_t) sizeof( tblw1_vessel_fixed_layout ) ];
+        memcpy( lt, tblw1_vessel_fixed_layout, sizeof( lt ) );
+        memcpy( gt, tblw1_vessel_fixed_layout, sizeof( gt ) );
+        gt[0] = (uint8_t) ( tblw1_vessel_fixed_layout[0] + 1 ); /* perturb the count byte */
         uint64_t h_lt = fnv1a64( lt, sizeof( lt ) );
         uint64_t h_gt = fnv1a64( gt, sizeof( gt ) );
         check( h_lt != h_gt,
@@ -137,20 +137,20 @@ int main( void )
        stamps the exact constant the spec demands. */
     {
         uint8_t buffer[2048];
-        Vessel v;
-        TableReport report;
-        TableFixedEntry plan[4096];
+        tblw1_vessel_t v;
+        tblw1_table_report_t report;
+        tblw1_table_fixed_entry_t plan[4096];
         memset( &v, 0, sizeof( v ) );
         memset( &report, 0, sizeof( report ) );
-        int64_t written = vessel_fixed_save( &v, 1, buffer,
+        int64_t written = tblw1_vessel_fixed_save( &v, 1, buffer,
                                              (int64_t) sizeof( buffer ) );
         check( written > 0, "vessel_fixed_save wrote the file" );
         uint64_t stamped;
         memcpy( &stamped, buffer + 8, sizeof( stamped ) );
-        check( stamped == vessel_fixed_hash,
+        check( stamped == tblw1_vessel_fixed_hash,
                "the file header's 8-byte hash field equals vessel_fixed_hash" );
         printf( "  stamped = 0x%016llx\n", (unsigned long long) stamped );
-        int64_t loaded = vessel_fixed_load( &v, 1, buffer, written,
+        int64_t loaded = tblw1_vessel_fixed_load( &v, 1, buffer, written,
                                             plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ),
                                             NULL, &report );
         check( loaded == 1 && report.refused == 0,

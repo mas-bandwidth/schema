@@ -184,6 +184,8 @@ static unsafe partial class Program
         }
     }
 
+    // graphdemo Scene, the variable root the depth, element-kind, unknown-type
+    // and node-type framing vectors name: every entry point a variable root has.
     static void DiscardScene(string name, byte[] wire)
     {
         G.Scene v = new G.Scene();

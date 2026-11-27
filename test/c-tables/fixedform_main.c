@@ -23,7 +23,7 @@ void fixed_check( int ok, const char * what )
 /* RETIRED BY NAME, NEVER DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, §5.7 step 5).
    §5.6 retires "reading a layout the lock has never seen" and "the run-time walk
    of a stranger's layout": under §5 a file whose hash this build's LINEAGE does
-   not hold comes back layout_newer, so every check below that handed one
+   not hold comes back layout_unknown, so every check below that handed one
    generation's file to another generation BUILT WITH NO LINEAGE is asserting a
    reader that no longer exists. The functions stay in the tree — a deleted test
    is a coverage claim nobody can audit — and each skip says where the coverage
@@ -59,7 +59,7 @@ int main( void )
 
     n = fixed_fx2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx2_bytes(), "FX2 save" );
-    fixed_skip( "fixed_fx1_read_fx2 (a FORWARD read: under §5 this file is layout_newer)", LineageHarness ); /* fixed_fx1_read_fx2( g_buffer, n ); */
+    fixed_skip( "fixed_fx1_read_fx2 (a FORWARD read: under §5 this file is layout_unknown)", LineageHarness ); /* fixed_fx1_read_fx2( g_buffer, n ); */
     fixed_skip( "fixed_fx1_layout_validation (§1.1's seven rules at read time)", LockValidation ); /* fixed_fx1_layout_validation( g_buffer, n ); */
 
     n = fixed_v1_write( g_buffer, BufferBytes );
@@ -104,7 +104,7 @@ int main( void )
             for ( b = 0; b < 8; b++ )
             {
                 g_buffer[i] ^= (uint8_t) ( 1u << b );
-                fixed_fx2_probe( g_buffer, n ); /* every flip is layout_newer or layout_malformed now: still inside the buffer */
+                fixed_fx2_probe( g_buffer, n ); /* every flip is layout_unknown or layout_malformed now: still inside the buffer */
                 g_buffer[i] ^= (uint8_t) ( 1u << b );
             }
         }

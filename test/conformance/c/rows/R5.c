@@ -24,30 +24,42 @@
      refusal: it moves the hash, so the reference owes it BEFORE any
      leg ports.
 
-   The C leg's job is to fold that digest into the per-table static
-   constant `*_fixed_hash`. This test pins the digest bytes the IR
-   says the W1 Vessel must carry, and asserts the C leg's constant
-   equals fnv1a64(layout ++ digest) — which is the §5.2 expression.
-   A constant that excluded the digest would equal table_fixed_hash_of
-   (the layout-only hash), and the equality would FAIL.
 
-   The 49-byte Vessel digest, pinned from the IR (working/digesthash.go,
-   recorded in notes.txt):
+   TODAY'S DIGEST IS THE V2 DEFINITIONS DIGEST (WireLaw 3,
+   docs/FIXED-FORM-ALGORITHM.md §5.2 "PROSPECTIVE V2 DEFINITIONS DIGEST",
+   line 812, and "THE DIGEST, PINNED FOR A PORT"; docs/SPEC-TABLES.md
+   line 8368). It supersedes the 49-byte digest this row first pinned
+   (ir.TableFixedDefinitionsDigestLegacy, still in the IR as legacy
+   evidence): every fixed root's digest BEGINS with the 26-byte identity
+   prefix `\0schema-fixed-definitions\x02`; a row is `tag:u8,
+   path_bytes:u32 LE, path, payload_bytes:u32 LE, payload`; a path
+   segment is `role:u8, kind:u32 LE, wire_id:u64 LE`; the row tags are
+   exactly C, R, D, Q, B, X, F. Two of the old laws moved with it, and
+   each old assertion maps to its current one below:
+     - "a flags type deduped by NAME, once" is RETIRED by WireLaw 3
+       (§5.2 line 852: "Emit every reachable occurrence of a named
+       struct, union or flags declaration at its wire path; do not
+       deduplicate by name"). The old "exactly one 'F'" now reads:
+       exactly one F row, at the path of the ONE field that names Caps
+       (Vessel.caps), carrying 3 bits, 3 variants and the fnv1a64 of
+       each variant name in declared order.
+     - 'L' (reader limit) is not a v2 row tag (the tag list is C, R, D,
+       Q, B, X, F). The old "no 'L' row" now reads: every row's tag is
+       one of the seven, and Vessel (no float range, no bits(N), no
+       fixed(I,F), no counted array) carries no C, D, Q, B or X row.
+     - "every range": exactly one R row, at Vessel.hull, kind 4
+       (int32), signed, 0 fractional bits, min 0 and max 1000 in the
+       canonical sign + length-prefixed big-endian form.
+   The central law is unchanged: the C leg's `*_fixed_hash` equals
+   fnv1a64 over the layout THEN over the digest, with one running state
+   (the Go leg's W12 row binds the same fold).
 
-     'F' 03 00 00 00                       Flags row, bit count 3
-     'f' (8-byte fnv1a64) "Jump"           per-variant name hash
-     'f' (8-byte fnv1a64) "Crouch"
-     'f' (8-byte fnv1a64) "Fly"
-     'R' 00 00 00 00 00 00 00 00           hull  | min=0  → 0
-             e8 03 00 00 00 00 00 00                  max=1000 → 1000
-
-     The exhaustive list of digest row tags the C leg is held to here:
-     R (Range), F (Flags, deduped by name, once). The Q (resolution)
-     and L (reader limit) rows are reserved by spec — §5.2 names them,
-     §5.8 row 10 keeps the rule — and no table in the corpus exercises
-     them, so an empty Q or empty L is a SPEC-CONFORMING absence. The
-     seen-map and the union's once-by-name rule are reasoned about
-     independently in ir/fixedform_hash_test.go.
+   The 149-byte Vessel digest below is the reference's own bytes,
+   ir.TableFixedDefinitionsDigest(W1.Vessel), printed from
+   test/tables/W1.schema on 2026-11-24. The row walk below does not trust
+   the pin alone: it re-derives every id it checks (the root's
+   fnv1a64("Vessel"), the fields' fnv1a64("caps") and fnv1a64("hull"),
+   each variant's fnv1a64 of its name) and parses every row's framing.
 
    The negative control: edit one byte of `vessel_fixed_hash` in
    build/tables-generated-c/w1/W1Table.h (e.g. flip the top byte).
@@ -90,46 +102,72 @@ static uint64_t fnv1a64( const uint8_t * bytes, int64_t n )
     return h;
 }
 
-/* THE EXPECTED DIGEST for W1's Vessel table, byte-for-byte (49 bytes).
-   Derived from ir.TableFixedDefinitionsDigest(struct_W1_Vessel); see
-   notes.txt and working/digesthash.go. The Caps flags row precedes the
-   hull range row in declared field order (caps is the third field of
-   Vessel, hull the fifth). The 'f' marker in the F row opens each
-   variant's name hash; the F row's u32 bit count is 3 (Caps has 3
-   variants: Jump, Crouch, Fly). The R row's i64 bounds are little-
-   endian: 0x0000000000000000 (min=0) and 0x00000000000003e8
-   (max=1000). */
-static const uint8_t vessel_expected_digest[49] = {
-    /* 'F' + bit count = 3 */
-    0x46, 0x03, 0x00, 0x00, 0x00,
-    /* 'f' + fnv1a64("Jump"):    0x8ea17fa1ed65ad66 LE */
-    0x66, 0xad, 0x65, 0xa1, 0xf9, 0xe9, 0x77, 0xa4, 0x15,
-    /* 'f' + fnv1a64("Crouch"):  0x4f96f69496796eeb LE */
-    0x66, 0xeb, 0x79, 0x94, 0x96, 0xf6, 0x43, 0x77, 0xcd,
-    /* 'f' + fnv1a64("Fly"):     0x9a19c18f9c8f1e62 LE */
-    0x66, 0x62, 0x1e, 0x8f, 0x9c, 0x19, 0xab, 0xb7, 0xf2,
-    /* 'R' + i64 LE min=0, max=1000 */
-    0x52,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* min  = 0 */
-    0xe8, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  /* max  = 1000 */
+static uint64_t fnv1a64_text( const char * s )
+{
+    return fnv1a64( (const uint8_t *) s, (int64_t) strlen( s ) );
+}
+
+static uint32_t le32( const uint8_t * b )
+{
+    return (uint32_t) b[0] | ( (uint32_t) b[1] << 8 ) | ( (uint32_t) b[2] << 16 ) | ( (uint32_t) b[3] << 24 );
+}
+
+static uint64_t le64( const uint8_t * b )
+{
+    return (uint64_t) le32( b ) | ( (uint64_t) le32( b + 4 ) << 32 );
+}
+
+/* THE V2 IDENTITY PREFIX (§5.2, WireLaw 3): every non-nil fixed root's
+   digest begins with these 26 bytes. */
+static const uint8_t identity_prefix[26] = {
+    0x00, 's', 'c', 'h', 'e', 'm', 'a', '-', 'f', 'i', 'x', 'e', 'd', '-',
+    'd', 'e', 'f', 'i', 'n', 'i', 't', 'i', 'o', 'n', 's', 0x02
 };
+
+/* THE EXPECTED DIGEST for W1's Vessel table, byte for byte (149 bytes):
+   ir.TableFixedDefinitionsDigest(W1.Vessel).
+     26  identity prefix
+     'F' path 26 = t(13, fnv1a64 "Vessel") f(9, fnv1a64 "caps")
+         payload 32 = bits 3, variants 3, fnv1a64 "Jump" "Crouch" "Fly"
+     'R' path 26 = t(13, fnv1a64 "Vessel") f(4, fnv1a64 "hull")
+         payload 21 = kind 4, signed 1, frac 0, min +0 (len 0),
+                      max +0x03e8 (len 2) */
+static const uint8_t vessel_expected_digest[149] = {
+    0x00, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x2d, 0x66, 0x69, 0x78, 0x65, 0x64, 0x2d,
+    0x64, 0x65, 0x66, 0x69, 0x6e, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x02,
+    /* 'F' row */
+    0x46, 0x1a, 0x00, 0x00, 0x00,
+    0x74, 0x0d, 0x00, 0x00, 0x00, 0x7b, 0x7b, 0x5d, 0xc2, 0x8e, 0x0c, 0x0d, 0x11,
+    0x66, 0x09, 0x00, 0x00, 0x00, 0xf8, 0x57, 0x75, 0xe8, 0x90, 0x6b, 0x5a, 0xb5,
+    0x20, 0x00, 0x00, 0x00,
+    0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+    0xad, 0x65, 0xa1, 0xf9, 0xe9, 0x77, 0xa4, 0x15,
+    0xeb, 0x79, 0x94, 0x96, 0xf6, 0x43, 0x77, 0xcd,
+    0x62, 0x1e, 0x8f, 0x9c, 0x19, 0xab, 0xb7, 0xf2,
+    /* 'R' row */
+    0x52, 0x1a, 0x00, 0x00, 0x00,
+    0x74, 0x0d, 0x00, 0x00, 0x00, 0x7b, 0x7b, 0x5d, 0xc2, 0x8e, 0x0c, 0x0d, 0x11,
+    0x66, 0x04, 0x00, 0x00, 0x00, 0xf6, 0xad, 0xda, 0x11, 0xcc, 0x8c, 0xda, 0x80,
+    0x15, 0x00, 0x00, 0x00,
+    0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0xe8
+};
+
+/* A path of exactly two segments: the root t(13, root_id) then one field
+   f(kind, field_id). */
+static int path_is_root_field( const uint8_t * path, uint32_t path_n, uint64_t root_id,
+                               uint32_t kind, uint64_t field_id )
+{
+    return path_n == 26u &&
+           path[0] == 't' && le32( path + 1 ) == 13u && le64( path + 5 ) == root_id &&
+           path[13] == 'f' && le32( path + 14 ) == kind && le64( path + 18 ) == field_id;
+}
 
 int main( void )
 {
-    /* THE TABLE-LEVEL OVER-REACH: each of the digest rows is here in
-       the form the spec demands — 'F' with bit count and per-variant
-       name hashes, 'R' with min and max as i64 LE — and the C leg's
-       static constant must equal fnv1a64(layout ++ digest). The bytes
-       are the spec's bytes; the equality is the C leg's promise. */
-    uint64_t expected = fnv1a64( vessel_fixed_layout,
-                                 (int64_t) sizeof( vessel_fixed_layout ) );
-    expected = fnv1a64( vessel_expected_digest,
-                        (int64_t) sizeof( vessel_expected_digest ) ) ^ expected;
-    /* The chained form (each fnv1a64 call produces a fresh offset and
-       mixer) is not what §5.2 says; §5.2 says fnv1a64 over layout
-       THEN OVER digest, with the SAME running state. The driver below
-       computes that single fold properly. The statement above is dead.
-       See the principal driver below for the actual test. */
+    const int64_t layout_n = (int64_t) sizeof( tblw1_vessel_fixed_layout );
+    const int64_t digest_n = (int64_t) sizeof( vessel_expected_digest );
 
     /* THE PRINCIPAL DRIVER. fnv1a64 over a CONTIGUOUS byte vector
        (layout ++ digest) is what §5.2 specifies; we build the vector
@@ -138,59 +176,87 @@ int main( void )
        would hash to the LAYOUT-ONLY number, and this assertion would
        FAIL — that is the bite of the control. */
     {
-        const int64_t layout_n = (int64_t) sizeof( vessel_fixed_layout );
-        const int64_t digest_n = (int64_t) sizeof( vessel_expected_digest );
-        uint8_t vector[ layout_n + digest_n ];
-        memcpy( vector, vessel_fixed_layout, (size_t) layout_n );
+        uint8_t vector[ sizeof( tblw1_vessel_fixed_layout ) + sizeof( vessel_expected_digest ) ];
+        memcpy( vector, tblw1_vessel_fixed_layout, (size_t) layout_n );
         memcpy( vector + layout_n, vessel_expected_digest, (size_t) digest_n );
         uint64_t folded = fnv1a64( vector, layout_n + digest_n );
-        check( folded == vessel_fixed_hash,
+        check( folded == tblw1_vessel_fixed_hash,
                "vessel_fixed_hash equals fnv1a64(layout ++ digest) (the §5.2 fold)" );
         printf( "  folded = 0x%016llx, vessel_fixed_hash = 0x%016llx\n",
-                (unsigned long long) folded, (unsigned long long) vessel_fixed_hash );
+                (unsigned long long) folded, (unsigned long long) tblw1_vessel_fixed_hash );
 
         /* THE COMPLEMENT: a hash of the LAYOUT ONLY must NOT match —
            the digest bytes are not in that fold. */
-        uint64_t layout_only = table_fixed_hash_of( vessel_fixed_layout, layout_n );
-        check( layout_only != vessel_fixed_hash,
+        uint64_t layout_only = tblw1_table_fixed_hash_of( tblw1_vessel_fixed_layout, layout_n );
+        check( layout_only != tblw1_vessel_fixed_hash,
                "fnv1a64(layout only) != vessel_fixed_hash — the digest is folded in" );
         printf( "  layout_only = 0x%016llx\n", (unsigned long long) layout_only );
     }
 
-    /* THE DIGEST'S APPARENT TEXT: the row tags the C leg is held to
-       are R, F, and the by-name dedupe of the F row. The expected
-       digest is exactly one 'F' byte (Caps is referenced once) and
-       one 'R' byte (the hull range). We verify the literals in the
-       hard-coded pinned digest. */
+    /* THE DIGEST'S ROWS, parsed by their framing (never by scanning for
+       a tag byte that a hash could also hold). */
     {
-        int f_count = 0, r_count = 0, q_count = 0, b_count = 0, x_count = 0, l_count = 0;
-        int64_t i;
-        for ( i = 0; i < (int64_t) sizeof( vessel_expected_digest ); ++i )
+        const uint64_t vessel_id = fnv1a64_text( "Vessel" );
+        const uint8_t * d = vessel_expected_digest;
+        int64_t at = (int64_t) sizeof( identity_prefix );
+        int f_count = 0, r_count = 0, other_count = 0, bad_tag = 0, framing_ok = 1;
+        int f_ok = 0, r_ok = 0;
+
+        check( memcmp( d, identity_prefix, sizeof( identity_prefix ) ) == 0,
+               "the digest begins with the 26-byte v2 identity prefix (WireLaw 3, §5.2)" );
+        while ( at < digest_n )
         {
-            switch ( vessel_expected_digest[i] )
+            uint8_t tag;
+            uint32_t path_n, payload_n;
+            const uint8_t * path;
+            const uint8_t * payload;
+            if ( at + 5 > digest_n ) { framing_ok = 0; break; }
+            tag = d[at];
+            path_n = le32( d + at + 1 );
+            if ( at + 5 + (int64_t) path_n + 4 > digest_n ) { framing_ok = 0; break; }
+            path = d + at + 5;
+            payload_n = le32( path + path_n );
+            payload = path + path_n + 4;
+            if ( payload + payload_n > d + digest_n ) { framing_ok = 0; break; }
+            at = (int64_t) ( payload + payload_n - d );
+            switch ( tag )
             {
-            case 'F': f_count++; break;
-            case 'R': r_count++; break;
-            case 'Q': q_count++; break;
-            case 'B': b_count++; break;
-            case 'X': x_count++; break;
-            case 'L': l_count++; break;
-            default: break;
+            case 'F':
+                f_count++;
+                f_ok = path_is_root_field( path, path_n, vessel_id, 9u, fnv1a64_text( "caps" ) ) &&
+                       payload_n == 32u && le32( payload ) == 3u && le32( payload + 4 ) == 3u &&
+                       le64( payload + 8 ) == fnv1a64_text( "Jump" ) &&
+                       le64( payload + 16 ) == fnv1a64_text( "Crouch" ) &&
+                       le64( payload + 24 ) == fnv1a64_text( "Fly" );
+                break;
+            case 'R':
+            {
+                static const uint8_t bounds[12] = { 0x00, 0x00, 0x00, 0x00, 0x00,
+                                                    0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0xe8 };
+                r_count++;
+                r_ok = path_is_root_field( path, path_n, vessel_id, 4u, fnv1a64_text( "hull" ) ) &&
+                       payload_n == 21u && le32( payload ) == 4u && payload[4] == 1u &&
+                       le32( payload + 5 ) == 0u && memcmp( payload + 9, bounds, sizeof( bounds ) ) == 0;
+                break;
+            }
+            case 'C': case 'D': case 'Q': case 'B': case 'X':
+                other_count++;
+                break;
+            default:
+                bad_tag++;
+                break;
             }
         }
-        check( f_count == 1,
-               "digest carries exactly one 'F' — Caps is deduped once by name" );
-        check( r_count == 1,
-               "digest carries exactly one 'R' — hull's min/max range" );
-        check( q_count == 0,
-               "Vessel has no compressed-float resolution: 'Q' is reserved and empty here" );
-        check( b_count == 0,
-               "Vessel has no bits(N) field: 'B' is reserved and empty here" );
-        check( x_count == 0,
-               "Vessel has no fixed(I,F) field: 'X' is reserved and empty here" );
-        check( l_count == 0,
-               "no reader-side limit row is emitted: 'L' is reserved and empty per spec" );
-        (void) expected; /* the throwaway folded-state probe above */
+        check( framing_ok && at == digest_n,
+               "every digest row frames exactly: tag, u32 path length, path, u32 payload length, payload" );
+        check( bad_tag == 0,
+               "every row tag is one of C R D Q B X F — no 'L' or other row (WireLaw 3 tag list)" );
+        check( f_count == 1 && f_ok,
+               "exactly one 'F' row, at Vessel.caps (kind 9): 3 bits, 3 variants, fnv1a64 Jump/Crouch/Fly in order" );
+        check( r_count == 1 && r_ok,
+               "exactly one 'R' row, at Vessel.hull (kind 4): signed, frac 0, min 0, max 1000 canonical" );
+        check( other_count == 0,
+               "Vessel has no counted array, float range, resolution, bits(N) or fixed(I,F): no C/D/Q/B/X row" );
     }
 
     /* THE WRITER STAMPS IT. `_fixed_save` writes the static
@@ -201,52 +267,46 @@ int main( void )
        either of them. */
     {
         uint8_t buffer[2048];
-        Vessel v;
-        TableReport report;
-        TableFixedEntry plan[4096];
+        tblw1_vessel_t v;
+        tblw1_table_report_t report;
+        tblw1_table_fixed_entry_t plan[4096];
         memset( &v, 0, sizeof( v ) );
         memset( &report, 0, sizeof( report ) );
-        int64_t written = vessel_fixed_save( &v, 1, buffer,
+        int64_t written = tblw1_vessel_fixed_save( &v, 1, buffer,
                                              (int64_t) sizeof( buffer ) );
         check( written > 0, "vessel_fixed_save wrote the file" );
         uint64_t stamped;
         memcpy( &stamped, buffer + 8, sizeof( stamped ) );
-        check( stamped == vessel_fixed_hash,
+        check( stamped == tblw1_vessel_fixed_hash,
                "the file header's 8-byte hash field equals vessel_fixed_hash" );
         printf( "  stamped = 0x%016llx\n", (unsigned long long) stamped );
-        int64_t loaded = vessel_fixed_load( &v, 1, buffer, written,
+        int64_t loaded = tblw1_vessel_fixed_load( &v, 1, buffer, written,
                                             plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ),
                                             NULL, &report );
         check( loaded == 1 && report.refused == 0,
                "the writer-stamped record loads back, report clean" );
     }
 
-    /* CHANGING A NAME MOVES THE HASH. The digest is byte-stable only
-       for byte-stable inputs. A different Caps variant list (or any
-       other field-level edit) changes the digest; the C leg's
-       constant would change to that, and a re-read against the new
-       schema would re-fail this assertion. This is the dedupe NAME
-       rule's observable side: the hash binds the names. */
+    /* CHANGING A NAME MOVES THE HASH. One bit of the third flag's
+       variant-name hash (Fly) flipped: the fold no longer matches the
+       C leg's constant — the hash binds the names. */
     {
-        uint8_t alt_digest[49];
+        uint8_t alt_digest[ sizeof( vessel_expected_digest ) ];
+        uint8_t vector[ sizeof( tblw1_vessel_fixed_layout ) + sizeof( vessel_expected_digest ) ];
         memcpy( alt_digest, vessel_expected_digest, sizeof( alt_digest ) );
-        alt_digest[22] ^= 0x01; /* corrupt one byte of the third flag's name hash */
-        const int64_t layout_n = (int64_t) sizeof( vessel_fixed_layout );
-        const int64_t digest_n = (int64_t) sizeof( alt_digest );
-        uint8_t vector[ layout_n + digest_n ];
-        memcpy( vector, vessel_fixed_layout, (size_t) layout_n );
+        alt_digest[26 + 5 + 26 + 4 + 8 + 16] ^= 0x01; /* first byte of fnv1a64("Fly") */
+        memcpy( vector, tblw1_vessel_fixed_layout, (size_t) layout_n );
         memcpy( vector + layout_n, alt_digest, (size_t) digest_n );
         uint64_t folded = fnv1a64( vector, layout_n + digest_n );
-        check( folded != vessel_fixed_hash,
+        check( folded != tblw1_vessel_fixed_hash,
                "a single-byte change in the digest moves the hash — the digest binds the schema" );
         printf( "  folded_perturbed = 0x%016llx, vessel_fixed_hash = 0x%016llx\n",
-                (unsigned long long) folded, (unsigned long long) vessel_fixed_hash );
+                (unsigned long long) folded, (unsigned long long) tblw1_vessel_fixed_hash );
     }
 
     if ( failed ) { printf( "R5: RED\n" ); return 1; }
-    printf( "R5: GREEN — the digest carries every range (R), every flags (F, "
-            "deduped by name once), and any resolution (Q) or reader limit (L) "
-            "the schema declares; the C leg's vessel_fixed_hash equals "
-            "fnv1a64(layout ++ digest)\n" );
+    printf( "R5: GREEN — the v2 digest carries the identity prefix, every range (R) "
+            "and every flags (F) at its wire path; the C leg's vessel_fixed_hash "
+            "equals fnv1a64(layout ++ digest)\n" );
     return 0;
 }
