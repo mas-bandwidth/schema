@@ -53,8 +53,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-	"github.com/mas-bandwidth/schema/v2/internal/runmatch"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/runmatch"
 )
 
 const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
@@ -710,7 +710,7 @@ var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
 // modulePath is this module's import path: what `go list ./...` prints ahead
 // of each package directory, and what a `grep -v` filter in the complement
 // command reads.
-const modulePath = "github.com/mas-bandwidth/schema/v2"
+const modulePath = "github.com/mas-bandwidth/schema/v3"
 
 // The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`,
 // or the same over `go list ./dir/...`, optionally with one `-skip '<re>'`
@@ -1606,7 +1606,7 @@ func normalizePkg(pkg string) string {
 	if pkg == "" {
 		return ""
 	}
-	for _, mod := range []string{"github.com/mas-bandwidth/schema/v2/", "github.com/mas-bandwidth/schema/"} {
+	for _, mod := range []string{"github.com/mas-bandwidth/schema/v3/", "github.com/mas-bandwidth/schema/"} {
 		if after, ok := strings.CutPrefix(pkg, mod); ok {
 			pkg = after
 			break

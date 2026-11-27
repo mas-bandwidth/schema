@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // nameCapSchema is the small unit the read-closed vectors read

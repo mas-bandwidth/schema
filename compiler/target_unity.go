@@ -5,9 +5,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/unity"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/unity"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/unitytable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // unityTarget emits Unity C#: C# 9 over netstandard2.1, unmanaged structs,

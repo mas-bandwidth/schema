@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/schema/v2/internal/execref"
+	"github.com/mas-bandwidth/schema/v3/internal/execref"
 )
 
 // ImportPath is this package's import path.

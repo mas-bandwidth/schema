@@ -3,10 +3,10 @@ package tabledemo_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestGeneratedFixedLoadRefusesForm1 holds docs/SPEC-TABLES.md §3.4 ("a

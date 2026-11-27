@@ -1,8 +1,8 @@
 package compiler
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TablesBaselineText renders the unit's TABLES BASELINE (docs/SPEC-TABLES.md §18.1):

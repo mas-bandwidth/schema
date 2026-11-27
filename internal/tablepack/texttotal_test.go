@@ -1,9 +1,9 @@
 package tablepack_test
 
 import (
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 	"os"
 	"path/filepath"
 	"strings"

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE MESSAGE-PRIOR ANSWER THROUGH THE VM SHIMS (FORMAT.md `message-prior`;
