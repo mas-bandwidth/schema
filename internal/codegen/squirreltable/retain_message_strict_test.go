@@ -327,7 +327,7 @@ foreach (c in cases) {
     outClean[0].C.N == 7 && outClean[0].X == 42 && outClean[1].C.N == 9 && outClean[1].X == 84;
   print("msg_batch_clean:" + cleanBatchOk + ":" + nClean + ":" + lrep.unknown + "\n");
 
-  // Refused message batch (second message has X = 500 > 100) refuses whole batch and resets touched rows
+  // Refused message batch (second message has X = 500 > 100) refuses the whole batch and resets EVERY row it was handed, the third one past the wire's count included (SPEC-TABLES, THE CALLER'S VALUES AFTER A REFUSAL; FL-03)
   local mBad = Tn.WireMsg(); mBad.C.N = 9; mBad.X = 500; mBad.Extra = "yo";
   local badBatchLen = Tn.WireMsgMeasureMessages([m0, mBad], {});
   local badBatch = blob(badBatchLen);
@@ -337,7 +337,7 @@ foreach (c in cases) {
   local brep = {};
   local nBad = To.WireMsgLoadMessages(outBad, vocab, badBatch, brep);
   local badBatchOk = nBad == 0 && brep.refused && brep.reason == "out_of_range" &&
-    outBad[0].C.N == 0 && outBad[0].X == 0 && outBad[1].C.N == 0 && outBad[1].X == 0 && outBad[2].X == 333;
+    outBad[0].C.N == 0 && outBad[0].X == 0 && outBad[1].C.N == 0 && outBad[1].X == 0 && outBad[2].X == 0;
   print("msg_batch_oor:" + badBatchOk + ":" + nBad + ":" + outBad[0].X + "," + outBad[1].X + "," + outBad[2].X + "\n");
 }
 `
@@ -401,7 +401,7 @@ func TestSquirrelRetainOnMessageForm(t *testing.T) {
 		"strict_form2_on_retain": "strict_form2_on_retain:true:0:0",
 		"strict_fixed_retain":    "strict_fixed_retain:true:0:0",
 		"msg_batch_clean":        "msg_batch_clean:true:2:4",
-		"msg_batch_oor":          "msg_batch_oor:true:0:0,0,333",
+		"msg_batch_oor":          "msg_batch_oor:true:0:0,0,0",
 	}
 	for k, want := range wantExact {
 		if got := normal[k]; got != want {

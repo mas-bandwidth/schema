@@ -1,0 +1,34 @@
+read
+refused
+{
+  "i_widen": "0",
+  "i32_widen": "0",
+  "u_widen": "0",
+  "f_widen": 0,
+  "fx_widen": "0.0",
+  "ufx_widen": "0.0",
+  "bits_widen": "0",
+  "mask_widen": [],
+  "live_mode": "None",
+  "label": "",
+  "fixed_arr": [
+    "0",
+    "0",
+    "0",
+    "0"
+  ],
+  "bounded_arr": [],
+  "obsolete_mode": "OldB",
+  "v1_marker": 11,
+  "nested_chain": {},
+  "def_scalar": -777,
+  "def_str": "prefill-ok",
+  "i128_keep": "-999",
+  "u128_keep": "0",
+  "def_bytes": "YmluIQ==",
+  "def_flags": [
+    "F0",
+    "F8"
+  ]
+}
+read
