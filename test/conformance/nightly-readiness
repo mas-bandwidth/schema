@@ -397,7 +397,9 @@ class Runner:
         self.results = []
         self.native_passes = set()
         self.lang = lang
-        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1")
+        # SCHEMA_REQUIRE_CASEFOLD: a folding-volume test fails, never skips,
+        # when SCHEMA_CASEFOLD_DIR names no case-folding directory.
+        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1", SCHEMA_REQUIRE_CASEFOLD="1")
         # Never update a reference pin or accept cache/no-test overrides here.
         for key in tuple(self.env):
             if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES", "SCHEMA_SKIP_LEGS") or key.startswith("SCHEMA_UPDATE_"):
@@ -556,10 +558,49 @@ def run_native(runner, lang):
             runner.native_passes.update(pass_events(text))
 
 
-def packet_result(text, random=False, compilation=False):
+# The primary packet harnesses that print "ran N, failed M" (tools/mustrun's
+# line) instead of OK, and the make variable holding each one's registered N:
+# (language, label, command index) -> variable in make/<language>.mk. The
+# readiness run holds N to the same number `make test-<language>-packet` does,
+# so a primary that stops checking, or checks fewer things, stays red here too.
+PACKET_COUNTS = {
+    ("go", "normal", 0): "GO_MAIN_CHECKS", ("go", "ludicrous", 0): "GO_LUDICROUS_CHECKS",
+    ("elixir", "normal", 0): "ELIXIR_MAIN_CHECKS", ("elixir", "ludicrous", 0): "ELIXIR_LUDICROUS_CHECKS",
+    ("js", "normal", 0): "JS_MAIN_CHECKS", ("js", "normal", 1): "JS_MAIN_CHECKS_PRODUCTION",
+    ("js", "ludicrous", 0): "JS_LUDICROUS_CHECKS", ("js", "ludicrous", 1): "JS_LUDICROUS_CHECKS_PRODUCTION",
+    ("dart", "normal", 0): "DART_MAIN_CHECKS", ("dart", "normal", 2): "DART_MAIN_CHECKS_AOT",
+    ("dart", "ludicrous", 0): "DART_LUDICROUS_CHECKS", ("dart", "ludicrous", 2): "DART_LUDICROUS_CHECKS_AOT",
+}
+
+
+def packet_count(root, lang, variable):
+    """The registered check count, read from make/<lang>.mk; None when absent or ambiguous."""
+    path = Path(root) / "make" / (lang + ".mk")
+    try:
+        found = re.findall(r"^" + re.escape(variable) + r" := ([1-9][0-9]*)$", path.read_text(), re.MULTILINE)
+    except OSError:
+        return None
+    return int(found[0]) if len(found) == 1 else None
+
+
+def packet_result(text, random=False, compilation=False, count=None, variable=""):
     if compilation:
         return [] if re.search(r"^Generated: .+", text, re.MULTILINE) else [
             "packet compiler emitted no executable completion marker"]
+    if variable:
+        # a "ran N, failed M" primary: exactly one such line, M zero, N the
+        # registered count; never satisfied by an OK line or a count of zero
+        if count is None:
+            return ["packet check count " + variable + " is not registered exactly once in make/"]
+        lines = re.findall(r"^ran ([0-9]+), failed ([0-9]+)\r?$", text, re.MULTILINE)
+        if len(lines) != 1:
+            return ["packet program emitted no unique \"ran N, failed M\" line"]
+        ran, failed = int(lines[0][0]), int(lines[0][1])
+        if failed != 0:
+            return ["packet program failed " + str(failed) + " of " + str(ran) + " checks"]
+        if ran != count:
+            return ["packet program ran " + str(ran) + " checks, " + variable + " registers " + str(count)]
+        return []
     pattern = r"^OK \([1-9][0-9]* iterations, seed [0-9]+\)$" if random else r"^OK$"
     return [] if len(re.findall(pattern, text, re.MULTILINE)) == 1 else [
         "packet program emitted no unique successful execution marker"]
@@ -627,9 +668,12 @@ def run_packets(runner, lang):
                 "elixir": [tool("ELIXIR", "elixir") + ["main.exs"]],
             }[lang]
             for index, command in enumerate(commands):
+                variable = PACKET_COUNTS.get((lang, label, index), "")
+                count = packet_count(runner.root, lang, variable) if variable else None
                 runner.run("packet-" + label + "-" + str(index), command, cwd=cwd,
-                           validate=lambda text, i=index:
-                               packet_result(text, compilation=lang == "dart" and i == 1))
+                           validate=lambda text, i=index, v=variable, c=count:
+                               packet_result(text, compilation=lang == "dart" and i == 1,
+                                             count=c, variable=v))
     targets = " ".join("packet-" + feature + "-" + lang + tail
                        for feature in ("defaults", "utf8")
                        for tail in ("", "-negative-control"))
@@ -888,15 +932,19 @@ def run_external(runner, lang):
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
-    # Exactly two outer Go test invocations in the already mapped C++ make
+    # Exactly three outer Go test invocations in the already mapped C++ make
     # recipes. Keep all native generation, compiler flags, controls and shell
     # ordering unchanged; no blanket go wrapper or timeout substitution.
+    # tables-lists' is the map-holding cook read (73202e2fca): it reads
+    # build/lists-cooks/army.cook where that recipe writes it.
     original = (runner.root / "Makefile").read_text()
     replacements = {
         "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR":
         "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
         "go test ./tools/fixedtwin -count=1":
         "go test -timeout=0 ./tools/fixedtwin -count=1",
+        "SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/":
+        "SCHEMA_REQUIRE_CORPUS=1 go test -timeout=0 -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/",
     }
     amended = original
     for before, after in replacements.items():

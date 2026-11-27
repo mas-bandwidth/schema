@@ -90,9 +90,6 @@ export function ZeroFixedProbe(value) {
 }
 
 export function WriteFixedProbe(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (!globalThis.Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return false;
   }
@@ -121,8 +118,8 @@ export function WriteFixedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
-  if (value.samples === null || typeof value.samples !== "object" || !(value.samples.length >= 2)) {
-    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
   }
   for (let i = 0; i < 2; i++) {
     if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
@@ -203,9 +200,6 @@ export function ZeroUnsignedProbe(value) {
 }
 
 export function WriteUnsignedProbe(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (!globalThis.Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return false;
   }
@@ -234,8 +228,8 @@ export function WriteUnsignedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
-  if (value.samples === null || typeof value.samples !== "object" || !(value.samples.length >= 2)) {
-    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
   }
   for (let i = 0; i < 2; i++) {
     if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 1048576) {
@@ -325,9 +319,6 @@ export function ZeroWideProbe(value) {
 }
 
 export function WriteWideProbe(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (typeof value.entityId !== "bigint" || value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return false;
   }
@@ -434,9 +425,6 @@ export function ZeroLudicrousState(value) {
 }
 
 export function WriteLudicrousState(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (!globalThis.Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
     return false;
   }
@@ -457,9 +445,6 @@ export function WriteLudicrousState(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (value.keys === null || typeof value.keys !== "object" || !(value.keys.length >= value.keysCount)) {
-    return false; // the storage holds every element the loop reads (SPEC §5.1)
-  }
   for (let i = 0; i < value.keysCount; i++) {
     if (typeof value.keys[i] !== "bigint" || value.keys[i] < 0n || value.keys[i] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
       return false;
@@ -468,9 +453,6 @@ export function WriteLudicrousState(stream, value) {
     if (!stream.serializeUint128(BIGINT_SCRATCH)) {
       return false;
     }
-  }
-  if (typeof value.hasTarget !== "boolean") {
-    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.hasTarget;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -556,9 +538,6 @@ export function ZeroDegenerateProbe(value) {
 }
 
 export function WriteDegenerateProbe(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (value.lockedFixed !== -196608) {
     return false;
   }
@@ -618,9 +597,6 @@ export function ZeroFixedVec(value) {
 }
 
 export function WriteFixedVec(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (typeof value.x !== "bigint" || value.x < -6553600000n || value.x > 6553600000n) {
     return false;
   }
@@ -693,9 +669,6 @@ export function ZeroFixedQuat(value) {
 }
 
 export function WriteFixedQuat(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return false;
   }

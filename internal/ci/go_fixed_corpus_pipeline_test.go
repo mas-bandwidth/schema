@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
@@ -90,6 +92,7 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			testinputs.Files(t, "tools/go-ci-corpus.sh")
 			cmd := exec.Command("sh", filepath.Join(root, "tools/go-ci-corpus.sh"), "verify", dir)
 			cmd.Dir = checkout
 			out, err := cmd.CombinedOutput()
@@ -111,13 +114,13 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 }
 
 func TestGoFixedCorpusPipelineKeepsCompleteTestRecipe(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	jobs := yamlJobs(string(data))
 	producer, tests := jobs["go-fixed-corpus"], jobs["go-test-touched"]
-	for _, want := range []string{"tools/go-ci-corpus.sh produce", "actions/upload-artifact@", "go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}", "timeout-minutes: 2"} {
+	for _, want := range []string{"tools/go-ci-corpus.sh produce", "actions/upload-artifact@", "go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}"} {
 		if !strings.Contains(producer, want) {
 			t.Errorf("producer misses %s", want)
 		}
@@ -136,11 +139,12 @@ func TestGoFixedCorpusPipelineKeepsCompleteTestRecipe(t *testing.T) {
 }
 
 func TestGoFixedCorpusDependencyStates(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := ciEvent{Name: "pull_request", Branch: "dev", HeadRef: "stella/ci-proof", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable"}
+	// the nightly lane's schedule (since 2026-11-25 these jobs run nightly)
+	event := ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable"}
 	for _, state := range []string{"success", "skipped", "failure", "cancelled"} {
 		event.GoCorpusResult = state
 		got, err := jobRunsInWorkflow(string(data), "go-test-touched", event)

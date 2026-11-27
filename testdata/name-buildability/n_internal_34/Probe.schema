@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum ints
+{ Zfirst, Zsecond, Zthird }
+
+enum invalid
+{ Zfirst, Zsecond, Zthird }
+
+enum invalid_deprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum invalid_in
+{ Zfirst, Zsecond, Zthird }
+
+enum invalid_required
+{ Zfirst, Zsecond, Zthird }
+
+enum ip
+{ Zfirst, Zsecond, Zthird }
+
+enum is128
+{ Zfirst, Zsecond, Zthird }
+
+enum isAmp
+{ Zfirst, Zsecond, Zthird }
+
+enum isArm
+{ Zfirst, Zsecond, Zthird }
+
+enum isArray
+{ Zfirst, Zsecond, Zthird }
+
+enum isBits
+{ Zfirst, Zsecond, Zthird }
+
+enum isBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum isBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum isDigit
+{ Zfirst, Zsecond, Zthird }
+
+enum isElement
+{ Zfirst, Zsecond, Zthird }
+
+enum isFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum isFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum isInf
+{ Zfirst, Zsecond, Zthird }
+
+enum isInt
+{ Zfirst, Zsecond, Zthird }
+
+enum isInt32
+{ Zfirst, Zsecond, Zthird }
+
+enum isInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum isKey
+{ Zfirst, Zsecond, Zthird }
+
+enum isKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum isLeaf
+{ Zfirst, Zsecond, Zthird }
+
+enum isLengthKind
+{ Zfirst, Zsecond, Zthird }
+
+enum isLetter
+{ Zfirst, Zsecond, Zthird }
+
+enum isLimb
+{ Zfirst, Zsecond, Zthird }
+
+enum isList
+{ Zfirst, Zsecond, Zthird }
+
+enum isMap
+{ Zfirst, Zsecond, Zthird }
+
+enum isNaN
+{ Zfirst, Zsecond, Zthird }
+
+enum isName
+{ Zfirst, Zsecond, Zthird }
+
+enum isNegative
+{ Zfirst, Zsecond, Zthird }
+
+enum isNew
+{ Zfirst, Zsecond, Zthird }
+
+enum isNode
+{ Zfirst, Zsecond, Zthird }
+
+enum isNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum isObject
+{ Zfirst, Zsecond, Zthird }
+
+enum isPair
+{ Zfirst, Zsecond, Zthird }
+
+enum isPointer
+{ Zfirst, Zsecond, Zthird }
+
+enum isPointerShape
+{ Zfirst, Zsecond, Zthird }
+
+enum isProjection
+{ Zfirst, Zsecond, Zthird }
+
+enum isRecord
+{ Zfirst, Zsecond, Zthird }
+
+enum isRetained
+{ Zfirst, Zsecond, Zthird }
+
+enum isRoot
+{ Zfirst, Zsecond, Zthird }
+
+enum isSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum isSignedKind
+{ Zfirst, Zsecond, Zthird }
+
+enum isStr
+{ Zfirst, Zsecond, Zthird }
+
+enum isText
+{ Zfirst, Zsecond, Zthird }
+
+enum isWide
+{ Zfirst, Zsecond, Zthird }
+
+enum isZero
+{ Zfirst, Zsecond, Zthird }
+
+enum is_binary
+{ Zfirst, Zsecond, Zthird }
+
+enum is_byte_array
+{ Zfirst, Zsecond, Zthird }
+
+enum is_def
+{ Zfirst, Zsecond, Zthird }
+
+enum is_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum is_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum is_i128
+{ Zfirst, Zsecond, Zthird }
+
+enum is_integer_token
+{ Zfirst, Zsecond, Zthird }
+
+enum is_json_number_token
+{ Zfirst, Zsecond, Zthird }
+
+enum is_measuring
+{ Zfirst, Zsecond, Zthird }
+
+enum is_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum is_union
+{ Zfirst, Zsecond, Zthird }
+
+enum is_wide_integer_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum isstring
+{ Zfirst, Zsecond, Zthird }
+
+enum it
+{ Zfirst, Zsecond, Zthird }
+
+enum item
+{ Zfirst, Zsecond, Zthird }
+
+enum item_from_json
+{ Zfirst, Zsecond, Zthird }
+
+enum item_from_json_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum item_from_json_into
+{ Zfirst, Zsecond, Zthird }
+
+enum item_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum item_json_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum item_json_ptr
+{ Zfirst, Zsecond, Zthird }
+
+enum item_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum item_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum item_load_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum item_load_walk
+{ Zfirst, Zsecond, Zthird }
+
+enum item_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum item_text
+{ Zfirst, Zsecond, Zthird }
+
+enum item_to_json
+{ Zfirst, Zsecond, Zthird }
+
+enum item_to_json_both
+{ Zfirst, Zsecond, Zthird }
+
+enum item_to_json_checked
+{ Zfirst, Zsecond, Zthird }
+
+enum items
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    ints Inner
+    invalid Inner
+    invalid_deprecated Inner
+    invalid_in Inner
+    invalid_required Inner
+    ip Inner
+    is128 Inner
+    isAmp Inner
+    isArm Inner
+    isArray Inner
+}
+
+table NameTypes0
+{
+    one0  ints
+    many0 [..4]ints
+    one1  invalid
+    many1 [..4]invalid
+    one2  invalid_deprecated
+    many2 [..4]invalid_deprecated
+    one3  invalid_in
+    many3 [..4]invalid_in
+    one4  invalid_required
+    many4 [..4]invalid_required
+    one5  ip
+    many5 [..4]ip
+    one6  is128
+    many6 [..4]is128
+    one7  isAmp
+    many7 [..4]isAmp
+    one8  isArm
+    many8 [..4]isArm
+    one9  isArray
+    many9 [..4]isArray
+}
+
+table NameFields0
+{
+    ints uint32
+    invalid uint32
+    invalid_deprecated uint32
+    invalid_in uint32
+    invalid_required uint32
+    ip uint32
+    is128 uint32
+    isAmp uint32
+    isArm uint32
+    isArray uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    isBits Inner
+    isBlob Inner
+    isBytes Inner
+    isDigit Inner
+    isElement Inner
+    isFinite Inner
+    isFloat Inner
+    isInf Inner
+    isInt Inner
+    isInt32 Inner
+}
+
+table NameTypes1
+{
+    one0  isBits
+    many0 [..4]isBits
+    one1  isBlob
+    many1 [..4]isBlob
+    one2  isBytes
+    many2 [..4]isBytes
+    one3  isDigit
+    many3 [..4]isDigit
+    one4  isElement
+    many4 [..4]isElement
+    one5  isFinite
+    many5 [..4]isFinite
+    one6  isFloat
+    many6 [..4]isFloat
+    one7  isInf
+    many7 [..4]isInf
+    one8  isInt
+    many8 [..4]isInt
+    one9  isInt32
+    many9 [..4]isInt32
+}
+
+table NameFields1
+{
+    isBits uint32
+    isBlob uint32
+    isBytes uint32
+    isDigit uint32
+    isElement uint32
+    isFinite uint32
+    isFloat uint32
+    isInf uint32
+    isInt uint32
+    isInt32 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    isInteger Inner
+    isKey Inner
+    isKeyed Inner
+    isLeaf Inner
+    isLengthKind Inner
+    isLetter Inner
+    isLimb Inner
+    isList Inner
+    isMap Inner
+    isNaN Inner
+}
+
+table NameTypes2
+{
+    one0  isInteger
+    many0 [..4]isInteger
+    one1  isKey
+    many1 [..4]isKey
+    one2  isKeyed
+    many2 [..4]isKeyed
+    one3  isLeaf
+    many3 [..4]isLeaf
+    one4  isLengthKind
+    many4 [..4]isLengthKind
+    one5  isLetter
+    many5 [..4]isLetter
+    one6  isLimb
+    many6 [..4]isLimb
+    one7  isList
+    many7 [..4]isList
+    one8  isMap
+    many8 [..4]isMap
+    one9  isNaN
+    many9 [..4]isNaN
+}
+
+table NameFields2
+{
+    isInteger uint32
+    isKey uint32
+    isKeyed uint32
+    isLeaf uint32
+    isLengthKind uint32
+    isLetter uint32
+    isLimb uint32
+    isList uint32
+    isMap uint32
+    isNaN uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    isName Inner
+    isNegative Inner
+    isNew Inner
+    isNode Inner
+    isNumber Inner
+    isObject Inner
+    isPair Inner
+    isPointer Inner
+    isPointerShape Inner
+    isProjection Inner
+}
+
+table NameTypes3
+{
+    one0  isName
+    many0 [..4]isName
+    one1  isNegative
+    many1 [..4]isNegative
+    one2  isNew
+    many2 [..4]isNew
+    one3  isNode
+    many3 [..4]isNode
+    one4  isNumber
+    many4 [..4]isNumber
+    one5  isObject
+    many5 [..4]isObject
+    one6  isPair
+    many6 [..4]isPair
+    one7  isPointer
+    many7 [..4]isPointer
+    one8  isPointerShape
+    many8 [..4]isPointerShape
+    one9  isProjection
+    many9 [..4]isProjection
+}
+
+table NameFields3
+{
+    isName uint32
+    isNegative uint32
+    isNew uint32
+    isNode uint32
+    isNumber uint32
+    isObject uint32
+    isPair uint32
+    isPointer uint32
+    isPointerShape uint32
+    isProjection uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    isRecord Inner
+    isRetained Inner
+    isRoot Inner
+    isSigned Inner
+    isSignedKind Inner
+    isStr Inner
+    isText Inner
+    isWide Inner
+    isZero Inner
+    is_binary Inner
+}
+
+table NameTypes4
+{
+    one0  isRecord
+    many0 [..4]isRecord
+    one1  isRetained
+    many1 [..4]isRetained
+    one2  isRoot
+    many2 [..4]isRoot
+    one3  isSigned
+    many3 [..4]isSigned
+    one4  isSignedKind
+    many4 [..4]isSignedKind
+    one5  isStr
+    many5 [..4]isStr
+    one6  isText
+    many6 [..4]isText
+    one7  isWide
+    many7 [..4]isWide
+    one8  isZero
+    many8 [..4]isZero
+    one9  is_binary
+    many9 [..4]is_binary
+}
+
+table NameFields4
+{
+    isRecord uint32
+    isRetained uint32
+    isRoot uint32
+    isSigned uint32
+    isSignedKind uint32
+    isStr uint32
+    isText uint32
+    isWide uint32
+    isZero uint32
+    is_binary uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    is_byte_array Inner
+    is_def Inner
+    is_f32 Inner
+    is_flags Inner
+    is_i128 Inner
+    is_integer_token Inner
+    is_json_number_token Inner
+    is_measuring Inner
+    is_seen Inner
+    is_union Inner
+}
+
+table NameTypes5
+{
+    one0  is_byte_array
+    many0 [..4]is_byte_array
+    one1  is_def
+    many1 [..4]is_def
+    one2  is_f32
+    many2 [..4]is_f32
+    one3  is_flags
+    many3 [..4]is_flags
+    one4  is_i128
+    many4 [..4]is_i128
+    one5  is_integer_token
+    many5 [..4]is_integer_token
+    one6  is_json_number_token
+    many6 [..4]is_json_number_token
+    one7  is_measuring
+    many7 [..4]is_measuring
+    one8  is_seen
+    many8 [..4]is_seen
+    one9  is_union
+    many9 [..4]is_union
+}
+
+table NameFields5
+{
+    is_byte_array uint32
+    is_def uint32
+    is_f32 uint32
+    is_flags uint32
+    is_i128 uint32
+    is_integer_token uint32
+    is_json_number_token uint32
+    is_measuring uint32
+    is_seen uint32
+    is_union uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    is_wide_integer_kind Inner
+    isstring Inner
+    it Inner
+    item Inner
+    item_from_json Inner
+    item_from_json_bytes Inner
+    item_from_json_into Inner
+    item_json_count Inner
+    item_json_fields Inner
+    item_json_ptr Inner
+}
+
+table NameTypes6
+{
+    one0  is_wide_integer_kind
+    many0 [..4]is_wide_integer_kind
+    one1  isstring
+    many1 [..4]isstring
+    one2  it
+    many2 [..4]it
+    one3  item
+    many3 [..4]item
+    one4  item_from_json
+    many4 [..4]item_from_json
+    one5  item_from_json_bytes
+    many5 [..4]item_from_json_bytes
+    one6  item_from_json_into
+    many6 [..4]item_from_json_into
+    one7  item_json_count
+    many7 [..4]item_json_count
+    one8  item_json_fields
+    many8 [..4]item_json_fields
+    one9  item_json_ptr
+    many9 [..4]item_json_ptr
+}
+
+table NameFields6
+{
+    is_wide_integer_kind uint32
+    isstring uint32
+    it uint32
+    item uint32
+    item_from_json uint32
+    item_from_json_bytes uint32
+    item_from_json_into uint32
+    item_json_count uint32
+    item_json_fields uint32
+    item_json_ptr uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    item_json_read Inner
+    item_json_write Inner
+    item_load_measure Inner
+    item_load_walk Inner
+    item_ok Inner
+    item_text Inner
+    item_to_json Inner
+    item_to_json_both Inner
+    item_to_json_checked Inner
+    items Inner
+}
+
+table NameTypes7
+{
+    one0  item_json_read
+    many0 [..4]item_json_read
+    one1  item_json_write
+    many1 [..4]item_json_write
+    one2  item_load_measure
+    many2 [..4]item_load_measure
+    one3  item_load_walk
+    many3 [..4]item_load_walk
+    one4  item_ok
+    many4 [..4]item_ok
+    one5  item_text
+    many5 [..4]item_text
+    one6  item_to_json
+    many6 [..4]item_to_json
+    one7  item_to_json_both
+    many7 [..4]item_to_json_both
+    one8  item_to_json_checked
+    many8 [..4]item_to_json_checked
+    one9  items
+    many9 [..4]items
+}
+
+table NameFields7
+{
+    item_json_read uint32
+    item_json_write uint32
+    item_load_measure uint32
+    item_load_walk uint32
+    item_ok uint32
+    item_text uint32
+    item_to_json uint32
+    item_to_json_both uint32
+    item_to_json_checked uint32
+    items uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

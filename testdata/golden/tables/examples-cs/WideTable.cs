@@ -45,6 +45,7 @@ namespace Tabledemo
 
         public static bool WideBlobCollectTyped(WideBlob v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null WideBlob is written");
             TableFieldInfo[] fields = WideBlobTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;

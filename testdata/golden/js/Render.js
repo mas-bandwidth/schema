@@ -49,9 +49,6 @@ export function ZeroRenderSprite(value) {
 }
 
 export function WriteRenderSprite(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
@@ -151,9 +148,6 @@ export function ZeroRenderBlock(value) {
 }
 
 export function WriteRenderBlock(stream, value) {
-  if (value === null || typeof value !== "object") {
-    return false; // a record or union value is an object (SPEC §5.1)
-  }
   if (!globalThis.Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
     return false;
   }
@@ -174,9 +168,6 @@ export function WriteRenderBlock(stream, value) {
   NUMBER_SCRATCH.value = value.spritesCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
-  }
-  if (value.sprites === null || typeof value.sprites !== "object" || !(value.sprites.length >= value.spritesCount)) {
-    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.spritesCount; i++) {
     if (!WriteRenderSprite(stream, value.sprites[i])) {

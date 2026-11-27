@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // A conformance driver is compiled from sources the build tool does not own
@@ -54,6 +56,7 @@ func (r *stampRig) age(rel string) {
 // build runs the wrapper; the command concatenates gen/*.cs into out/driver.
 func (r *stampRig) build(buildCmd string) string {
 	r.t.Helper()
+	testinputs.Files(r.t, r.script)
 	cmd := exec.Command("sh", r.script, "stamps/driver.sha256", "out/driver", "gen", "src/main.cs", "--",
 		"mkdir -p out && echo ran >> runs && "+buildCmd)
 	cmd.Dir = r.root
@@ -138,6 +141,7 @@ func TestDriverStampRecordsNothingForAFailedBuild(t *testing.T) {
 	r.write("gen/a.cs", "A1")
 	r.write("src/main.cs", "M1")
 
+	testinputs.Files(t, r.script)
 	cmd := exec.Command("sh", r.script, "stamps/driver.sha256", "out/driver", "gen", "src/main.cs", "--", "mkdir -p out && echo ran >> runs && false")
 	cmd.Dir = r.root
 	if out, err := cmd.CombinedOutput(); err == nil {

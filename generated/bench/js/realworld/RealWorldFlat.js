@@ -41,9 +41,6 @@ export const FlatReadSlack = 8;
 // must hold RealPacketMaxBytes.
 export function WriteRealPacketFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
@@ -64,9 +61,6 @@ export function WriteRealPacketFlat(view, value) {
   v = (((((value.f003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
   view.setUint32(8, (lo | (v << 21)) >>> 0, true);
   lo = v >>> 11;
-  if (typeof value.f004Cf32 !== "number") { // a float is a Number
-    return -1;
-  }
   x = globalThis.Math.fround(value.f004Cf32);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -89,7 +83,7 @@ export function WriteRealPacketFlat(view, value) {
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.f007F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -111,7 +105,7 @@ export function WriteRealPacketFlat(view, value) {
   }
   lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
   x = value.f010F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -121,9 +115,6 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f011Bits) || value.f011Bits < 0 || value.f011Bits > 1023) {
     return -1;
   }
-  if (typeof value.f012Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
-  }
   v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
   view.setUint32(32, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
@@ -131,7 +122,7 @@ export function WriteRealPacketFlat(view, value) {
   sb = 3;
   if (value.f012Bool) {
     x = value.f013F32;
-    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -219,7 +210,7 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f020F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -245,7 +236,7 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   x = value.f022F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -271,7 +262,7 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   x = value.f024F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -298,9 +289,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (typeof value.f027Cf32 !== "number") { // a float is a Number
-    return -1;
   }
   x = globalThis.Math.fround(value.f027Cf32);
   if (!globalThis.Number.isFinite(x)) {
@@ -356,7 +344,7 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f030F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -394,12 +382,6 @@ export function WriteRealPacketFlat(view, value) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
-    return -1;
-  }
-  if (typeof value.f037Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
-  }
-  if (typeof value.f038Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.f039Bits) || value.f039Bits < 0 || value.f039Bits > 524287) {
@@ -441,9 +423,6 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  if (typeof value.f043Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
-  }
   v = ((value.f042Bits & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 31;
@@ -455,7 +434,7 @@ export function WriteRealPacketFlat(view, value) {
   }
   if (value.f043Bool) {
     x = value.f044F32;
-    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -521,9 +500,6 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f049Ufixed) || value.f049Ufixed < 0 || value.f049Ufixed > 49152) {
     return -1;
   }
-  if (typeof value.f050Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
-  }
   v = (((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 17;
@@ -534,9 +510,6 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (17 - sb);
   }
   if (value.f050Bool) {
-    if (typeof value.f051Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-      return -1;
-    }
     if (!globalThis.Number.isInteger(value.f052Int) || value.f052Int < -57 || value.f052Int > 57) {
       return -1;
     }
@@ -550,7 +523,7 @@ export function WriteRealPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     x = value.f053F32;
-    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -576,9 +549,6 @@ export function WriteRealPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
   }
-  if (typeof value.f055Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.f056Int) || value.f056Int < -13 || value.f056Int > 13) {
     return -1;
   }
@@ -595,7 +565,7 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   x = value.f058F32;
-  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -641,9 +611,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  if (typeof value.f061Cf32 !== "number") { // a float is a Number
-    return -1;
   }
   x = globalThis.Math.fround(value.f061Cf32);
   if (!globalThis.Number.isFinite(x)) {
@@ -710,9 +677,6 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  if (typeof value.f065Cf32 !== "number") { // a float is a Number
-    return -1;
-  }
   x = globalThis.Math.fround(value.f065Cf32);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -744,9 +708,6 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  if (typeof value.f067Cf32 !== "number") { // a float is a Number
-    return -1;
-  }
   x = globalThis.Math.fround(value.f067Cf32);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -765,9 +726,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  if (typeof value.f068Cf32 !== "number") { // a float is a Number
-    return -1;
   }
   x = globalThis.Math.fround(value.f068Cf32);
   if (!globalThis.Number.isFinite(x)) {
@@ -803,9 +761,6 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (13 - sb);
   }
-  if (typeof value.f071Cf32 !== "number") { // a float is a Number
-    return -1;
-  }
   x = globalThis.Math.fround(value.f071Cf32);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -824,9 +779,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  if (typeof value.f072Cf32 !== "number") { // a float is a Number
-    return -1;
   }
   x = globalThis.Math.fround(value.f072Cf32);
   if (!globalThis.Number.isFinite(x)) {
@@ -848,9 +800,6 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
   if (!globalThis.Number.isInteger(value.f073Int) || value.f073Int < -4 || value.f073Int > 4) {
-    return -1;
-  }
-  if (typeof value.f074Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   v = (((((value.f073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.f074Bool ? 1 : 0) << 4)) >>> 0;
@@ -915,9 +864,6 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
-  }
-  if (typeof value.f080Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
   }
   if (!globalThis.Number.isInteger(value.f081Bits) || value.f081Bits < 0 || value.f081Bits > 536870911) {
     return -1;
@@ -1032,9 +978,6 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f090Uint) || value.f090Uint < 0 || value.f090Uint > 214) {
     return -1;
   }
-  if (typeof value.f091Flags !== "bigint") { // a flags value is a BigInt
-    return -1;
-  }
   if (globalThis.BigInt.asUintN(64, value.f091Flags) >= 32n) { // a mask bit above the wire width cannot ride
     return -1;
   }
@@ -1056,9 +999,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  if (typeof value.f092Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
   }
   if (typeof value.f093Bits !== "bigint" || value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
     return -1;
@@ -1090,9 +1030,6 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (typeof value.f094Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
-    return -1;
   }
   if (!globalThis.Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return -1;

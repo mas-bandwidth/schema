@@ -2456,6 +2456,7 @@ export function MixedEntityFixedWriteBody(view, at, value) {
 // MixedEntity's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function MixedEntityFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.entityId !== "number" || !globalThis.Number.isInteger(value.entityId)) { return false; }
   if (value.entityId < 0 || value.entityId > 4095) { return false; }
   if (typeof value.posX !== "number" || !globalThis.Number.isInteger(value.posX)) { return false; }
@@ -2478,6 +2479,8 @@ export function MixedEntityFixedCheckBody(value) {
   if (value.health < 0 || value.health > 1000) { return false; }
   if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { return false; }
   if (typeof value.damage !== "bigint" || (value.damage >> 8n) !== 0n) { return false; }
+  if (typeof value.moving !== "boolean") { return false; }
+  if (typeof value.firing !== "boolean") { return false; }
   return true;
 }
 
@@ -2571,6 +2574,7 @@ export function MixedStatFixedWriteBody(view, at, value) {
 // MixedStat's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function MixedStatFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.statId !== "number" || !globalThis.Number.isInteger(value.statId)) { return false; }
   if (value.statId < 0 || value.statId > 255) { return false; }
   if (typeof value.delta !== "number" || !globalThis.Number.isInteger(value.delta)) { return false; }
@@ -2607,12 +2611,14 @@ export function MixedHitEventFixedWriteBody(view, at, value) {
 // MixedHitEvent's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function MixedHitEventFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.targetId !== "number" || !globalThis.Number.isInteger(value.targetId)) { return false; }
   if (value.targetId < 0 || value.targetId > 4095) { return false; }
   if (typeof value.damage !== "number" || !globalThis.Number.isInteger(value.damage)) { return false; }
   if (value.damage < 0 || value.damage > 4095) { return false; }
   if (typeof value.hitKind !== "number" || !globalThis.Number.isInteger(value.hitKind)) { return false; }
   if (value.hitKind < 0 || value.hitKind > 7) { return false; }
+  if (typeof value.crit !== "boolean") { return false; }
   return true;
 }
 
@@ -2651,6 +2657,7 @@ export function MixedChatEventFixedWriteBody(view, at, value) {
 // MixedChatEvent's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function MixedChatEventFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.channel !== "number" || !globalThis.Number.isInteger(value.channel)) { return false; }
   if (value.channel < 0 || value.channel > 3) { return false; }
   if (typeof value.speaker !== "number" || !globalThis.Number.isInteger(value.speaker)) { return false; }
@@ -2685,6 +2692,7 @@ export function MixedPickupEventFixedWriteBody(view, at, value) {
 // MixedPickupEvent's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function MixedPickupEventFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.itemId !== "number" || !globalThis.Number.isInteger(value.itemId)) { return false; }
   if (value.itemId < 0 || value.itemId > 1023) { return false; }
   if (typeof value.amount !== "number" || !globalThis.Number.isInteger(value.amount)) { return false; }
@@ -2771,6 +2779,7 @@ export function BenchMixedFixedWriteBody(view, at, value) {
 // BenchMixed's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function BenchMixedFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (typeof value.sequence !== "number" || !globalThis.Number.isInteger(value.sequence)) { return false; }
   if (value.sequence < 0 || value.sequence > 65535) { return false; }
   if (typeof value.ackSequence !== "number" || !globalThis.Number.isInteger(value.ackSequence)) { return false; }
@@ -2850,6 +2859,7 @@ export function BenchMixedFixedCheckBody(value) {
   if (value.ping < 0 || value.ping > 64000) { return false; }
   if (typeof value.crcHint !== "number" || !globalThis.Number.isInteger(value.crcHint)) { return false; }
   if (value.crcHint < 0 || value.crcHint > 16777215) { return false; }
+  if (typeof value.hasExtra !== "boolean") { return false; }
   if (typeof value.extra !== "number" || !globalThis.Number.isInteger(value.extra)) { return false; }
   if (value.extra < 0 || value.extra > 255) { return false; }
   if (typeof value.idleTicks !== "number" || !globalThis.Number.isInteger(value.idleTicks)) { return false; }
@@ -3270,6 +3280,7 @@ export function FixedTableFixedWriteBody(view, at, value) {
 // FixedTable's writer preflight: every value the declaration does not admit is
 // refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).
 export function FixedTableFixedCheckBody(value) {
+  if (value === null || typeof value !== "object") { return false; }
   if (value.value === null || typeof value.value !== "object") { return false; }
   if (!BenchMixedFixedCheckBody(value.value)) { return false; }
   return true;

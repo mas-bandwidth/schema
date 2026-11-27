@@ -59,7 +59,6 @@ _M.ReadRenderSprite <- function(stream, value) {
 
 // WriteRenderSprite writes value in declared order; false on a refused value.
 _M.WriteRenderSprite <- function(stream, value) {
-  if (!(value instanceof _M.RenderSprite)) return false;
   if (typeof value.SortKey != "integer") return false;
   _h.value = value.SortKey;
   if (!stream.serializeBits64(_h, 64)) return false;
@@ -120,7 +119,6 @@ _M.ReadRenderBlock <- function(stream, value) {
 
 // WriteRenderBlock writes value in declared order; false on a refused value.
 _M.WriteRenderBlock <- function(stream, value) {
-  if (!(value instanceof _M.RenderBlock)) return false;
   if (typeof value.WorkerIndex != "integer" || value.WorkerIndex < 0 || value.WorkerIndex > 4294967295) return false;
   _h.value = value.WorkerIndex;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -128,7 +126,6 @@ _M.WriteRenderBlock <- function(stream, value) {
   _h.value = value.SpriteCountHint;
   if (!stream.serializeBits(_h, 32)) return false;
   if (typeof value.SpritesCount != "integer" || value.SpritesCount < 0 || value.SpritesCount > 64) return false;
-  if (typeof value.Sprites != "array" || value.Sprites.len() < value.SpritesCount) return false;
   _h.value = value.SpritesCount;
   if (!stream.serializeBits(_h, 7)) return false;
   for (local _i = 0; _i < value.SpritesCount; _i++) {

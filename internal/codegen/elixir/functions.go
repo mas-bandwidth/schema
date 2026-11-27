@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -1426,6 +1427,14 @@ func (g *gen) writeClause(f *ir.Field, name string, k int64) {
 	}
 	g.flushW("    ") // the clause's tail is a barrier: the next entry is < 8 bits
 	g.syncSB("    ") // an align inside an element can have made it static again
+	// The next element ORs its first field into the scratch it is handed, so
+	// a scratch the element left zero only in the emitter's books (an align,
+	// or a flush that ended on a byte, leaves the spent bits in the variable)
+	// is written zero before it rides the call: stale bits there are nonzero
+	// align padding on the wire, or a corrupted next length (SPEC §4.3).
+	// verify-bitphase-align-negative-control removes this one call and
+	// requires the align-arrays family to fail on Elixir.
+	g.ensureScratch("    ", false) // clean bits for the next element
 	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
 	g.pf("  end\n\n")
 }
@@ -1705,10 +1714,16 @@ func (g *gen) emitCheckInteger(name, ind string) {
 	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
 }
 
-// f32lit renders the float32 rounding of v as an Elixir float literal
-// (exact — f32 is a subset of f64).
+// f32lit renders the float32 rounding of v as an Elixir float literal whose
+// BEAM float IS that float32 (f32 is a subset of f64): the shortest decimal of
+// the float64 value. The float32's own shortest decimal is not that: -3.3
+// names float32(-3.3) only to a float32 parser, and the BEAM reads it as the
+// double -3.3, so cf_decode/4 and the decode tables added the declaration's
+// min and not its float32 and read 2,535 of the 11,001 steps of
+// [-3.3, 7.7] @ 0.001 one bit off (SPEC §4.6, "The decode is normative";
+// test/verify-bitphase cfdecode.go).
 func f32lit(v float64) string {
-	return formatFloat32(float64(float32(v)))
+	return elixirFloat(strconv.FormatFloat(float64(float32(v)), 'g', -1, 64))
 }
 
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization

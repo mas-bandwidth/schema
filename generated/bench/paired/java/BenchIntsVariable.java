@@ -895,6 +895,7 @@ public final class BenchIntsVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "BenchInts: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
@@ -1294,6 +1295,10 @@ public final class BenchIntsVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);

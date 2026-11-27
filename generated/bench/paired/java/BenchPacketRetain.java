@@ -21,6 +21,7 @@ public final class BenchPacketRetain {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         if (retain == null) {
             return BenchPacketVariable.load(data, report);
         }

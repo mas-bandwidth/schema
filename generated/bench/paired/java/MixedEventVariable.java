@@ -453,6 +453,10 @@ public final class MixedEventVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         switch (v.tag) {
             case 0:
@@ -581,12 +585,15 @@ public final class MixedEventVariable {
             return true;
         }
         if (v.tag == 1) {
+            assert v.hit != null : "MixedEvent.hit";
             assert MixedHitEventVariable.checkWrite(v.hit, walk);
         }
         if (v.tag == 2) {
+            assert v.chat != null : "MixedEvent.chat";
             assert MixedChatEventVariable.checkWrite(v.chat, walk);
         }
         if (v.tag == 3) {
+            assert v.pickup != null : "MixedEvent.pickup";
             assert MixedPickupEventVariable.checkWrite(v.pickup, walk);
         }
         return true;

@@ -461,6 +461,7 @@ function _M.WriteFixedProbe(stream, v)
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if math.type(v.Samples[_i]) ~= "integer" or v.Samples[_i] < -524288 or v.Samples[_i] > 524288 then return false end
     -- the Q format's raw offset (SPEC §4.3)
@@ -485,6 +486,7 @@ function _M.WriteUnsignedProbe(stream, v)
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if math.type(v.Samples[_i]) ~= "integer" or v.Samples[_i] < 0 or v.Samples[_i] > 1048576 then return false end
     -- the Q format's raw offset (SPEC §4.3)

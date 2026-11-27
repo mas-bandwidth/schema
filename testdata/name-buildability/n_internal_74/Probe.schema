@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum txt
+{ Zfirst, Zsecond, Zthird }
+
+enum ty
+{ Zfirst, Zsecond, Zthird }
+
+enum typ
+{ Zfirst, Zsecond, Zthird }
+
+enum typeId
+{ Zfirst, Zsecond, Zthird }
+
+enum typeName
+{ Zfirst, Zsecond, Zthird }
+
+enum typeRef
+{ Zfirst, Zsecond, Zthird }
+
+enum type_reference
+{ Zfirst, Zsecond, Zthird }
+
+enum typed
+{ Zfirst, Zsecond, Zthird }
+
+enum typedDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum tz
+{ Zfirst, Zsecond, Zthird }
+
+enum u
+{ Zfirst, Zsecond, Zthird }
+
+enum u128_add
+{ Zfirst, Zsecond, Zthird }
+
+enum u128_negate
+{ Zfirst, Zsecond, Zthird }
+
+enum u128_sub
+{ Zfirst, Zsecond, Zthird }
+
+enum u128_text
+{ Zfirst, Zsecond, Zthird }
+
+enum u128_ult
+{ Zfirst, Zsecond, Zthird }
+
+enum u128cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum u32le
+{ Zfirst, Zsecond, Zthird }
+
+enum u64At
+{ Zfirst, Zsecond, Zthird }
+
+enum u64_text
+{ Zfirst, Zsecond, Zthird }
+
+enum u64cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum u64le
+{ Zfirst, Zsecond, Zthird }
+
+enum uAt
+{ Zfirst, Zsecond, Zthird }
+
+enum uPath
+{ Zfirst, Zsecond, Zthird }
+
+enum u_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum u_d
+{ Zfirst, Zsecond, Zthird }
+
+enum u_lt
+{ Zfirst, Zsecond, Zthird }
+
+enum u_w
+{ Zfirst, Zsecond, Zthird }
+
+enum ua
+{ Zfirst, Zsecond, Zthird }
+
+enum ub
+{ Zfirst, Zsecond, Zthird }
+
+enum ucls
+{ Zfirst, Zsecond, Zthird }
+
+enum ucmp64
+{ Zfirst, Zsecond, Zthird }
+
+enum ucmp_gt
+{ Zfirst, Zsecond, Zthird }
+
+enum ucmp_lt
+{ Zfirst, Zsecond, Zthird }
+
+enum udesc
+{ Zfirst, Zsecond, Zthird }
+
+enum uf
+{ Zfirst, Zsecond, Zthird }
+
+enum uf0_1
+{ Zfirst, Zsecond, Zthird }
+
+enum uf0_2
+{ Zfirst, Zsecond, Zthird }
+
+enum ufixed128
+{ Zfirst, Zsecond, Zthird }
+
+enum uintArg
+{ Zfirst, Zsecond, Zthird }
+
+enum uintMethod
+{ Zfirst, Zsecond, Zthird }
+
+enum umax
+{ Zfirst, Zsecond, Zthird }
+
+enum umin
+{ Zfirst, Zsecond, Zthird }
+
+enum un
+{ Zfirst, Zsecond, Zthird }
+
+enum un_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum uname
+{ Zfirst, Zsecond, Zthird }
+
+enum unbounded
+{ Zfirst, Zsecond, Zthird }
+
+enum unboundedText
+{ Zfirst, Zsecond, Zthird }
+
+enum unbounded_arr
+{ Zfirst, Zsecond, Zthird }
+
+enum unbounded_container
+{ Zfirst, Zsecond, Zthird }
+
+enum unbounded_key
+{ Zfirst, Zsecond, Zthird }
+
+enum unbounded_value
+{ Zfirst, Zsecond, Zthird }
+
+enum unconsumed
+{ Zfirst, Zsecond, Zthird }
+
+enum uncounted
+{ Zfirst, Zsecond, Zthird }
+
+enum under
+{ Zfirst, Zsecond, Zthird }
+
+enum undo
+{ Zfirst, Zsecond, Zthird }
+
+enum unframed
+{ Zfirst, Zsecond, Zthird }
+
+enum ungated
+{ Zfirst, Zsecond, Zthird }
+
+enum uni
+{ Zfirst, Zsecond, Zthird }
+
+enum unionCell
+{ Zfirst, Zsecond, Zthird }
+
+enum unionDesc
+{ Zfirst, Zsecond, Zthird }
+
+enum unionName
+{ Zfirst, Zsecond, Zthird }
+
+enum union_array
+{ Zfirst, Zsecond, Zthird }
+
+enum union_at
+{ Zfirst, Zsecond, Zthird }
+
+enum union_class
+{ Zfirst, Zsecond, Zthird }
+
+enum union_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum union_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum union_has_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum union_index
+{ Zfirst, Zsecond, Zthird }
+
+enum union_layout
+{ Zfirst, Zsecond, Zthird }
+
+enum union_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum union_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum unions
+{ Zfirst, Zsecond, Zthird }
+
+enum unique_chains
+{ Zfirst, Zsecond, Zthird }
+
+enum unit
+{ Zfirst, Zsecond, Zthird }
+
+enum unitLength
+{ Zfirst, Zsecond, Zthird }
+
+enum unit_length_out
+{ Zfirst, Zsecond, Zthird }
+
+enum units
+{ Zfirst, Zsecond, Zthird }
+
+enum unkBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum unkSlot
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    txt Inner
+    ty Inner
+    typ Inner
+    typeId Inner
+    typeName Inner
+    typeRef Inner
+    type_reference Inner
+    typed Inner
+    typedDefault Inner
+    tz Inner
+}
+
+table NameTypes0
+{
+    one0  txt
+    many0 [..4]txt
+    one1  ty
+    many1 [..4]ty
+    one2  typ
+    many2 [..4]typ
+    one3  typeId
+    many3 [..4]typeId
+    one4  typeName
+    many4 [..4]typeName
+    one5  typeRef
+    many5 [..4]typeRef
+    one6  type_reference
+    many6 [..4]type_reference
+    one7  typed
+    many7 [..4]typed
+    one8  typedDefault
+    many8 [..4]typedDefault
+    one9  tz
+    many9 [..4]tz
+}
+
+table NameFields0
+{
+    txt uint32
+    ty uint32
+    typ uint32
+    typeId uint32
+    typeName uint32
+    typeRef uint32
+    type_reference uint32
+    typed uint32
+    typedDefault uint32
+    tz uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    u Inner
+    u128_add Inner
+    u128_negate Inner
+    u128_sub Inner
+    u128_text Inner
+    u128_ult Inner
+    u128cmp Inner
+    u32le Inner
+    u64At Inner
+    u64_text Inner
+}
+
+table NameTypes1
+{
+    one0  u
+    many0 [..4]u
+    one1  u128_add
+    many1 [..4]u128_add
+    one2  u128_negate
+    many2 [..4]u128_negate
+    one3  u128_sub
+    many3 [..4]u128_sub
+    one4  u128_text
+    many4 [..4]u128_text
+    one5  u128_ult
+    many5 [..4]u128_ult
+    one6  u128cmp
+    many6 [..4]u128cmp
+    one7  u32le
+    many7 [..4]u32le
+    one8  u64At
+    many8 [..4]u64At
+    one9  u64_text
+    many9 [..4]u64_text
+}
+
+table NameFields1
+{
+    u uint32
+    u128_add uint32
+    u128_negate uint32
+    u128_sub uint32
+    u128_text uint32
+    u128_ult uint32
+    u128cmp uint32
+    u32le uint32
+    u64At uint32
+    u64_text uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    u64cmp Inner
+    u64le Inner
+    uAt Inner
+    uPath Inner
+    u_bits Inner
+    u_d Inner
+    u_lt Inner
+    u_w Inner
+    ua Inner
+    ub Inner
+}
+
+table NameTypes2
+{
+    one0  u64cmp
+    many0 [..4]u64cmp
+    one1  u64le
+    many1 [..4]u64le
+    one2  uAt
+    many2 [..4]uAt
+    one3  uPath
+    many3 [..4]uPath
+    one4  u_bits
+    many4 [..4]u_bits
+    one5  u_d
+    many5 [..4]u_d
+    one6  u_lt
+    many6 [..4]u_lt
+    one7  u_w
+    many7 [..4]u_w
+    one8  ua
+    many8 [..4]ua
+    one9  ub
+    many9 [..4]ub
+}
+
+table NameFields2
+{
+    u64cmp uint32
+    u64le uint32
+    uAt uint32
+    uPath uint32
+    u_bits uint32
+    u_d uint32
+    u_lt uint32
+    u_w uint32
+    ua uint32
+    ub uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    ucls Inner
+    ucmp64 Inner
+    ucmp_gt Inner
+    ucmp_lt Inner
+    udesc Inner
+    uf Inner
+    uf0_1 Inner
+    uf0_2 Inner
+    ufixed128 Inner
+    uintArg Inner
+}
+
+table NameTypes3
+{
+    one0  ucls
+    many0 [..4]ucls
+    one1  ucmp64
+    many1 [..4]ucmp64
+    one2  ucmp_gt
+    many2 [..4]ucmp_gt
+    one3  ucmp_lt
+    many3 [..4]ucmp_lt
+    one4  udesc
+    many4 [..4]udesc
+    one5  uf
+    many5 [..4]uf
+    one6  uf0_1
+    many6 [..4]uf0_1
+    one7  uf0_2
+    many7 [..4]uf0_2
+    one8  ufixed128
+    many8 [..4]ufixed128
+    one9  uintArg
+    many9 [..4]uintArg
+}
+
+table NameFields3
+{
+    ucls uint32
+    ucmp64 uint32
+    ucmp_gt uint32
+    ucmp_lt uint32
+    udesc uint32
+    uf uint32
+    uf0_1 uint32
+    uf0_2 uint32
+    ufixed128 uint32
+    uintArg uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    uintMethod Inner
+    umax Inner
+    umin Inner
+    un Inner
+    un_cls Inner
+    uname Inner
+    unbounded Inner
+    unboundedText Inner
+    unbounded_arr Inner
+    unbounded_container Inner
+}
+
+table NameTypes4
+{
+    one0  uintMethod
+    many0 [..4]uintMethod
+    one1  umax
+    many1 [..4]umax
+    one2  umin
+    many2 [..4]umin
+    one3  un
+    many3 [..4]un
+    one4  un_cls
+    many4 [..4]un_cls
+    one5  uname
+    many5 [..4]uname
+    one6  unbounded
+    many6 [..4]unbounded
+    one7  unboundedText
+    many7 [..4]unboundedText
+    one8  unbounded_arr
+    many8 [..4]unbounded_arr
+    one9  unbounded_container
+    many9 [..4]unbounded_container
+}
+
+table NameFields4
+{
+    uintMethod uint32
+    umax uint32
+    umin uint32
+    un uint32
+    un_cls uint32
+    uname uint32
+    unbounded uint32
+    unboundedText uint32
+    unbounded_arr uint32
+    unbounded_container uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    unbounded_key Inner
+    unbounded_value Inner
+    unconsumed Inner
+    uncounted Inner
+    under Inner
+    undo Inner
+    unframed Inner
+    ungated Inner
+    uni Inner
+    unionCell Inner
+}
+
+table NameTypes5
+{
+    one0  unbounded_key
+    many0 [..4]unbounded_key
+    one1  unbounded_value
+    many1 [..4]unbounded_value
+    one2  unconsumed
+    many2 [..4]unconsumed
+    one3  uncounted
+    many3 [..4]uncounted
+    one4  under
+    many4 [..4]under
+    one5  undo
+    many5 [..4]undo
+    one6  unframed
+    many6 [..4]unframed
+    one7  ungated
+    many7 [..4]ungated
+    one8  uni
+    many8 [..4]uni
+    one9  unionCell
+    many9 [..4]unionCell
+}
+
+table NameFields5
+{
+    unbounded_key uint32
+    unbounded_value uint32
+    unconsumed uint32
+    uncounted uint32
+    under uint32
+    undo uint32
+    unframed uint32
+    ungated uint32
+    uni uint32
+    unionCell uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    unionDesc Inner
+    unionName Inner
+    union_array Inner
+    union_at Inner
+    union_class Inner
+    union_cls Inner
+    union_fn Inner
+    union_has_extent Inner
+    union_index Inner
+    union_layout Inner
+}
+
+table NameTypes6
+{
+    one0  unionDesc
+    many0 [..4]unionDesc
+    one1  unionName
+    many1 [..4]unionName
+    one2  union_array
+    many2 [..4]union_array
+    one3  union_at
+    many3 [..4]union_at
+    one4  union_class
+    many4 [..4]union_class
+    one5  union_cls
+    many5 [..4]union_cls
+    one6  union_fn
+    many6 [..4]union_fn
+    one7  union_has_extent
+    many7 [..4]union_has_extent
+    one8  union_index
+    many8 [..4]union_index
+    one9  union_layout
+    many9 [..4]union_layout
+}
+
+table NameFields6
+{
+    unionDesc uint32
+    unionName uint32
+    union_array uint32
+    union_at uint32
+    union_class uint32
+    union_cls uint32
+    union_fn uint32
+    union_has_extent uint32
+    union_index uint32
+    union_layout uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    union_registry Inner
+    union_shape Inner
+    unions Inner
+    unique_chains Inner
+    unit Inner
+    unitLength Inner
+    unit_length_out Inner
+    units Inner
+    unkBefore Inner
+    unkSlot Inner
+}
+
+table NameTypes7
+{
+    one0  union_registry
+    many0 [..4]union_registry
+    one1  union_shape
+    many1 [..4]union_shape
+    one2  unions
+    many2 [..4]unions
+    one3  unique_chains
+    many3 [..4]unique_chains
+    one4  unit
+    many4 [..4]unit
+    one5  unitLength
+    many5 [..4]unitLength
+    one6  unit_length_out
+    many6 [..4]unit_length_out
+    one7  units
+    many7 [..4]units
+    one8  unkBefore
+    many8 [..4]unkBefore
+    one9  unkSlot
+    many9 [..4]unkSlot
+}
+
+table NameFields7
+{
+    union_registry uint32
+    union_shape uint32
+    unions uint32
+    unique_chains uint32
+    unit uint32
+    unitLength uint32
+    unit_length_out uint32
+    units uint32
+    unkBefore uint32
+    unkSlot uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

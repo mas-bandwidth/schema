@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// ciPolicyRowRe reads one row of ci-fast.yml's ci-policy matrix: the shard
+// ciPolicyRowRe reads one row of ci-fast-nightly.yml's ci-policy matrix: the shard
 // name, then its `go test` selection, `-run` or `-skip` of `^(A|B|...)`.
 var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|skip) '\^\(([A-Za-z0-9_|]+)\)'\n`)
 
@@ -138,10 +138,10 @@ func packageTestNames(t *testing.T, dir string) []string {
 }
 
 // TestCIPolicyShardsCoverEveryTest holds the three ci-policy rows of
-// ci-fast.yml complete: every test in this package runs in exactly one row.
+// ci-fast-nightly.yml complete: every test in this package runs in exactly one row.
 func TestCIPolicyShardsCoverEveryTest(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestCIPolicyShardsCoverEveryTest(t *testing.T) {
 	} {
 		mutated := strings.Replace(wf, mutate.from, mutate.to, 1)
 		if mutated == wf {
-			t.Fatalf("negative control %q did not mutate ci-fast.yml", mutate.name)
+			t.Fatalf("negative control %q did not mutate ci-fast-nightly.yml", mutate.name)
 		}
 		if len(ciPolicyShardErrors(mutated, tests)) == 0 {
 			t.Errorf("NEGATIVE CONTROL FAILED: %s stayed green", mutate.name)

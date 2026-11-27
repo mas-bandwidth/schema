@@ -3040,6 +3040,9 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(java.lang.StringBuilder b, long bits, java.lang.String[] names, int depth) {
+        // a flags value is an array of names, a container the read counts, so
+        // the cap counts it at its own depth, [] included (SPEC-TABLES §16.14 W2)
+        if (depth > In.MAX_JSON_DEPTH) { throw new Refused("a container past the cap: the write counts every container the read does"); }
         assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
@@ -4426,20 +4429,6 @@ func variableBornCounted(f *ir.Field) bool {
 		!f.IsMap() && !f.Type.Pointer && !ir.TextListPlain(f)
 }
 
-// variableBorn is a field's initializer: a counted [A..B] array is born
-// holding A default elements, every other field at variableDefault.
-func variableBorn(f *ir.Field) string {
-	if !variableBornCounted(f) {
-		return variableDefault(f)
-	}
-	one := variableDefault(variableElement(f))
-	elems := make([]string, f.BornCount())
-	for i := range elems {
-		elems[i] = one
-	}
-	return "new java.util.ArrayList<>(java.util.Arrays.asList(" + strings.Join(elems, ", ") + "))"
-}
-
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new java.util.ArrayList<>()"
@@ -5432,6 +5421,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 
 	fmt.Fprintf(b, "    static void jsonFields(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
+	// a table value held in place is judged where it is written, as a
+	// pointee is in writeJsonPointer (internal/tabletext writeValue)
+	writeJsonContainerCap(b)
 	if st.JsonArray && len(st.Fields) == 1 {
 		writeJsonFieldValue(b, u, st, st.Fields[0])
 		b.WriteString("    }\n\n")
@@ -5688,8 +5680,20 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 	return min, max
 }
 
+// writeJsonContainerCap judges the container the code after it writes — an
+// array (an empty `[]` included), a text list, a map's object, an enum-keyed
+// array's object, a union's object (None `{}` included) or a table value — at
+// its own depth, `depth`, refusing past the cap with the table value's own
+// refusal. The read counts every container it walks (docs/SPEC-TABLES.md
+// §16.2), so the write counts the same ones in the same unit (§16.14 W2) and
+// never writes a text its own reader refuses (internal/tabletext containerCap).
+func writeJsonContainerCap(b *strings.Builder) {
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { throw new TableJson.Refused(\"a container past the cap: the write counts every container the read does\"); }\n")
+}
+
 func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
+	writeJsonContainerCap(b)
 	switch {
 	case f.Array == ir.ArrayCounted:
 		fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
@@ -5966,6 +5970,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		writeJsonContainerCap(b)
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
 		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
@@ -5987,6 +5992,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		// §5.1 rows 3 and 4): the save's graph walk does not refuse them in a
 		// release build, but toJson still answers null for a value its reader
 		// would refuse.
+		writeJsonContainerCap(b)
 		elementBound := int64(-1)
 		if !ir.TextListUnbounded(f) {
 			elementBound = ir.TextListValue(f).Type.Size
@@ -6038,6 +6044,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		writeJsonContainerCap(b)
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
 		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
@@ -7490,6 +7497,22 @@ func javaFlagsHeld(f *ir.Field, expr string) string {
 // (docs/SPEC-TABLES.md §2.15).
 func variantDeprecated(e *ir.Enum, i int) bool {
 	return i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+}
+
+// enumNotDeprecated is the write-side condition that the ordinal in expr names
+// no deprecated variant (docs/SPEC-TABLES.md §2.15 WRITE: a strict write
+// refuses a value holding one), joined with && for each deprecated variant,
+// or "" when e has none. Variant i is ordinal i+1; 0 is None. It is a DEBUG
+// assert in Java (SPEC.md §5.1), the same check on every form's writer: the
+// variable save, the fixed save, the message save and the JSON text.
+func enumNotDeprecated(e *ir.Enum, expr string) string {
+	var conds []string
+	for i := range e.Variants {
+		if variantDeprecated(e, i) {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
 }
 
 // deprecatedLanding is the ordinal a deprecated variant reads as (§2.15): an

@@ -208,13 +208,13 @@ func assemble(m *Module) []byte {
 // THE MODULE-SCOPE HELPERS, each declared only where the body names it, in
 // this order. They are locals of the module, so a call reaches them as an
 // outer variable, never through a table.
-var helperOrder = []string{holder, usedBytes, validText, isWide}
+var helperOrder = []string{holder, usedBytes, validText, within128}
 
 const (
 	holder    = "_h"
 	usedBytes = "_usedBytes"
 	validText = "_validText"
-	isWide    = "_isWide"
+	within128 = "_within128"
 )
 
 var helperSource = map[string]string{
@@ -236,6 +236,22 @@ local _usedBytes = function(b, n) {
 	// _validText(b, n): whether b[0..n) is well-formed UTF-8 (Unicode Table
 	// 3-7: no overlong form, no surrogate, nothing past U+10FFFF, no truncated
 	// tail) with no zero byte (SPEC §4.7)
+	// _within128(v, lo, hi, unsigned): whether v is a 128-bit pair [lo, hi]
+	// inside the bounds lo and hi, each a pair too, compared as signed
+	// 128-bit values, or unsigned when unsigned is set: the writer's row-1
+	// check on an int128 or a wide fixed raw value, which refuses with false
+	// before the runtime's write-misuse trap would raise (SPEC §5.1)
+	within128: `local _within128 = function(v, lo, hi, unsigned) {
+  if (typeof v != "array" || v.len() != 2 || typeof v[0] != "integer" || typeof v[1] != "integer") return false;
+  local top = unsigned ? 0x8000000000000000 : 0;
+  local vh = v[1] ^ top, vl = v[0] ^ 0x8000000000000000;
+  local lh = lo[1] ^ top, ll = lo[0] ^ 0x8000000000000000;
+  local hh = hi[1] ^ top, hl = hi[0] ^ 0x8000000000000000;
+  if (vh < lh || (vh == lh && vl < ll)) return false;
+  if (vh > hh || (vh == hh && vl > hl)) return false;
+  return true;
+};
+`,
 	validText: `local _validText = function(b, n) {
   for (local i = 0; i < n; ) {
     local c = b[i]; i++;
@@ -259,13 +275,6 @@ local _usedBytes = function(b, n) {
     if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
   }
   return true;
-};
-`,
-	// _isWide(v): whether v is the [lo, hi] pair of integers a 128-bit value
-	// is (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS); a write refuses
-	// anything else before the runtime indexes it
-	isWide: `local _isWide = function(v) {
-  return typeof v == "array" && v.len() == 2 && typeof v[0] == "integer" && typeof v[1] == "integer";
 };
 `,
 }

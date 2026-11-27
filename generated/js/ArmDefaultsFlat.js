@@ -36,52 +36,36 @@ export const FlatReadSlack = 8;
 // must hold DefaultArmMaxBytes.
 export function WriteDefaultArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-    return -1;
-  }
-  if (value.entries === null || typeof value.entries !== "object" || !(value.entries.length >= value.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.entriesCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.entriesCount; i0++) {
     const e0 = value.entries[i0];
-    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
       return -1;
     }
-    try {
-      if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-        return -1;
-      }
-      if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-        return -1;
-      }
-      v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = ((e0.preferred & 0xf)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 4;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (4 - sb);
-      }
-    } catch (thrown) {
-      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
-      throw thrown;
+    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+      return -1;
+    }
+    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    v = ((e0.preferred & 0xf)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 4;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
   if (!globalThis.Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
@@ -218,9 +202,6 @@ export function ReadDefaultArmFlatBits(view, numBits, value) {
 // must hold DefaultChoiceMaxBytes.
 export function WriteDefaultChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -228,13 +209,7 @@ export function WriteDefaultChoiceFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (value.first === null || typeof value.first !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.first.entriesCount) || value.first.entriesCount < 0 || value.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.first.entries === null || typeof value.first.entries !== "object" || !(value.first.entries.length >= value.first.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.first.entriesCount) & 0x3)) >>> 0;
@@ -248,39 +223,29 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
         const e0 = value.first.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.first.marker) || value.first.marker < 0 || value.first.marker > 7) {
@@ -298,13 +263,7 @@ export function WriteDefaultChoiceFlat(view, value) {
       break;
     }
     case 2: {
-      if (value.second === null || typeof value.second !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.second.entriesCount) || value.second.entriesCount < 0 || value.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.second.entries === null || typeof value.second.entries !== "object" || !(value.second.entries.length >= value.second.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.second.entriesCount) & 0x3)) >>> 0;
@@ -318,39 +277,29 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
         const e0 = value.second.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.second.marker) || value.second.marker < 0 || value.second.marker > 7) {
@@ -656,12 +605,6 @@ export function ReadDefaultChoiceFlatBits(view, numBits, value) {
 // must hold DefaultChoicePacketMaxBytes.
 export function WriteDefaultChoicePacketFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
-  if (value.choice === null || typeof value.choice !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.choice.type) || value.choice.type < 0 || value.choice.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -669,13 +612,7 @@ export function WriteDefaultChoicePacketFlat(view, value) {
   sb = 2;
   switch (value.choice.type) {
     case 1: {
-      if (value.choice.first === null || typeof value.choice.first !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.choice.first.entriesCount) || value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.choice.first.entries === null || typeof value.choice.first.entries !== "object" || !(value.choice.first.entries.length >= value.choice.first.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.choice.first.entriesCount) & 0x3)) >>> 0;
@@ -689,39 +626,29 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         const e0 = value.choice.first.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.choice.first.marker) || value.choice.first.marker < 0 || value.choice.first.marker > 7) {
@@ -739,13 +666,7 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       break;
     }
     case 2: {
-      if (value.choice.second === null || typeof value.choice.second !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.choice.second.entriesCount) || value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.choice.second.entries === null || typeof value.choice.second.entries !== "object" || !(value.choice.second.entries.length >= value.choice.second.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.choice.second.entriesCount) & 0x3)) >>> 0;
@@ -759,39 +680,29 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         const e0 = value.choice.second.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.choice.second.marker) || value.choice.second.marker < 0 || value.choice.second.marker > 7) {
@@ -1097,64 +1008,42 @@ export function ReadDefaultChoicePacketFlatBits(view, numBits, value) {
 // must hold DefaultBulkArmMaxBytes.
 export function WriteDefaultBulkArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
-  if (value.payload === null || typeof value.payload !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.payload.entriesCount) || value.payload.entriesCount < 0 || value.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-    return -1;
-  }
-  if (value.payload.entries === null || typeof value.payload.entries !== "object" || !(value.payload.entries.length >= value.payload.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.payload.entriesCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
     const e0 = value.payload.entries[i0];
-    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
       return -1;
     }
-    try {
-      if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-        return -1;
-      }
-      if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-        return -1;
-      }
-      v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = ((e0.preferred & 0xf)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 4;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (4 - sb);
-      }
-    } catch (thrown) {
-      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
-      throw thrown;
+    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+      return -1;
+    }
+    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    v = ((e0.preferred & 0xf)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 4;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
   if (!globalThis.Number.isInteger(value.payload.marker) || value.payload.marker < 0 || value.payload.marker > 7) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
-    return -1;
-  }
-  if (!(value.data instanceof globalThis.Uint8Array) || value.data.length < value.dataLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   v = (((value.payload.marker) & 0x7) | (((value.dataLength) & 0x3) << 3)) >>> 0;
@@ -1384,9 +1273,6 @@ export function ReadDefaultBulkArmFlatBits(view, numBits, value) {
 // must hold DefaultBulkChoiceMaxBytes.
 export function WriteDefaultBulkChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1394,16 +1280,7 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (value.first === null || typeof value.first !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
-      if (value.first.payload === null || typeof value.first.payload !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.first.payload.entriesCount) || value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.first.payload.entries === null || typeof value.first.payload.entries !== "object" || !(value.first.payload.entries.length >= value.first.payload.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.first.payload.entriesCount) & 0x3)) >>> 0;
@@ -1417,48 +1294,35 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         const e0 = value.first.payload.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.first.payload.marker) || value.first.payload.marker < 0 || value.first.payload.marker > 7) {
         return -1;
       }
       if (!globalThis.Number.isInteger(value.first.dataLength) || value.first.dataLength < 0 || value.first.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
-        return -1;
-      }
-      if (!(value.first.data instanceof globalThis.Uint8Array) || value.first.data.length < value.first.dataLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
         return -1;
       }
       v = (((value.first.payload.marker) & 0x7) | (((value.first.dataLength) & 0x3) << 3)) >>> 0;
@@ -1505,16 +1369,7 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       break;
     }
     case 2: {
-      if (value.second === null || typeof value.second !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
-      if (value.second.payload === null || typeof value.second.payload !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.second.payload.entriesCount) || value.second.payload.entriesCount < 0 || value.second.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (value.second.payload.entries === null || typeof value.second.payload.entries !== "object" || !(value.second.payload.entries.length >= value.second.payload.entriesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
         return -1;
       }
       v = (((value.second.payload.entriesCount) & 0x3)) >>> 0;
@@ -1528,48 +1383,35 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         const e0 = value.second.payload.entries[i0];
-        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        try {
-          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-            return -1;
-          }
-          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = ((e0.preferred & 0xf)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 4;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (4 - sb);
-          }
-        } catch (thrown) {
-          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          throw thrown;
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = ((e0.preferred & 0xf)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 4;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
       if (!globalThis.Number.isInteger(value.second.payload.marker) || value.second.payload.marker < 0 || value.second.payload.marker > 7) {
         return -1;
       }
       if (!globalThis.Number.isInteger(value.second.dataLength) || value.second.dataLength < 0 || value.second.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
-        return -1;
-      }
-      if (!(value.second.data instanceof globalThis.Uint8Array) || value.second.data.length < value.second.dataLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
         return -1;
       }
       v = (((value.second.payload.marker) & 0x7) | (((value.second.dataLength) & 0x3) << 3)) >>> 0;

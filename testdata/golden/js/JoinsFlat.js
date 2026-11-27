@@ -69,13 +69,7 @@ function validText(bytes, length) {
 // must hold ArmsAgreeMaxBytes.
 export function WriteArmsAgreeFlat(view, value) {
   let lo = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -168,13 +162,7 @@ export function ReadArmsAgreeFlatBits(view, numBits, value) {
 // must hold ArmsDisagreeMaxBytes.
 export function WriteArmsDisagreeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -348,13 +336,7 @@ export function ReadArmsDisagreeFlatBits(view, numBits, value) {
 // must hold ArmEmptyMaxBytes.
 export function WriteArmEmptyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -491,21 +473,12 @@ export function ReadArmEmptyFlatBits(view, numBits, value) {
 // must hold ArmsNestedMaxBytes.
 export function WriteArmsNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) {
-    return -1;
-  }
-  if (typeof value.outer !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x7) | ((value.outer ? 1 : 0) << 3));
   sb = 4;
   if (value.outer) {
-    if (typeof value.inner !== "boolean") { // a bool is a boolean (SPEC §5.1)
-      return -1;
-    }
     v = ((value.inner ? 1 : 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
@@ -756,22 +729,13 @@ export function ReadArmsNestedFlatBits(view, numBits, value) {
 // must hold ArmAlignMaxBytes.
 export function WriteArmAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
     if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
-      return -1;
-    }
-    if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
       return -1;
     }
     if (!validText(value.s, value.sLength)) {
@@ -1024,22 +988,13 @@ export function ReadArmAlignFlatBits(view, numBits, value) {
 // must hold ArmArrayMaxBytes.
 export function WriteArmArrayFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
     if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-      return -1;
-    }
-    if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
       return -1;
     }
     v = (((value.itemsCount) & 0x3)) >>> 0;
@@ -1249,9 +1204,6 @@ export function ReadArmArrayFlatBits(view, numBits, value) {
 // must hold NarrowMaxBytes.
 export function WriteNarrowFlat(view, value) {
   let lo = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.n) || value.n < 0 || value.n > 7) {
     return -1;
   }
@@ -1301,9 +1253,6 @@ export function ReadNarrowFlatBits(view, numBits, value) {
 // must hold WideMaxBytes.
 export function WriteWideFlat(view, value) {
   let v = 0, lo = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (typeof value.w !== "bigint" || value.w < 0n || value.w > 137438953471n) {
     return -1;
   }
@@ -1369,9 +1318,6 @@ export function ReadWideFlatBits(view, numBits, value) {
 // must hold UnevenMaxBytes.
 export function WriteUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1379,9 +1325,6 @@ export function WriteUnevenFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (value.narrow === null || typeof value.narrow !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.narrow.n) || value.narrow.n < 0 || value.narrow.n > 7) {
         return -1;
       }
@@ -1397,9 +1340,6 @@ export function WriteUnevenFlat(view, value) {
       break;
     }
     case 2: {
-      if (value.wide === null || typeof value.wide !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (typeof value.wide.w !== "bigint" || value.wide.w < 0n || value.wide.w > 137438953471n) {
         return -1;
       }
@@ -1567,13 +1507,7 @@ export function ReadUnevenFlatBits(view, numBits, value) {
 // must hold HoldsUnevenMaxBytes.
 export function WriteHoldsUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
-    return -1;
-  }
-  if (value.u === null || typeof value.u !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
@@ -1583,9 +1517,6 @@ export function WriteHoldsUnevenFlat(view, value) {
   sb = 7;
   switch (value.u.type) {
     case 1: {
-      if (value.u.narrow === null || typeof value.u.narrow !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (!globalThis.Number.isInteger(value.u.narrow.n) || value.u.narrow.n < 0 || value.u.narrow.n > 7) {
         return -1;
       }
@@ -1601,9 +1532,6 @@ export function WriteHoldsUnevenFlat(view, value) {
       break;
     }
     case 2: {
-      if (value.u.wide === null || typeof value.u.wide !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
-      }
       if (typeof value.u.wide.w !== "bigint" || value.u.wide.w < 0n || value.u.wide.w > 137438953471n) {
         return -1;
       }
@@ -1817,91 +1745,69 @@ export function ReadHoldsUnevenFlatBits(view, numBits, value) {
 // must hold ArrUnevenMaxBytes.
 export function WriteArrUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
-    return -1;
-  }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
   sb = 7;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
-    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+    if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
       return -1;
     }
-    try {
-      if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
-        return -1;
-      }
-      v = ((e0.type & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      switch (e0.type) {
-        case 1: {
-          if (e0.narrow === null || typeof e0.narrow !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
-            return -1;
-          }
-          v = ((e0.narrow.n & 0x7)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 3;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (3 - sb);
-          }
-          break;
+    v = ((e0.type & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
+    }
+    switch (e0.type) {
+      case 1: {
+        if (!globalThis.Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
+          return -1;
         }
-        case 2: {
-          if (e0.wide === null || typeof e0.wide !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          if (typeof e0.wide.w !== "bigint" || e0.wide.w < 0n || e0.wide.w > 137438953471n) {
-            return -1;
-          }
-          SC.setBigUint64(0, e0.wide.w, true);
-          v = SC.getUint32(0, true);
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-          v = SC.getUint32(4, true) & 0x1f;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 5;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (5 - sb);
-          }
-          break;
+        v = ((e0.narrow.n & 0x7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 3;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (3 - sb);
         }
+        break;
       }
-    } catch (thrown) {
-      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-        return -1;
+      case 2: {
+        if (typeof e0.wide.w !== "bigint" || e0.wide.w < 0n || e0.wide.w > 137438953471n) {
+          return -1;
+        }
+        SC.setBigUint64(0, e0.wide.w, true);
+        v = SC.getUint32(0, true);
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = SC.getUint32(4, true) & 0x1f;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 5;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (5 - sb);
+        }
+        break;
       }
-      throw thrown;
     }
   }
   if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
@@ -2120,16 +2026,10 @@ export function ReadArrUnevenFlatBits(view, numBits, value) {
 // must hold RegainAfterAlignMaxBytes.
 export function WriteRegainAfterAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
-    return -1;
-  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-    return -1;
-  }
-  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
@@ -2149,9 +2049,6 @@ export function WriteRegainAfterAlignFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
-    return -1;
-  }
-  if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   if (!validText(value.s, value.sLength)) {

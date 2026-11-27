@@ -59,6 +59,13 @@ func csFixedWriteCheckExtraField(f *ir.Field, seen map[string]bool) bool {
 	if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
 		return true
 	}
+	// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15):
+	// an enum with one is held by the write check even when its ordinal
+	// fills its storage, so an element or a scalar is held alike
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed && !f.Type.Pointer &&
+		enumDeprecatedCond(en, "v") != "" {
+		return true
+	}
 	if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -339,6 +346,14 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// WRITER's own variant count, which the `ordinal` op lands as 0 —
 			// is this pass's to count too, on the COMPILED plan exactly as on
 			// the identity one (§5.4, §5.9 #27).
+			if g.fixedWriteCheck {
+				// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+				// §2.15), an array element as a scalar; the READ lands one as the
+				// field's default and does not count it, so only the write check holds it
+				if cond := enumDeprecatedCond(r, "(ulong)"+expr); cond != "" {
+					g.pf("%sif (%s) { clamped++; }\n", ind, cond)
+				}
+			}
 			if csOrdinalFillsStorage(r.Max, r.StorageBits) {
 				return
 			}

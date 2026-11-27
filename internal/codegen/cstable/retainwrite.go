@@ -88,6 +88,12 @@ const tableRetainSaveSource = `
     }
     public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
+        // EVERY READ ZEROES A SUPPLIED REPORT IN FULL AS ITS FIRST ACT
+        // (docs/SPEC-TABLES.md §6.5), the retain family included: the same
+        // Zero the plain Load runs, before any byte is judged. Only SaveRetain
+        // adds to the report this load left (§6.6).
+        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        report.Zero();
         long total = LoadMeasurePartsWalk(type, bytes, out long data, out long attribution, out string reason, out bool wireNonFinite);
         if (total >= 0 && capacity < total) { return IntPtr.Zero; }
         fixed (TableRetain* retain = &store)
@@ -95,6 +101,12 @@ const tableRetainSaveSource = `
     }
     public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
+        // EVERY READ ZEROES A SUPPLIED REPORT IN FULL AS ITS FIRST ACT
+        // (docs/SPEC-TABLES.md §6.5), the retain family included: the same
+        // Zero the plain Load runs, before any byte is judged. Only SaveRetain
+        // adds to the report this load left (§6.6).
+        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        report.Zero();
         long total = LoadMeasurePartsWalk(type, bytes, out long data, out _, out string reason, out bool wireNonFinite);
         fixed (TableRetain* retain = &store)
         { return RetainLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, data, reason, wireNonFinite, retain); }
